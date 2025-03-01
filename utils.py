@@ -15,14 +15,42 @@ def extract_text_from_page(pdf_reader, page_num):
     page = pdf_reader.pages[page_num]
     return page.extract_text()
 
-def translate_text(text, deepl_api_key):
+def translate_text(text, deepl_api_key, target_language='SV'):
     translator = deepl.Translator(deepl_api_key)
     try:
-        result = translator.translate_text(text, target_lang="SV")
+        result = translator.translate_text(text, target_lang=target_language)
         return result.text
     except Exception as e:
         logger.error(f"DeepL translation error: {str(e)}")
         raise Exception(f"Translation failed: {str(e)}")
+
+def update_assistant_config(api_key, assistant_id, instructions, target_language, review_style):
+    client = OpenAI(api_key=api_key)
+
+    # Format instructions based on review style
+    style_instructions = {
+        'conservative': "Make minimal changes while fixing only clear errors.",
+        'balanced': "Make moderate improvements while maintaining the original style.",
+        'creative': "Enhance the text significantly while keeping the core meaning."
+    }
+
+    full_instructions = f"""
+{instructions}
+
+Target Language: {target_language}
+Review Style: {style_instructions[review_style]}
+"""
+
+    try:
+        # Update the assistant's configuration
+        client.beta.assistants.update(
+            assistant_id=assistant_id,
+            instructions=full_instructions
+        )
+        logger.info("Assistant configuration updated successfully")
+    except Exception as e:
+        logger.error(f"Error updating assistant configuration: {str(e)}")
+        raise Exception(f"Failed to update assistant configuration: {str(e)}")
 
 def review_translation(text, openai_api_key, assistant_id):
     # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
@@ -35,7 +63,7 @@ def review_translation(text, openai_api_key, assistant_id):
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content=f"Please review and improve this Swedish translation while maintaining its meaning: {text}"
+            content=text
         )
 
         # Run the assistant
@@ -99,7 +127,8 @@ def create_pdf_with_text(text_content):
     pdf.output(temp_output.name)
     return temp_output.name
 
-def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id):
+def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id, 
+               instructions=None, target_language='SV', review_style='balanced'):
     try:
         with open(input_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
@@ -110,7 +139,7 @@ def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id):
                 text = extract_text_from_page(pdf_reader, page_num)
 
                 # Translate text
-                translated_text = translate_text(text, deepl_api_key)
+                translated_text = translate_text(text, deepl_api_key, target_language)
 
                 # Review translation
                 reviewed_text = review_translation(
