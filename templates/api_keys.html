@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title text-center">API-nycklar</h2>
+            </div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Du kan använda dina egna API-nycklar för bättre kontroll över översättningarna. Lämna tomma för att använda systemets standardnycklar.
+                </div>
+                
+                <form method="POST" action="{{ url_for('api_keys_settings') }}">
+                    <div class="mb-4">
+                        <h4><i class="bi bi-translate"></i> DeepL</h4>
+                        <div class="mb-3">
+                            <label for="deepl_api_key" class="form-label">DeepL API-nyckel</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="deepl_api_key" name="deepl_api_key" 
+                                       value="{{ current_api_keys.get('deepl_api_key', '') }}" autocomplete="off">
+                                <button class="btn btn-outline-secondary toggle-password" type="button" data-target="deepl_api_key">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">
+                                <a href="https://www.deepl.com/pro-api" target="_blank">Skaffa en DeepL API-nyckel</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h4><i class="bi bi-robot"></i> OpenAI</h4>
+                        <div class="mb-3">
+                            <label for="openai_api_key" class="form-label">OpenAI API-nyckel</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="openai_api_key" name="openai_api_key" 
+                                       value="{{ current_api_keys.get('openai_api_key', '') }}" autocomplete="off">
+                                <button class="btn btn-outline-secondary toggle-password" type="button" data-target="openai_api_key">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">
+                                <a href="https://platform.openai.com/api-keys" target="_blank">Skaffa en OpenAI API-nyckel</a>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="openai_assistant_id" class="form-label">OpenAI Assistant ID</label>
+                            <input type="text" class="form-control" id="openai_assistant_id" name="openai_assistant_id" 
+                                   value="{{ current_api_keys.get('openai_assistant_id', '') }}" autocomplete="off">
+                            <div class="form-text">
+                                Skapa en Assistent i <a href="https://platform.openai.com/assistants" target="_blank">OpenAI's hemsida</a> och använd dess ID här.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Spara nycklar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Toggle password visibility
+    const toggleButtons = document.querySelectorAll('.toggle-password');
+    
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetId = button.getAttribute('data-target');
+            const input = document.getElementById(targetId);
+            const icon = button.querySelector('i');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
