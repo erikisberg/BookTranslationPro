@@ -53,16 +53,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const response = await fetch('/upload', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             });
 
             clearInterval(progressInterval);
 
-            const data = await response.json();
-
             if (!response.ok) {
-                throw new Error(data.error || 'Upload failed');
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Upload failed');
             }
+
+            const data = await response.json();
 
             // Handle successful response
             progressBar.style.width = '100%';
@@ -92,5 +96,36 @@ document.addEventListener('DOMContentLoaded', function() {
         progressBar.style.width = '0%';
         statusText.textContent = '';
         uploadForm.reset();
+    }
+
+    // Handle review form submission
+    const reviewForm = document.querySelector('form[action="/save-reviews"]');
+    if (reviewForm) {
+        reviewForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            try {
+                const response = await fetch('/save-reviews', {
+                    method: 'POST',
+                    body: new FormData(this),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to save reviews');
+                }
+
+                const data = await response.json();
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                }
+
+            } catch (error) {
+                alert('Error saving reviews: ' + error.message);
+            }
+        });
     }
 });

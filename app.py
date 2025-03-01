@@ -68,10 +68,16 @@ def save_assistant_config():
         os.environ['TARGET_LANGUAGE'] = target_language
         os.environ['REVIEW_STYLE'] = review_style
 
+        # Handle AJAX request differently than form submit
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True})
         return redirect(url_for('assistant_config'))
+
     except Exception as e:
         logger.error(f"Error saving configuration: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': str(e)}), 500
+        return redirect(url_for('assistant_config'))
 
 @app.route('/review')
 def review():
@@ -80,16 +86,27 @@ def review():
 
 @app.route('/save-reviews', methods=['POST'])
 def save_reviews():
-    translations = session.get('translations', [])
+    try:
+        translations = session.get('translations', [])
 
-    # Update translations with reviewed text
-    for i, translation in enumerate(translations):
-        key = f'translation_{i}'
-        if key in request.form:
-            translation['translated_text'] = request.form[key]
+        # Update translations with reviewed text
+        for i, translation in enumerate(translations):
+            key = f'translation_{i}'
+            if key in request.form:
+                translation['translated_text'] = request.form[key]
 
-    session['translations'] = translations
-    return redirect(url_for('review'))
+        session['translations'] = translations
+
+        # Handle AJAX request differently than form submit
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'redirect': url_for('review')})
+        return redirect(url_for('review'))
+
+    except Exception as e:
+        logger.error(f"Error saving reviews: {str(e)}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': str(e)}), 500
+        return redirect(url_for('review'))
 
 @app.route('/download-final')
 def download_final():
