@@ -102,6 +102,24 @@ def before_request():
             
             # Add distinct_id for authenticated users
             if user_id:
+                # Get user data to include name and other properties
+                user_data = get_user_data(user_id)
+                if user_data:
+                    # Add user properties to events
+                    properties['user_name'] = user_data.get('name', 'Unknown')
+                    properties['user_email'] = user_data.get('email', 'Unknown')
+                    
+                    # Also identify the user to PostHog with their properties
+                    posthog.identify(
+                        distinct_id=user_id,
+                        properties={
+                            'name': user_data.get('name'),
+                            'email': user_data.get('email'),
+                            '$name': user_data.get('name'),  # PostHog standard property
+                            '$email': user_data.get('email')  # PostHog standard property
+                        }
+                    )
+                
                 posthog.capture(
                     distinct_id=user_id,
                     event='$pageview',
@@ -1667,15 +1685,24 @@ def create_new_glossary():
         # Track in analytics
         if posthog:
             try:
+                # Get user data for better analytics
+                user_data = get_user_data(user_id)
+                event_properties = {
+                    'glossary_id': result['id'],
+                    'glossary_name': result['name'],
+                    'source_language': result.get('source_language', 'not_set'),
+                    'target_language': result.get('target_language', 'not_set')
+                }
+                
+                # Add user properties if available
+                if user_data:
+                    event_properties['user_name'] = user_data.get('name', 'Unknown')
+                    event_properties['user_email'] = user_data.get('email', 'Unknown')
+                
                 posthog.capture(
                     distinct_id=user_id,
                     event='glossary_created',
-                    properties={
-                        'glossary_id': result['id'],
-                        'glossary_name': result['name'],
-                        'source_language': result.get('source_language', 'not_set'),
-                        'target_language': result.get('target_language', 'not_set')
-                    }
+                    properties=event_properties
                 )
             except Exception as e:
                 logger.error(f"Error tracking glossary creation: {str(e)}")
