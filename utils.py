@@ -27,23 +27,23 @@ def translate_text(text, deepl_api_key):
 def review_translation(text, openai_api_key, assistant_id):
     # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
     client = OpenAI(api_key=openai_api_key)
-    
+
     try:
         thread = client.beta.threads.create()
-        
+
         # Add the message to the thread
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
             content=f"Please review and improve this Swedish translation while maintaining its meaning: {text}"
         )
-        
+
         # Run the assistant
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=assistant_id
         )
-        
+
         # Wait for completion
         while True:
             run_status = client.beta.threads.runs.retrieve(
@@ -52,11 +52,19 @@ def review_translation(text, openai_api_key, assistant_id):
             )
             if run_status.status == 'completed':
                 break
-        
+
         # Get the assistant's response
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        return messages.data[0].content[0].text
-        
+        # Extract the text content from the first message (most recent)
+        first_message = messages.data[0]
+        # The content is a list of MessageContent objects, get the text content
+        text_content = next(
+            content.text.value
+            for content in first_message.content
+            if hasattr(content, 'text')
+        )
+        return text_content
+
     except Exception as e:
         logger.error(f"OpenAI review error: {str(e)}")
         raise Exception(f"Review failed: {str(e)}")
