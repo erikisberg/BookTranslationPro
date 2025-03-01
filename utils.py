@@ -6,8 +6,7 @@ from openai import OpenAI
 import tempfile
 import logging
 from datetime import datetime
-from database import db
-from models import TranslationMemory
+import models
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +16,12 @@ def is_allowed_file(filename):
 def get_from_translation_memory(text):
     """Check if a translation exists in memory"""
     try:
-        logger.info("Checking translation memory for text...")
-        memory = TranslationMemory.query.filter_by(source_text=text).first()
+        memory = models.TranslationMemory.query.filter_by(source_text=text).first()
         if memory:
             # Update usage statistics
             memory.last_used_at = datetime.utcnow()
             memory.use_count += 1
-            db.session.commit()
+            models.db.session.commit()
             logger.info(f"Translation found in memory (ID: {memory.id}), used {memory.use_count} times")
             return memory.translated_text
         logger.info("No translation found in memory, proceeding with new translation")
@@ -35,18 +33,18 @@ def get_from_translation_memory(text):
 def store_in_translation_memory(source_text, translated_text):
     """Store a new translation in memory"""
     try:
-        memory = TranslationMemory(
+        memory = models.TranslationMemory(
             source_text=source_text,
             translated_text=translated_text,
             source_language='EN',
             target_language='SV'
         )
-        db.session.add(memory)
-        db.session.commit()
+        models.db.session.add(memory)
+        models.db.session.commit()
         logger.info(f"New translation stored in memory with ID: {memory.id}")
     except Exception as e:
         logger.error(f"Failed to store translation in memory: {str(e)}")
-        db.session.rollback()
+        models.db.session.rollback()
 
 def extract_text_from_page(pdf_reader, page_num):
     page = pdf_reader.pages[page_num]
@@ -137,7 +135,7 @@ def create_pdf_with_text(text_content):
         paragraphs = text_content.split('\n')
         for paragraph in paragraphs:
             # Write each paragraph
-            # Encode as latin-1 to handle special characters
+            # Encode as UTF-8 to handle special characters
             cleaned_text = paragraph.encode('latin-1', errors='replace').decode('latin-1')
             pdf.multi_cell(0, 10, cleaned_text)
             # Add some space between paragraphs

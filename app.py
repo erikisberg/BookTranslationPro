@@ -3,7 +3,6 @@ from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 import tempfile
 import logging
-from database import db
 import models
 from utils import process_pdf, is_allowed_file
 
@@ -27,8 +26,8 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_pre_ping": True,
 }
 
-# Initialize database
-db.init_app(app)
+# Initialize database after app creation
+models.db.init_app(app)
 
 # Get API keys from environment
 DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
@@ -91,6 +90,6 @@ def upload_file():
 if __name__ == '__main__':
     with app.app_context():
         # Create all database tables
-        db.create_all()
+        models.db.create_all()
         logger.info("Database tables created successfully")
     app.run(host='0.0.0.0', port=5000, debug=True)
