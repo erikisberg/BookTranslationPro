@@ -98,12 +98,17 @@ def upload_file():
         if not is_allowed_file(file.filename):
             raise APIError('Invalid file type. Please upload a PDF.')
 
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # Create unique filename to avoid conflicts
+        temp_dir = tempfile.gettempdir()
+        temp_filename = next(tempfile._get_candidate_names()) + '.pdf'
+        filepath = os.path.join(temp_dir, temp_filename)
 
+        logger.info(f"Attempting to save file to: {filepath}")
         try:
-            logger.info(f"Saving file: {filepath}")
             file.save(filepath)
+            if not os.path.exists(filepath):
+                raise APIError("Failed to save uploaded file")
+            logger.info(f"File saved successfully at: {filepath}")
 
             instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
             target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
@@ -128,6 +133,7 @@ def upload_file():
             raise APIError(str(e))
 
         finally:
+            # Cleanup temporary file in finally block
             if os.path.exists(filepath):
                 try:
                     os.remove(filepath)
@@ -137,6 +143,7 @@ def upload_file():
 
     except Exception as e:
         logger.error(f"Upload error: {str(e)}")
+        logger.error(traceback.format_exc())
         raise APIError(str(e))
 
 @app.route('/save-translations', methods=['POST'])
