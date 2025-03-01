@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Database Setup{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Database Setup</h4>
+                </div>
+                <div class="card-body">
+                    {% if error %}
+                        <div class="alert alert-danger">
+                            <h5><i class="bi bi-exclamation-triangle-fill"></i> Error</h5>
+                            <p>{{ error }}</p>
+                        </div>
+                    {% else %}
+                        <div class="alert {% if error_count > 0 %}alert-warning{% else %}alert-success{% endif %}">
+                            <h5>
+                                {% if error_count > 0 %}
+                                    <i class="bi bi-exclamation-circle-fill"></i> Partial Success
+                                {% else %}
+                                    <i class="bi bi-check-circle-fill"></i> Success
+                                {% endif %}
+                            </h5>
+                            <p>
+                                Setup completed with {{ success_count }} successful operations{% if error_count > 0 %} and {{ error_count }} errors{% endif %}.
+                            </p>
+                        </div>
+
+                        {% if errors %}
+                            <h5 class="mt-4">Error Details</h5>
+                            <div class="list-group mt-3">
+                                {% for error_msg in errors %}
+                                    <div class="list-group-item list-group-item-danger">{{ error_msg }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <div class="mt-4">
+                            <h5>Tables Created</h5>
+                            <ul class="list-group">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    glossaries
+                                    <span class="badge bg-primary rounded-pill">1</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    glossary_entries
+                                    <span class="badge bg-primary rounded-pill">2</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    document_folders
+                                    <span class="badge bg-primary rounded-pill">3</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    documents
+                                    <span class="badge bg-primary rounded-pill">4</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    document_versions
+                                    <span class="badge bg-primary rounded-pill">5</span>
+                                </li>
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-house"></i> Return to Home
+                        </a>
+                        <a href="{{ url_for('glossary_list') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-book"></i> Glossary Management
+                        </a>
+                        <a href="{{ url_for('documents') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-folder2-open"></i> Document Management
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

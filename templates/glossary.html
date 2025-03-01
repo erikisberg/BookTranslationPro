@@ -3,6 +3,19 @@
 {% block title %}Glossary Management{% endblock %}
 
 {% block content %}
+<!-- Setup notice -->
+{% if not glossaries %}
+<div class="container mt-3">
+    <div class="alert alert-warning">
+        <h5><i class="bi bi-exclamation-triangle-fill"></i> Database Setup Required</h5>
+        <p>The glossary feature requires database tables to be set up. If you're an administrator, please run the database setup first.</p>
+        <a href="{{ url_for('setup_database') }}" class="btn btn-primary">
+            <i class="bi bi-database-gear"></i> Run Database Setup
+        </a>
+    </div>
+</div>
+{% endif %}
+
 <div class="container my-5">
     <div class="row">
         <div class="col-md-4">

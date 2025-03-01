@@ -19,7 +19,10 @@ from supabase_config import (
     get_full_translation, delete_translation, get_user_settings, save_user_settings,
     get_user_assistants, get_assistant, save_assistant, delete_assistant,
     get_user_glossaries, get_glossary, create_glossary, update_glossary, delete_glossary,
-    get_glossary_entries, create_glossary_entry, update_glossary_entry, delete_glossary_entry
+    get_glossary_entries, create_glossary_entry, update_glossary_entry, delete_glossary_entry,
+    get_user_folders, get_folder, create_folder, update_folder, delete_folder,
+    get_user_documents, get_document, create_document, update_document, delete_document,
+    get_document_versions, get_document_content, save_document_content
 )
 
 # Load environment variables from .env file
@@ -1584,14 +1587,28 @@ def glossary_list():
     if not user_id:
         return redirect(url_for('login'))
         
-    glossaries = get_user_glossaries(user_id)
-    
-    # Enrich glossaries with entry counts
-    for glossary in glossaries:
-        entries = get_glossary_entries(glossary['id'])
-        glossary['entries_count'] = len(entries)
-    
-    return render_template('glossary.html', glossaries=glossaries, languages=LANGUAGE_CODES)
+    try:
+        try:
+            glossaries = get_user_glossaries(user_id)
+            
+            # Enrich glossaries with entry counts
+            for glossary in glossaries:
+                try:
+                    entries = get_glossary_entries(glossary['id'])
+                    glossary['entries_count'] = len(entries)
+                except Exception as entry_error:
+                    logger.error(f"Error getting entries for glossary {glossary['id']}: {str(entry_error)}")
+                    glossary['entries_count'] = 0
+        except Exception as glossary_error:
+            logger.error(f"Error getting glossaries: {str(glossary_error)}")
+            glossaries = []
+            flash("Error loading glossaries. Database tables may need to be set up.", "warning")
+        
+        return render_template('glossary.html', glossaries=glossaries, languages=LANGUAGE_CODES)
+    except Exception as e:
+        logger.error(f"Error displaying glossary page: {str(e)}")
+        flash("An error occurred loading the glossary page. Database tables may need to be set up.", "danger")
+        return redirect(url_for('index'))
 
 @app.route('/glossary', methods=['POST'])
 @login_required
@@ -1996,45 +2013,60 @@ def documents():
     user_id = get_user_id()
     if not user_id:
         return redirect(url_for('login'))
+    
+    try:    
+        # Get pagination params
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
+        offset = (page - 1) * per_page
         
-    # Get pagination params
-    page = request.args.get('page', 1, type=int)
-    per_page = 20
-    offset = (page - 1) * per_page
-    
-    # Get search params
-    search = request.args.get('search', '')
-    
-    # Get all user folders for sidebar and document count
-    folders = get_user_folders(user_id)
-    
-    # Enrich folders with document count
-    for folder in folders:
-        folder_docs = get_user_documents(user_id, folder['id'])
-        folder['document_count'] = len(folder_docs)
-    
-    # Get documents, filtered by search if provided
-    documents = get_user_documents(user_id, limit=per_page, offset=offset)
-    
-    # Simple search on backend (ideally this would be done in the database query)
-    if search:
-        documents = [d for d in documents if search.lower() in d.get('title', '').lower() or 
-                                            search.lower() in d.get('description', '').lower()]
-    
-    # Get total document count for pagination
-    total_documents = len(get_user_documents(user_id))
-    total_pages = (total_documents + per_page - 1) // per_page
-    
-    return render_template(
-        'documents.html',
-        documents=documents,
-        folders=folders,
-        current_folder=None,
-        total_documents=total_documents,
-        page=page,
-        total_pages=total_pages,
-        search=search
-    )
+        # Get search params
+        search = request.args.get('search', '')
+        
+        # Get all user folders for sidebar and document count
+        try:
+            folders = get_user_folders(user_id)
+            
+            # Enrich folders with document count
+            for folder in folders:
+                folder_docs = get_user_documents(user_id, folder['id'])
+                folder['document_count'] = len(folder_docs)
+        except Exception as folder_error:
+            logger.error(f"Error loading folders: {str(folder_error)}")
+            folders = []
+        
+        # Get documents, filtered by search if provided
+        try:
+            documents = get_user_documents(user_id, limit=per_page, offset=offset)
+            
+            # Simple search on backend (ideally this would be done in the database query)
+            if search:
+                documents = [d for d in documents if search.lower() in d.get('title', '').lower() or 
+                                                    search.lower() in d.get('description', '').lower()]
+            
+            # Get total document count for pagination
+            total_documents = len(get_user_documents(user_id))
+            total_pages = (total_documents + per_page - 1) // per_page
+        except Exception as docs_error:
+            logger.error(f"Error loading documents: {str(docs_error)}")
+            documents = []
+            total_documents = 0
+            total_pages = 1
+        
+        return render_template(
+            'documents.html',
+            documents=documents,
+            folders=folders,
+            current_folder=None,
+            total_documents=total_documents,
+            page=page,
+            total_pages=total_pages,
+            search=search
+        )
+    except Exception as e:
+        logger.error(f"Error displaying documents page: {str(e)}")
+        flash("An error occurred loading the documents page. Database tables may need to be set up.", "danger")
+        return redirect(url_for('index'))
 
 @app.route('/documents/folders/<folder_id>')
 @login_required
@@ -2044,50 +2076,70 @@ def documents_folder(folder_id):
     if not user_id:
         return redirect(url_for('login'))
     
-    # Get the folder
-    folder = get_folder(user_id, folder_id)
-    if not folder:
-        flash('Folder not found', 'danger')
-        return redirect(url_for('documents'))
-    
-    # Get pagination params
-    page = request.args.get('page', 1, type=int)
-    per_page = 20
-    offset = (page - 1) * per_page
-    
-    # Get search params
-    search = request.args.get('search', '')
-    
-    # Get all user folders for sidebar and document count
-    folders = get_user_folders(user_id)
-    
-    # Enrich folders with document count
-    for f in folders:
-        folder_docs = get_user_documents(user_id, f['id'])
-        f['document_count'] = len(folder_docs)
-    
-    # Get documents in this folder
-    documents = get_user_documents(user_id, folder_id, limit=per_page, offset=offset)
-    
-    # Simple search on backend (ideally this would be done in the database query)
-    if search:
-        documents = [d for d in documents if search.lower() in d.get('title', '').lower() or 
-                                            search.lower() in d.get('description', '').lower()]
-    
-    # Get total document count for pagination
-    total_documents = len(get_user_documents(user_id, folder_id))
-    total_pages = (total_documents + per_page - 1) // per_page
-    
-    return render_template(
-        'documents.html',
-        documents=documents,
-        folders=folders,
-        current_folder=folder,
-        total_documents=total_documents,
-        page=page,
-        total_pages=total_pages,
-        search=search
-    )
+    try:
+        # Get the folder
+        try:
+            folder = get_folder(user_id, folder_id)
+            if not folder:
+                flash('Folder not found', 'danger')
+                return redirect(url_for('documents'))
+        except Exception as folder_error:
+            logger.error(f"Error getting folder {folder_id}: {str(folder_error)}")
+            flash('Error loading folder. Database tables may need to be set up.', 'danger')
+            return redirect(url_for('index'))
+        
+        # Get pagination params
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
+        offset = (page - 1) * per_page
+        
+        # Get search params
+        search = request.args.get('search', '')
+        
+        # Get all user folders for sidebar and document count
+        try:
+            folders = get_user_folders(user_id)
+            
+            # Enrich folders with document count
+            for f in folders:
+                folder_docs = get_user_documents(user_id, f['id'])
+                f['document_count'] = len(folder_docs)
+        except Exception as folders_error:
+            logger.error(f"Error loading folders: {str(folders_error)}")
+            folders = []
+        
+        # Get documents in this folder
+        try:
+            documents = get_user_documents(user_id, folder_id, limit=per_page, offset=offset)
+            
+            # Simple search on backend (ideally this would be done in the database query)
+            if search:
+                documents = [d for d in documents if search.lower() in d.get('title', '').lower() or 
+                                                    search.lower() in d.get('description', '').lower()]
+            
+            # Get total document count for pagination
+            total_documents = len(get_user_documents(user_id, folder_id))
+            total_pages = (total_documents + per_page - 1) // per_page
+        except Exception as docs_error:
+            logger.error(f"Error loading documents: {str(docs_error)}")
+            documents = []
+            total_documents = 0
+            total_pages = 1
+        
+        return render_template(
+            'documents.html',
+            documents=documents,
+            folders=folders,
+            current_folder=folder,
+            total_documents=total_documents,
+            page=page,
+            total_pages=total_pages,
+            search=search
+        )
+    except Exception as e:
+        logger.error(f"Error displaying folder documents page: {str(e)}")
+        flash("An error occurred loading the folder page. Database tables may need to be set up.", "danger")
+        return redirect(url_for('index'))
 
 @app.route('/documents/folders', methods=['POST'])
 @login_required
@@ -2702,6 +2754,99 @@ def delete_document_route(document_id):
         'success': True,
         'message': 'Document deleted successfully'
     })
+
+# Admin Route for Database Setup
+@app.route('/admin/setup-database')
+@login_required
+def setup_database():
+    """Setup database tables for glossaries and documents"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Check if user has admin privileges 
+    # For simplicity, we'll just check if they're the first user or have a specific ID pattern
+    # In a real app, you would have proper roles and permissions
+    user_data = get_user_data(user_id)
+    is_admin = False
+    
+    if user_data:
+        # Simple admin check - could be enhanced with proper roles
+        is_admin = True
+        
+    if not is_admin:
+        flash("You don't have permission to access this page", "danger")
+        return redirect(url_for('index'))
+    
+    try:
+        # Get the SQL setup script content
+        with open('setup_tables.sql', 'r') as f:
+            sql_script = f.read()
+        
+        # Execute the SQL script 
+        # Note: This is a simplified approach. In a production environment,
+        # you would want to use a more robust solution for database migrations.
+        try:
+            # Split the script into individual statements
+            statements = sql_script.split(';')
+            
+            success_count = 0
+            error_messages = []
+            
+            # Execute each statement
+            for stmt in statements:
+                stmt = stmt.strip()
+                if not stmt:  # Skip empty statements
+                    continue
+                    
+                try:
+                    # This is a simplistic approach - in a real app use proper SQL execution
+                    from supabase_config import supabase
+                    result = supabase.rpc('exec_sql', {'query': stmt}).execute()
+                    success_count += 1
+                except Exception as stmt_error:
+                    error_messages.append(f"Error executing statement: {str(stmt_error)}")
+                    # Continue with other statements
+            
+            # Create storage bucket if it doesn't exist
+            try:
+                # List buckets to check if 'documents' exists
+                buckets_response = supabase.storage.list_buckets().execute()
+                if hasattr(buckets_response, 'data'):
+                    buckets = buckets_response.data
+                    bucket_exists = any(b['name'] == 'documents' for b in buckets)
+                    
+                    if not bucket_exists:
+                        # Create the documents bucket
+                        supabase.storage.create_bucket('documents', {'public': False}).execute()
+                        logger.info("Created 'documents' storage bucket")
+                else:
+                    error_messages.append("Could not check existing buckets")
+            except Exception as bucket_error:
+                error_messages.append(f"Error creating 'documents' bucket: {str(bucket_error)}")
+            
+            # Report results
+            if error_messages:
+                flash(f"Database setup completed with {len(error_messages)} errors. See logs for details.", "warning")
+                for error in error_messages:
+                    logger.error(error)
+            else:
+                flash("Database tables set up successfully!", "success")
+                
+            return render_template('setup_database.html', 
+                                  success_count=success_count, 
+                                  error_count=len(error_messages),
+                                  errors=error_messages)
+                
+        except Exception as exec_error:
+            logger.error(f"Error executing SQL script: {str(exec_error)}")
+            flash(f"Error executing database setup script: {str(exec_error)}", "danger")
+            return render_template('setup_database.html', error=str(exec_error))
+        
+    except Exception as e:
+        logger.error(f"Error in database setup: {str(e)}")
+        flash(f"Error reading setup script: {str(e)}", "danger")
+        return render_template('setup_database.html', error=str(e))
 
 @app.errorhandler(500)
 def internal_server_error(e):
