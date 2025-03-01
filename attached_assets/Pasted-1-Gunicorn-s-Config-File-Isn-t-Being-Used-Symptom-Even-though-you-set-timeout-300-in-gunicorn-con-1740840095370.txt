@@ -1,0 +1,63 @@
+1. Gunicorn’s Config File Isn’t Being Used
+Symptom
+Even though you set timeout = 300 in gunicorn_config.py, you still see worker timeouts at ~30 seconds, which is Gunicorn’s default.
+What to Check
+How You’re Launching Gunicorn
+Make sure your startup command includes -c gunicorn_config.py, for example:
+
+bash
+Kopiera
+Redigera
+gunicorn -c gunicorn_config.py app:app
+If you just run gunicorn app:app without -c gunicorn_config.py, Gunicorn won’t load that file.
+
+Procfile or environment variable
+If you’re using a Procfile (e.g., on Heroku) or some other hosting environment that sets gunicorn app:app, it may ignore your config file unless you explicitly reference it.
+In that case, you’d do something like:
+
+makefile
+Kopiera
+Redigera
+web: gunicorn -c gunicorn_config.py app:app
+or set GUNICORN_CMD_ARGS="-c gunicorn_config.py" in your environment.
+
+Check the logs
+When Gunicorn actually loads your config, you’ll often see a log line like:
+
+csharp
+Kopiera
+Redigera
+[INFO] Starting gunicorn 20.x.x
+[INFO] Listening at: http://0.0.0.0:5000
+[INFO] Using worker: sync
+[INFO] Server is ready. Spawning workers...
+...
+Timeout set to 300
+If it never mentions your 300-second timeout in logs, that’s a hint the config isn’t loaded.
+
+2. Another Proxy / Hosting Service Limits the Request Time
+Even if your local Gunicorn is set to 300s, some platforms have their own maximum request timeout. For example:
+
+Cloudflare Free: has a ~100-second limit on a single HTTP request before it returns an error.
+Replit: often has its own ephemeral environment and can kill requests after ~30 seconds if it sees no response.
+Heroku Free Tier: has a 30-second limit for “long polling” requests on the free plan.
+Check your hosting environment docs or logs. If your platform enforces its own shorter limit, Gunicorn’s 300s no longer matters.
+
+3. Using a Sync Worker With Repeated Long Polls
+If your code is:
+
+Doing a large translation,
+Polling the OpenAI API many times,
+Holding the same HTTP request open for the entire time,
+any small delay could cause a timeout. You might need to:
+
+Increase the Gunicorn timeout even more, or
+Switch to async or background tasks. For example, queue the long translation job using Celery/RQ, then return immediately and let your front-end poll a status endpoint.
+4. Confirm You Aren’t Overriding timeout Elsewhere
+Occasionally, you might have an environment variable (e.g. GUNICORN_CMD_ARGS="--timeout 30") that overrides the config. You can see how Gunicorn merges config by adding --log-level debug or checking environment variables.
+
+Summary
+Confirm Gunicorn is really using your config (most common culprit if you see 30s timeouts).
+Check your hosting for an upstream time limit (Cloudflare, Replit, Heroku, etc. can impose their own cutoffs).
+Consider a background job if these calls are very long. Holding a user’s HTTP request open for many minutes is brittle.
+If you do all that and still get “WORKER TIMEOUT” at 30 seconds, it almost always means Gunicorn is ignoring or never seeing your gunicorn_config.py or that some external proxy is killing the request.
