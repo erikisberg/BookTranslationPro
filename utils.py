@@ -20,7 +20,31 @@ except ImportError:
     DOCX_AVAILABLE = False
 
 try:
-    from pdfminer.high_level import extract_text as pdfminer_extract_text
+    # For the older pdfminer.six==20191110 used by textract
+    from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+    from pdfminer.converter import TextConverter
+    from pdfminer.layout import LAParams
+    from pdfminer.pdfpage import PDFPage
+    from io import StringIO
+    
+    def pdfminer_extract_text(pdf_path):
+        """Extract text from PDF using older pdfminer.six API"""
+        resource_manager = PDFResourceManager()
+        fake_file_handle = StringIO()
+        converter = TextConverter(resource_manager, fake_file_handle, laparams=LAParams())
+        page_interpreter = PDFPageInterpreter(resource_manager, converter)
+        
+        with open(pdf_path, 'rb') as fh:
+            for page in PDFPage.get_pages(fh, caching=True, check_extractable=True):
+                page_interpreter.process_page(page)
+                
+            text = fake_file_handle.getvalue()
+            
+        converter.close()
+        fake_file_handle.close()
+        
+        return text
+        
     PDFMINER_AVAILABLE = True
 except ImportError:
     PDFMINER_AVAILABLE = False
