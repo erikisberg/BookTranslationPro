@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title text-center">PDF Translation Tool</h2>
+            </div>
+            <div class="card-body">
+                <div class="upload-container text-center">
+                    <form id="uploadForm" class="mb-4">
+                        <div class="mb-3">
+                            <label for="pdfFile" class="form-label">Select PDF file to translate</label>
+                            <input type="file" class="form-control" id="pdfFile" accept=".pdf" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="uploadButton">
+                            <span class="button-text">Translate PDF</span>
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                    </form>
+                </div>
+
+                <div id="progressContainer" class="d-none">
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <p id="statusText" class="text-center"></p>
+                </div>
+
+                <div id="errorContainer" class="alert alert-danger d-none" role="alert"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
