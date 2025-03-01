@@ -1,51 +1,102 @@
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
+import logging
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Supabase configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_API_KEY", "")
 
+# Log Supabase configuration (without showing full key)
+if SUPABASE_URL:
+    logger.info(f"Supabase URL configured: {SUPABASE_URL}")
+else:
+    logger.warning("Supabase URL not configured!")
+
+if SUPABASE_KEY:
+    # Log only first few characters of the key to avoid security issues
+    visible_part = SUPABASE_KEY[:4] + "..." if len(SUPABASE_KEY) > 4 else ""
+    logger.info(f"Supabase API Key configured: {visible_part}")
+else:
+    logger.warning("Supabase API Key not configured!")
+
 # Create Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    logger.info("Supabase client initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Supabase client: {str(e)}")
+    # Create a dummy client that will log errors but not crash
+    class DummySupabase:
+        def __getattr__(self, name):
+            def dummy_method(*args, **kwargs):
+                logger.error(f"Attempted to call Supabase.{name} but Supabase is not configured properly")
+                return self
+            return dummy_method
+            
+        def execute(self):
+            logger.error("Attempted to execute Supabase query but Supabase is not configured properly")
+            return type('obj', (object,), {'data': []})
+            
+    supabase = DummySupabase()
 
 def get_user_data(user_id):
     """Fetch user data from Supabase"""
     try:
+        logger.debug(f"Fetching user data for user_id: {user_id}")
         response = supabase.table('users').select('*').eq('id', user_id).execute()
-        if response.data and len(response.data) > 0:
+        if hasattr(response, 'data') and response.data and len(response.data) > 0:
+            logger.debug(f"User data found for user_id: {user_id}")
             return response.data[0]
+        logger.warning(f"No user data found for user_id: {user_id}")
         return None
     except Exception as e:
-        print(f"Error fetching user data: {e}")
+        logger.error(f"Error fetching user data: {e}")
         return None
 
 def save_user_data(user_id, data):
     """Save or update user data in Supabase"""
     try:
+        logger.debug(f"Saving user data for user_id: {user_id}")
         existing_user = get_user_data(user_id)
         if existing_user:
             # Update existing user
+            logger.debug(f"Updating existing user: {user_id}")
             response = supabase.table('users').update(data).eq('id', user_id).execute()
         else:
             # Create new user entry
+            logger.debug(f"Creating new user: {user_id}")
             data['id'] = user_id
             response = supabase.table('users').insert(data).execute()
-        return response.data
+        
+        if hasattr(response, 'data'):
+            logger.debug(f"User data saved successfully for: {user_id}")
+            return response.data
+        logger.warning(f"No data returned after saving user: {user_id}")
+        return []
     except Exception as e:
-        print(f"Error saving user data: {e}")
+        logger.error(f"Error saving user data: {e}")
         return None
 
 def get_user_translations(user_id, limit=20, offset=0):
     """Fetch user's translation history"""
     try:
+        logger.debug(f"Fetching translations for user_id: {user_id}, limit: {limit}, offset: {offset}")
         response = supabase.table('translations').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(limit).offset(offset).execute()
-        return response.data
+        if hasattr(response, 'data'):
+            logger.debug(f"Found {len(response.data)} translations for user_id: {user_id}")
+            return response.data
+        logger.warning(f"No data returned when fetching translations for user_id: {user_id}")
+        return []
     except Exception as e:
-        print(f"Error fetching translations: {e}")
+        logger.error(f"Error fetching translations: {e}")
         return []
 
 def save_translation(user_id, original_filename, translated_text, settings=None):

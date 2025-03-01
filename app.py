@@ -39,39 +39,58 @@ app.config['POSTHOG_HOST'] = os.environ.get('POSTHOG_HOST', 'https://app.posthog
 def inject_user():
     return {'current_user': get_current_user()}
 
-# Middleware to capture request data for PostHog
+# Middleware to capture request data for PostHog and enforce login for main pages
 @app.before_request
 def before_request():
+    # Skip login check for authentication routes and static files
+    if (request.path.startswith('/static/') or 
+        request.path == '/login' or 
+        request.path == '/signup' or 
+        request.path == '/reset-password' or
+        request.path == '/logout'):
+        pass
+    elif 'user' not in session and request.endpoint != 'login' and request.endpoint != 'signup':
+        # Skip redirecting AJAX requests to avoid breaking client-side functionality
+        if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+            flash('Logga in för att fortsätta', 'warning')
+            logger.debug(f"Redirecting unauthenticated user from {request.path} to login")
+            if not request.path.startswith('/static/'):
+                session['next'] = request.url
+                return redirect(url_for('login'))
+
     # Only track if PostHog is initialized
     if posthog:
-        user_id = get_user_id()
-        # Capture page view
-        properties = {
-            'path': request.path,
-            'referrer': request.referrer,
-            'ip': request.remote_addr,
-            'user_agent': request.user_agent.string if request.user_agent else None
-        }
-        
-        # Add distinct_id for authenticated users
-        if user_id:
-            posthog.capture(
-                distinct_id=user_id,
-                event='$pageview',
-                properties=properties
-            )
-        else:
-            # For anonymous users, use session ID or generate a device ID
-            anonymous_id = session.get('anonymous_id')
-            if not anonymous_id:
-                anonymous_id = str(hash(request.remote_addr + (request.user_agent.string if request.user_agent else '')))
-                session['anonymous_id'] = anonymous_id
-                
-            posthog.capture(
-                distinct_id=anonymous_id,
-                event='$pageview',
-                properties=properties
-            )
+        try:
+            user_id = get_user_id()
+            # Capture page view
+            properties = {
+                'path': request.path,
+                'referrer': request.referrer,
+                'ip': request.remote_addr,
+                'user_agent': request.user_agent.string if request.user_agent else None
+            }
+            
+            # Add distinct_id for authenticated users
+            if user_id:
+                posthog.capture(
+                    distinct_id=user_id,
+                    event='$pageview',
+                    properties=properties
+                )
+            else:
+                # For anonymous users, use session ID or generate a device ID
+                anonymous_id = session.get('anonymous_id')
+                if not anonymous_id:
+                    anonymous_id = str(hash(request.remote_addr + (request.user_agent.string if request.user_agent else '')))
+                    session['anonymous_id'] = anonymous_id
+                    
+                posthog.capture(
+                    distinct_id=anonymous_id,
+                    event='$pageview',
+                    properties=properties
+                )
+        except Exception as e:
+            logger.error(f"Error tracking pageview in PostHog: {str(e)}")
 
 # Custom filter for formatting dates
 @app.template_filter('datetime')
@@ -466,6 +485,7 @@ def delete_translation_route():
     return redirect(url_for('history'))
 
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
