@@ -30,6 +30,9 @@ user = None
 group = None
 tmp_upload_dir = None
 
+# Preload application code before worker processes are forked
+preload_app = True
+
 # SSL
 keyfile = None
 certfile = None

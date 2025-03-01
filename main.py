@@ -1,3 +1,10 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables before importing app
+load_dotenv()
+
+# Import the app after loading environment variables
 from app import app
 
 if __name__ == "__main__":

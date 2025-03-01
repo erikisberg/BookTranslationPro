@@ -30,6 +30,15 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key-for-dev")
 
+# Get API keys from environment
+DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID')
+
+# PostHog configuration - check both standard and Next.js naming conventions
+POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY') or os.environ.get('NEXT_PUBLIC_POSTHOG_KEY')
+POSTHOG_HOST = os.environ.get('POSTHOG_HOST') or os.environ.get('NEXT_PUBLIC_POSTHOG_HOST', 'https://eu.i.posthog.com')
+
 # Make PostHog configuration available to templates if API key exists
 app.config['POSTHOG_API_KEY'] = POSTHOG_API_KEY
 app.config['POSTHOG_HOST'] = POSTHOG_HOST
@@ -114,14 +123,7 @@ UPLOAD_FOLDER = tempfile.gettempdir()
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Get API keys from environment
-DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID')
-
-# PostHog configuration - check both standard and Next.js naming conventions
-POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY') or os.environ.get('NEXT_PUBLIC_POSTHOG_KEY')
-POSTHOG_HOST = os.environ.get('POSTHOG_HOST') or os.environ.get('NEXT_PUBLIC_POSTHOG_HOST', 'https://app.posthog.com')
+# This section has been moved above to initialize variables before they are used
 
 # Initialize PostHog if API key is available
 posthog = None
