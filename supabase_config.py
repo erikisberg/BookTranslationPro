@@ -167,9 +167,16 @@ def save_user_settings(user_id, settings):
 def get_user_assistants(user_id):
     """Get list of user's OpenAI assistants"""
     try:
+        # First try to get from 'assistants' column
         user_data = get_user_data(user_id)
         if user_data and 'assistants' in user_data:
             return user_data['assistants']
+            
+        # Alternatively, check if stored in settings (more compatible approach)
+        settings = get_user_settings(user_id)
+        if settings and 'assistants' in settings:
+            return settings['assistants']
+            
         return []
     except Exception as e:
         logger.error(f"Error fetching user assistants: {e}")
@@ -200,9 +207,9 @@ def save_assistant(user_id, assistant_data):
             assistant_data['created_at'] = current_time
         assistant_data['updated_at'] = current_time
         
-        # Get current assistants
-        user_data = get_user_data(user_id) or {}
-        assistants = user_data.get('assistants', [])
+        # Get current assistants from settings
+        user_settings = get_user_settings(user_id) or {}
+        assistants = user_settings.get('assistants', [])
         
         # Update existing or add new
         assistant_id = assistant_data.get('id')
@@ -213,9 +220,9 @@ def save_assistant(user_id, assistant_data):
         else:
             assistants.append(assistant_data)
         
-        # Save updated assistants list
-        user_data['assistants'] = assistants
-        save_user_data(user_id, user_data)
+        # Save updated assistants list in settings
+        user_settings['assistants'] = assistants
+        save_user_settings(user_id, user_settings)
         
         return assistant_data
     except Exception as e:
@@ -225,12 +232,12 @@ def save_assistant(user_id, assistant_data):
 def delete_assistant(user_id, assistant_id):
     """Delete an assistant"""
     try:
-        user_data = get_user_data(user_id) or {}
-        assistants = user_data.get('assistants', [])
+        user_settings = get_user_settings(user_id) or {}
+        assistants = user_settings.get('assistants', [])
         
         # Filter out the assistant to delete
-        user_data['assistants'] = [a for a in assistants if a.get('id') != assistant_id]
-        save_user_data(user_id, user_data)
+        user_settings['assistants'] = [a for a in assistants if a.get('id') != assistant_id]
+        save_user_settings(user_id, user_settings)
         
         return True
     except Exception as e:
