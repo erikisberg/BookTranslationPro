@@ -32,36 +32,107 @@ DEFAULT_INSTRUCTIONS = """Review and improve this translation while:
 4. Keeping technical terms accurate
 5. Adapting cultural references appropriately"""
 
-def json_response(data, status=200):
-    """Helper function to ensure consistent JSON responses"""
-    return jsonify(data), status, {'Content-Type': 'application/json'}
-
-def json_error(message, status=400):
-    """Helper function for JSON error responses"""
-    return json_response({'error': message}, status)
+def wants_json():
+    """Check if the request wants a JSON response"""
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return True
+    if request.headers.get('Accept', '').startswith('application/json'):
+        return True
+    return False
 
 @app.before_request
 def before_request():
-    """Ensure JSON responses for AJAX requests"""
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        request.wants_json = True
-    else:
-        request.wants_json = False
+    """Setup request context"""
+    request.wants_json = wants_json()
+
+@app.after_request
+def after_request(response):
+    """Ensure proper content type for JSON responses"""
+    if request.wants_json and not response.headers.get('Content-Type', '').startswith('application/json'):
+        try:
+            # If we have an error response, convert it to JSON
+            data = {'error': response.get_data(as_text=True)}
+            response.data = jsonify(data).get_data()
+            response.content_type = 'application/json'
+        except Exception as e:
+            logger.error(f"Error converting response to JSON: {e}")
+    return response
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Handle all uncaught exceptions"""
-    # Log the full error with traceback
-    logger.error(f"Uncaught exception: {str(e)}")
+    """Global exception handler"""
+    error_msg = str(e)
+    logger.error(f"Uncaught exception: {error_msg}")
     logger.error(traceback.format_exc())
 
     if request.wants_json:
-        return json_error("Internal server error", 500)
+        return jsonify({'error': error_msg}), 500, {'Content-Type': 'application/json'}
     return render_template('500.html'), 500
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    try:
+        if 'file' not in request.files:
+            if request.wants_json:
+                return jsonify({'error': 'No file provided'}), 400
+            return redirect(url_for('index'))
+
+        file = request.files['file']
+        if file.filename == '':
+            if request.wants_json:
+                return jsonify({'error': 'No file selected'}), 400
+            return redirect(url_for('index'))
+
+        if not is_allowed_file(file.filename):
+            if request.wants_json:
+                return jsonify({'error': 'Invalid file type. Please upload a PDF.'}), 400
+            return redirect(url_for('index'))
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        try:
+            instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
+            target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
+            review_style = os.environ.get('REVIEW_STYLE', 'balanced')
+
+            translations = process_pdf(
+                filepath,
+                DEEPL_API_KEY,
+                OPENAI_API_KEY,
+                OPENAI_ASSISTANT_ID,
+                instructions,
+                target_language,
+                review_style,
+                return_segments=True
+            )
+
+            session['translations'] = translations
+
+            if request.wants_json:
+                return jsonify({
+                    'success': True,
+                    'redirect': url_for('review')
+                }), 200
+            return redirect(url_for('review'))
+
+        finally:
+            try:
+                os.remove(filepath)
+            except Exception as e:
+                logger.error(f"Error removing temporary file: {e}")
+
+    except Exception as e:
+        logger.error(f"Error processing upload: {e}")
+        logger.error(traceback.format_exc())
+        if request.wants_json:
+            return jsonify({'error': str(e)}), 500
+        return redirect(url_for('index'))
 
 @app.route('/assistant-config', methods=['GET'])
 def assistant_config():
@@ -158,62 +229,13 @@ def download_final():
             except:
                 pass
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if not request.wants_json:
-        return redirect(url_for('index'))
+def json_response(data, status=200):
+    """Helper function to ensure consistent JSON responses"""
+    return jsonify(data), status, {'Content-Type': 'application/json'}
 
-    logger.debug(f"Request headers: {dict(request.headers)}")
-    logger.debug(f"Request files: {request.files}")
-
-    if 'file' not in request.files:
-        return json_error('No file provided')
-
-    file = request.files['file']
-    if file.filename == '':
-        return json_error('No file selected')
-
-    if not is_allowed_file(file.filename):
-        return json_error('Invalid file type. Please upload a PDF.')
-
-    try:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
-        target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
-        review_style = os.environ.get('REVIEW_STYLE', 'balanced')
-
-        translations = process_pdf(
-            filepath,
-            DEEPL_API_KEY,
-            OPENAI_API_KEY,
-            OPENAI_ASSISTANT_ID,
-            instructions,
-            target_language,
-            review_style,
-            return_segments=True
-        )
-
-        session['translations'] = translations
-
-        logger.debug("Successfully processed file, returning JSON response")
-        return json_response({
-            'success': True,
-            'redirect': url_for('review')
-        })
-
-    except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
-        return json_error(str(e), 500)
-
-    finally:
-        if 'filepath' in locals():
-            try:
-                os.remove(filepath)
-            except:
-                pass
+def json_error(message, status=400):
+    """Helper function for JSON error responses"""
+    return json_response({'error': message}, status)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
