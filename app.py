@@ -13,6 +13,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class APIError(Exception):
+    """Custom exception class for API errors"""
+    def __init__(self, message, status_code=400):
+        super().__init__(message)
+        self.status_code = status_code
+
+def is_ajax():
+    """Check if the request is an AJAX request"""
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+def json_response(data, status=200):
+    """Create a JSON response with proper headers"""
+    response = jsonify(data)
+    response.status_code = status
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+def error_response(message, status=400):
+    """Create a JSON error response"""
+    return json_response({'error': message, 'status': 'error'}, status)
+
 # Create Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET")
@@ -35,81 +56,58 @@ DEFAULT_INSTRUCTIONS = """Review and improve this translation while:
 4. Keeping technical terms accurate
 5. Adapting cultural references appropriately"""
 
-def wants_json():
-    """Check if the request wants a JSON response"""
-    return (
-        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
-        request.headers.get('Accept', '').startswith('application/json')
-    )
-
-@app.before_request
-def before_request():
-    """Log request details"""
-    logger.info(f"Received {request.method} request to {request.path}")
-    logger.debug(f"Headers: {dict(request.headers)}")
-    logger.debug(f"Form data: {dict(request.form)}")
-    logger.debug(f"Files: {request.files}")
-    request.wants_json = wants_json()
-    logger.info(f"Request wants JSON response: {request.wants_json}")
-
 @app.errorhandler(Exception)
-def handle_exception(e):
-    """Global exception handler with detailed logging"""
-    error_msg = str(e)
-    logger.error(f"Uncaught exception: {error_msg}")
-    logger.error(f"Exception type: {type(e).__name__}")
-    logger.error(f"Traceback:\n{traceback.format_exc()}")
-    logger.error(f"Request path: {request.path}")
-    logger.error(f"Request method: {request.method}")
-    logger.error(f"Request headers: {dict(request.headers)}")
+def handle_exception(error):
+    """Global exception handler"""
+    logger.error(f"Uncaught exception: {str(error)}")
+    logger.error(f"Type: {type(error).__name__}")
+    logger.error(traceback.format_exc())
 
-    if request.wants_json:
-        logger.info("Returning JSON error response")
-        response = jsonify({
-            'error': error_msg,
-            'status': 'error'
-        })
-        response.status_code = 500
-        response.headers['Content-Type'] = 'application/json'
-        return response
+    if is_ajax():
+        status_code = getattr(error, 'status_code', 500)
+        return error_response(str(error), status_code)
 
-    logger.info("Returning HTML error response")
     return render_template('500.html'), 500
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    if is_ajax():
+        return error_response('Resource not found', 404)
+    return render_template('404.html'), 404
+
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload with detailed error logging"""
-    logger.info("Processing file upload request")
+    """Handle file upload with proper error handling"""
+    logger.info("Processing file upload")
+
     try:
-        # Validate request
         if 'file' not in request.files:
-            logger.warning("No file in request")
-            raise ValueError('No file provided')
+            raise APIError('No file provided')
 
         file = request.files['file']
         if file.filename == '':
-            logger.warning("Empty filename")
-            raise ValueError('No file selected')
+            raise APIError('No file selected')
 
         if not is_allowed_file(file.filename):
-            logger.warning(f"Invalid file type: {file.filename}")
-            raise ValueError('Invalid file type. Please upload a PDF.')
+            raise APIError('Invalid file type. Please upload a PDF.')
 
-        # Save and process file
+        # Process file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        logger.info(f"Saving file to {filepath}")
-        file.save(filepath)
 
         try:
+            file.save(filepath)
+            logger.info(f"File saved: {filepath}")
+
             # Get configuration
             instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
             target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
             review_style = os.environ.get('REVIEW_STYLE', 'balanced')
-
-            logger.info("Processing PDF with configuration")
-            logger.debug(f"Target language: {target_language}")
-            logger.debug(f"Review style: {review_style}")
 
             # Process PDF
             translations = process_pdf(
@@ -123,42 +121,28 @@ def upload_file():
                 return_segments=True
             )
 
-            # Store result
             session['translations'] = translations
-            logger.info("Successfully processed PDF")
 
-            # Return response
-            if request.wants_json:
-                logger.info("Returning JSON success response")
-                return jsonify({
+            if is_ajax():
+                return json_response({
                     'success': True,
                     'redirect': url_for('review')
-                }), 200, {'Content-Type': 'application/json'}
-
-            logger.info("Redirecting to review page")
+                })
             return redirect(url_for('review'))
 
         finally:
             # Cleanup
-            try:
-                os.remove(filepath)
-                logger.info(f"Cleaned up temporary file: {filepath}")
-            except Exception as cleanup_error:
-                logger.error(f"Error cleaning up file: {cleanup_error}")
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                    logger.info(f"Cleaned up file: {filepath}")
+                except Exception as e:
+                    logger.error(f"Failed to clean up file: {e}")
 
     except Exception as e:
-        logger.error(f"Error processing upload: {str(e)}")
+        logger.error("Upload failed")
         logger.error(traceback.format_exc())
-        if request.wants_json:
-            return jsonify({
-                'error': str(e),
-                'status': 'error'
-            }), 500, {'Content-Type': 'application/json'}
-        return redirect(url_for('index'))
-
-@app.route('/')
-def index():
-    return render_template('index.html')
+        raise
 
 @app.route('/assistant-config', methods=['GET'])
 def assistant_config():
@@ -167,9 +151,9 @@ def assistant_config():
     review_style = os.environ.get('REVIEW_STYLE', 'balanced')
 
     return render_template('config.html',
-                        current_instructions=current_instructions,
-                        target_language=target_language,
-                        review_style=review_style)
+                         current_instructions=current_instructions,
+                         target_language=target_language,
+                         review_style=review_style)
 
 @app.route('/save-assistant-config', methods=['POST'])
 def save_assistant_config():
@@ -177,6 +161,9 @@ def save_assistant_config():
         instructions = request.form.get('instructions')
         target_language = request.form.get('target_language')
         review_style = request.form.get('review_style')
+
+        if not all([instructions, target_language, review_style]):
+            raise APIError('Missing required configuration fields')
 
         update_assistant_config(
             OPENAI_API_KEY,
@@ -190,15 +177,15 @@ def save_assistant_config():
         os.environ['TARGET_LANGUAGE'] = target_language
         os.environ['REVIEW_STYLE'] = review_style
 
-        if wants_json():
-            return jsonify({'success': True, 'redirect': url_for('assistant_config')})
+        if is_ajax():
+            return json_response({
+                'success': True,
+                'redirect': url_for('assistant_config')
+            })
         return redirect(url_for('assistant_config'))
 
     except Exception as e:
-        logger.error(f"Error saving configuration: {str(e)}")
-        if wants_json():
-            return jsonify({'error': str(e)}), 500
-        return redirect(url_for('assistant_config'))
+        raise APIError(str(e))
 
 @app.route('/review')
 def review():
@@ -209,6 +196,9 @@ def review():
 def save_reviews():
     try:
         translations = session.get('translations', [])
+        if not translations:
+            raise APIError('No translations to save')
+
         for translation in translations:
             key = f'translation_{translation["id"]}'
             if key in request.form:
@@ -216,25 +206,23 @@ def save_reviews():
 
         session['translations'] = translations
 
-        if wants_json():
-            return jsonify({'success': True, 'redirect': url_for('review')})
+        if is_ajax():
+            return json_response({
+                'success': True,
+                'redirect': url_for('review')
+            })
         return redirect(url_for('review'))
 
     except Exception as e:
-        logger.error(f"Error saving reviews: {str(e)}")
-        if wants_json():
-            return jsonify({'error': str(e)}), 500
-        return redirect(url_for('review'))
+        raise APIError(str(e))
 
 @app.route('/download-final')
 def download_final():
-    translations = session.get('translations', [])
-    if not translations:
-        if wants_json():
-            return jsonify({'error': 'No translations available'}), 400
-        return redirect(url_for('index'))
-
     try:
+        translations = session.get('translations', [])
+        if not translations:
+            raise APIError('No translations available')
+
         final_text = '\n\n'.join(t['translated_text'] for t in translations)
         output_path = create_pdf_with_text(final_text)
 
@@ -245,10 +233,7 @@ def download_final():
         )
 
     except Exception as e:
-        logger.error(f"Error creating final PDF: {str(e)}")
-        if wants_json():
-            return jsonify({'error': str(e)}), 500
-        return redirect(url_for('index'))
+        raise APIError(str(e))
 
     finally:
         if 'output_path' in locals():
