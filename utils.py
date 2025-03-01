@@ -50,9 +50,9 @@ def review_translation(text, openai_api_key, assistant_id):
         )
 
         # Simplified exponential backoff
-        max_retries = 5
-        delay = 1
-        max_delay = 16
+        max_retries = 3  # Reduced from 5 to minimize total wait time
+        initial_delay = 5  # Increased initial delay from 1 to 5 seconds
+        max_delay = 30  # Increased max delay to allow for longer processing
 
         for attempt in range(max_retries):
             logger.info(f"Checking run status (attempt {attempt + 1}/{max_retries})")
@@ -66,30 +66,44 @@ def review_translation(text, openai_api_key, assistant_id):
                 break
             elif run_status.status in ['failed', 'cancelled', 'expired']:
                 logger.error(f"Run failed with status: {run_status.status}")
-                raise Exception(f"OpenAI run failed with status: {run_status.status}")
+                # Return original text if OpenAI review fails
+                logger.warning("Returning original text due to review failure")
+                return text
 
             if attempt < max_retries - 1:
-                sleep_time = min(delay * (2 ** attempt), max_delay)
-                logger.info(f"Waiting {sleep_time} seconds before next check")
-                time.sleep(sleep_time)
+                delay = min(initial_delay * (4 ** attempt), max_delay)  # More aggressive backoff
+                logger.info(f"Waiting {delay} seconds before next check")
+                time.sleep(delay)
             else:
-                logger.error("Maximum retry attempts reached")
-                raise Exception("Translation review timed out")
+                logger.warning("Maximum retry attempts reached, returning original text")
+                return text  # Return original text instead of raising exception
 
         logger.info("Retrieving assistant's response")
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        text_content = next(
-            content.text.value
-            for content in messages.data[0].content
-            if hasattr(content, 'text')
-        )
 
-        logger.info("Translation review completed successfully")
-        return text_content
+        # Check if we have any messages before accessing them
+        if not messages.data:
+            logger.warning("No messages received from assistant, returning original text")
+            return text
+
+        # Try to get the reviewed text, fall back to original if not found
+        try:
+            text_content = next(
+                content.text.value
+                for content in messages.data[0].content
+                if hasattr(content, 'text')
+            )
+            logger.info("Translation review completed successfully")
+            return text_content
+        except (StopIteration, AttributeError) as e:
+            logger.error(f"Error extracting message content: {str(e)}")
+            return text
 
     except Exception as e:
         logger.error(f"Error in review_translation: {str(e)}")
-        raise Exception(f"Translation review failed: {str(e)}")
+        # Return original text instead of raising exception
+        logger.warning("Returning original text due to error")
+        return text
 
 def create_pdf_with_text(text_content):
     pdf = FPDF()
