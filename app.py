@@ -162,6 +162,13 @@ DEFAULT_EXPORT_SETTINGS = {
     'include_both_languages': False
 }
 
+# Default API keys settings (empty means use system defaults)
+DEFAULT_API_KEYS = {
+    'deepl_api_key': '',
+    'openai_api_key': '',
+    'openai_assistant_id': ''
+}
+
 def json_response(data, status=200):
     """Helper function to ensure consistent JSON responses"""
     return jsonify(data), status, {'Content-Type': 'application/json'}
@@ -537,6 +544,33 @@ def export_settings():
                          footer_text=settings['footer_text'],
                          include_both_languages=settings['include_both_languages'])
 
+@app.route('/api_keys_settings', methods=['GET', 'POST'])
+@login_required
+def api_keys_settings():
+    user_id = get_user_id()
+    
+    if request.method == 'POST':
+        # Get the submitted API keys
+        api_keys = {
+            'deepl_api_key': request.form.get('deepl_api_key', '').strip(),
+            'openai_api_key': request.form.get('openai_api_key', '').strip(),
+            'openai_assistant_id': request.form.get('openai_assistant_id', '').strip()
+        }
+        
+        # Save to user settings
+        user_settings = get_user_settings(user_id) or {}
+        user_settings['api_keys'] = api_keys
+        save_user_settings(user_id, user_settings)
+        
+        flash('API-nycklar sparade!', 'success')
+        return redirect(url_for('api_keys_settings'))
+    
+    # Get current API keys from user settings
+    user_settings = get_user_settings(user_id) or {}
+    current_api_keys = user_settings.get('api_keys', DEFAULT_API_KEYS)
+    
+    return render_template('api_keys.html', current_api_keys=current_api_keys)
+
 @app.route('/save-assistant-config', methods=['POST'])
 @login_required
 def save_assistant_config():
@@ -647,14 +681,28 @@ def upload_file():
         target_language = request.form.get('targetLanguage', 'SV')
         logger.info(f"Language options - Source: {source_language}, Target: {target_language}")
         
-        # If skipping OpenAI, pass None for the OpenAI parameters
-        openai_api_key = None if skip_openai else OPENAI_API_KEY
-        openai_assistant_id = None if skip_openai else OPENAI_ASSISTANT_ID
+        # Get user's API keys if available
+        user_id = get_user_id()
+        user_api_keys = get_user_settings(user_id).get('api_keys', DEFAULT_API_KEYS) if user_id else DEFAULT_API_KEYS
+        
+        # Use user's API keys if provided, otherwise fallback to system keys
+        deepl_api_key = user_api_keys.get('deepl_api_key') or DEEPL_API_KEY
+        if not skip_openai:
+            openai_api_key = user_api_keys.get('openai_api_key') or OPENAI_API_KEY
+            openai_assistant_id = user_api_keys.get('openai_assistant_id') or OPENAI_ASSISTANT_ID
+        else:
+            openai_api_key = None
+            openai_assistant_id = None
+            
+        logger.info(f"Using {'user' if user_api_keys.get('deepl_api_key') else 'system'} DeepL API key")
+        if not skip_openai:
+            logger.info(f"Using {'user' if user_api_keys.get('openai_api_key') else 'system'} OpenAI API key")
+            logger.info(f"Using {'user' if user_api_keys.get('openai_assistant_id') else 'system'} OpenAI Assistant ID")
 
         # Process the PDF and get translations
         translations = process_pdf(
             filepath,
-            DEEPL_API_KEY,
+            deepl_api_key,
             openai_api_key,
             openai_assistant_id,
             source_language=source_language,
