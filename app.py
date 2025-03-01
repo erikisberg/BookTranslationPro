@@ -888,9 +888,53 @@ def save_reviews():
         # Save updated translations back to file
         with open(translation_file, 'w') as f:
             json.dump(translations, f)
-
+            
+        # Save to database if requested
+        if 'save_to_db' in request.form and request.form['save_to_db'] == 'yes':
+            try:
+                user_id = get_user_id()
+                # Ensure user exists in the users table before saving translation
+                user_data = {
+                    'email': session.get('user', {}).get('email') or 'user@example.com'  # Ensure email is never null
+                }
+                save_user_data(user_id, user_data)
+                
+                # Prepare for saving to database
+                original_filename = session.get('original_filename', 'document.pdf')
+                
+                # Combine all translations
+                combined_text = '\n\n'.join([t['translated_text'] for t in translations if t['status'] == 'success'])
+                
+                # Get export settings
+                settings = session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+                
+                # Save to database
+                save_result = save_translation(user_id, original_filename, combined_text, settings)
+                
+                # Track event
+                if posthog and save_result:
+                    posthog.capture(
+                        distinct_id=user_id,
+                        event='translation_saved',
+                        properties={
+                            'filename': original_filename,
+                            'translation_id': translation_id,
+                            'section_count': len(translations)
+                        }
+                    )
+                
+                flash('Översättning sparad i ditt bibliotek!', 'success')
+                
+                # Redirect to history page after saving to database
+                return redirect(url_for('history'))
+            except Exception as e:
+                logger.error(f"Error saving translation to database: {str(e)}")
+                flash(f"Kunde inte spara översättningen: {str(e)}", 'danger')
+        
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return json_response({'success': True, 'redirect': url_for('review')})
+        
+        flash('Ändringar sparade!', 'success')
         return redirect(url_for('review'))
 
     except Exception as e:

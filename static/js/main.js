@@ -222,13 +222,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const reviewForm = document.querySelector('form[action="/save-reviews"]');
     if (reviewForm) {
         reviewForm.addEventListener('submit', async function(e) {
+            // Check if the clicked button is "Save to database"
+            const clickedButton = e.submitter;
+            const isSaveToDb = clickedButton && clickedButton.name === 'save_to_db' && clickedButton.value === 'yes';
+            
+            // If saving to database, let the form submit normally for server-side redirect
+            if (isSaveToDb) {
+                // Show saving indicator
+                clickedButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sparar...';
+                clickedButton.disabled = true;
+                
+                // Let the normal form submission happen
+                return true;
+            }
+            
+            // For regular saves, use AJAX
             e.preventDefault();
 
             try {
-                const saveBtn = this.querySelector('button[type="submit"]');
-                const originalText = saveBtn.textContent;
-                saveBtn.textContent = 'Sparar...';
+                const saveBtn = clickedButton || this.querySelector('button[name="action"]');
+                const originalHTML = saveBtn.innerHTML;
+                saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sparar...';
                 saveBtn.disabled = true;
+                
+                // Disable all buttons during save
+                this.querySelectorAll('button').forEach(btn => {
+                    if (btn !== saveBtn) btn.disabled = true;
+                });
 
                 const response = await fetch('/save-reviews', {
                     method: 'POST',
@@ -241,19 +261,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const data = await handleResponse(response);
                 
-                saveBtn.textContent = 'Sparat!';
-                setTimeout(() => {
-                    saveBtn.textContent = originalText;
-                    saveBtn.disabled = false;
-                }, 2000);
+                saveBtn.innerHTML = '<i class="bi bi-check-circle"></i> Sparat!';
                 
-                if (data.redirect) {
-                    // No need to redirect, just show success
-                    // window.location.href = data.redirect;
+                // Re-enable buttons
+                setTimeout(() => {
+                    saveBtn.innerHTML = originalHTML;
+                    saveBtn.disabled = false;
+                    
+                    this.querySelectorAll('button').forEach(btn => {
+                        btn.disabled = false;
+                    });
+                    
+                    // Show a toast or notification
+                    showNotification('Ändringar sparade!', 'success');
+                }, 1500);
+                
+                if (data.redirect && data.force_redirect) {
+                    window.location.href = data.redirect;
                 }
 
             } catch (error) {
-                alert('Fel vid sparande av översättningar: ' + error.message);
+                showNotification('Fel vid sparande: ' + error.message, 'danger');
+                
+                // Re-enable buttons
+                this.querySelectorAll('button').forEach(btn => {
+                    btn.disabled = false;
+                });
             }
         });
     }
@@ -387,5 +420,55 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         return diffHtml;
+    }
+    
+    // Helper function to show notifications
+    function showNotification(message, type = 'info') {
+        // Check if we already have a notification container
+        let notifContainer = document.getElementById('notification-container');
+        
+        if (!notifContainer) {
+            // Create a container for notifications
+            notifContainer = document.createElement('div');
+            notifContainer.id = 'notification-container';
+            notifContainer.style.position = 'fixed';
+            notifContainer.style.top = '20px';
+            notifContainer.style.right = '20px';
+            notifContainer.style.zIndex = '9999';
+            notifContainer.style.maxWidth = '350px';
+            document.body.appendChild(notifContainer);
+        }
+        
+        // Create the toast element
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-white bg-${type} border-0 mb-2`;
+        toast.role = 'alert';
+        toast.setAttribute('aria-live', 'assertive');
+        toast.setAttribute('aria-atomic', 'true');
+        
+        // Toast content
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        `;
+        
+        // Add to container
+        notifContainer.appendChild(toast);
+        
+        // Initialize and show using Bootstrap
+        const bsToast = new bootstrap.Toast(toast, {
+            autohide: true,
+            delay: 3000
+        });
+        bsToast.show();
+        
+        // Remove after hiding
+        toast.addEventListener('hidden.bs.toast', () => {
+            toast.remove();
+        });
     }
 });

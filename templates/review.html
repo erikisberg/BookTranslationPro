@@ -52,9 +52,18 @@
                     </div>
                 </div>
                 {% endfor %}
-                <div class="d-flex justify-content-between">
-                    <button type="submit" class="btn btn-primary">Spara ändringar</button>
-                    <a href="{{ url_for('download_final') }}" class="btn btn-success">Ladda ner översatt PDF</a>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <button type="submit" class="btn btn-outline-primary me-2" name="action" value="save_changes">
+                            <i class="bi bi-save"></i> Spara ändringar
+                        </button>
+                        <button type="submit" class="btn btn-success" name="save_to_db" value="yes">
+                            <i class="bi bi-cloud-upload"></i> Spara översättning
+                        </button>
+                    </div>
+                    <a href="{{ url_for('download_final') }}" class="btn btn-outline-success">
+                        <i class="bi bi-file-earmark-arrow-down"></i> Ladda ner PDF
+                    </a>
                 </div>
             </form>
             {% else %}
