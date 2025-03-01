@@ -1,4 +1,4 @@
-# BookTranslationPro Guidelines
+# InkAssist Guidelines
 
 ## Commands
 - **Run server**: `python app.py` or `gunicorn main:app -c gunicorn_config.py` for production

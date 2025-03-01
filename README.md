@@ -1,4 +1,4 @@
-# BookTranslationPro
+# InkAssist
 
 A comprehensive PDF book translation application that extracts text, translates with DeepL, reviews with OpenAI, and exports to multiple formats.
 

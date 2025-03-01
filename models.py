@@ -1,4 +1,4 @@
-# Models for BookTranslationPro application
+# Models for InkAssist application
 
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
