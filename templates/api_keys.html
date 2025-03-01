@@ -16,8 +16,8 @@
                     {% endif %}
                 {% endwith %}
                 
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> Du kan använda dina egna API-nycklar för bättre kontroll över översättningarna. Lämna tomma för att använda systemets standardnycklar.
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> <strong>Du måste ange dina egna API-nycklar för att kunna använda tjänsten.</strong> Skaffa nycklar från DeepL och OpenAI via länkarna nedan.
                 </div>
                 
                 <form method="POST" action="{{ url_for('api_keys_settings') }}">
@@ -54,13 +54,8 @@
                             </div>
                         </div>
                         
-                        <div class="mb-3">
-                            <label for="openai_assistant_id" class="form-label">OpenAI Assistant ID</label>
-                            <input type="text" class="form-control" id="openai_assistant_id" name="openai_assistant_id" 
-                                   value="{{ current_api_keys.get('openai_assistant_id', '') }}" autocomplete="off">
-                            <div class="form-text">
-                                Skapa en Assistent i <a href="https://platform.openai.com/assistants" target="_blank">OpenAI's hemsida</a> och använd dess ID här.
-                            </div>
+                        <div class="form-text mt-2">
+                            <i class="bi bi-info-circle"></i> Du kan skapa och hantera assistenter för olika författare och genrer på <a href="{{ url_for('assistant_config') }}">assistentsidan</a>.
                         </div>
                     </div>
                     

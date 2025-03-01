@@ -31,10 +31,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key-for-dev")
 
-# Get API keys from environment
-DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID')
+# Get API keys from environment (will be empty by default, requiring users to add their own)
+DEEPL_API_KEY = ""
+OPENAI_API_KEY = ""
+OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID', "")
 
 # PostHog configuration - check both standard and Next.js naming conventions
 POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY') or os.environ.get('NEXT_PUBLIC_POSTHOG_KEY')
@@ -50,12 +50,16 @@ def inject_user():
     user = get_current_user()
     context = {'current_user': user}
     
-    # Also make assistants available globally if the user is logged in
+    # Also make assistants and user settings available globally if the user is logged in
     if user:
         user_id = get_user_id()
         if user_id:
             assistants = get_user_assistants(user_id)
             context['user_assistants'] = assistants
+            
+            # Add user settings to context
+            user_settings = get_user_settings(user_id) or {}
+            context['user_settings'] = user_settings
             
     return context
 
@@ -196,8 +200,7 @@ DEFAULT_EXPORT_SETTINGS = {
 # Default API keys settings (empty means use system defaults)
 DEFAULT_API_KEYS = {
     'deepl_api_key': '',
-    'openai_api_key': '',
-    'openai_assistant_id': ''
+    'openai_api_key': ''
 }
 
 def json_response(data, status=200):
@@ -610,11 +613,14 @@ def save_assistant_route():
         assistant_genre = request.form.get('genre')
         assistant_id_param = request.form.get('id')  # Local ID, will be None for new assistants
         
-        # Get user's OpenAI key, falling back to app default
-        openai_api_key = user.get('openai_api_key') or OPENAI_API_KEY
+        # Get user's OpenAI key from settings
+        user_settings = get_user_settings(user_id) or {}
+        user_api_keys = user_settings.get('api_keys', {})
+        openai_api_key = user_api_keys.get('openai_api_key')
+        
         if not openai_api_key:
-            flash('OpenAI API nyckel saknas. Lägg till en i din profil eller kontakta administratören.', 'danger')
-            return redirect(url_for('assistant_config'))
+            flash('OpenAI API nyckel saknas. Lägg till en på API-nyckelsidan.', 'danger')
+            return redirect(url_for('api_keys_settings'))
         
         # Create/update in OpenAI if requested
         assistant_data = {
@@ -723,8 +729,10 @@ def delete_assistant_route(assistant_id):
         # Try to delete from OpenAI if we have an ID
         if success and openai_assistant_id:
             try:
-                # Get user's OpenAI key, falling back to app default
-                openai_api_key = user.get('openai_api_key') or OPENAI_API_KEY
+                # Get user's OpenAI key from settings
+                user_settings = get_user_settings(user_id) or {}
+                user_api_keys = user_settings.get('api_keys', {})
+                openai_api_key = user_api_keys.get('openai_api_key')
                 
                 if openai_api_key:
                     from utils import delete_openai_assistant
@@ -774,8 +782,8 @@ def api_keys_settings():
         # Get the submitted API keys
         api_keys = {
             'deepl_api_key': request.form.get('deepl_api_key', '').strip(),
-            'openai_api_key': request.form.get('openai_api_key', '').strip(),
-            'openai_assistant_id': request.form.get('openai_assistant_id', '').strip()
+            'openai_api_key': request.form.get('openai_api_key', '').strip()
+            # 'openai_assistant_id' removed as it's now handled in the assistants page
         }
         
         # Save to user settings
@@ -915,12 +923,16 @@ def upload_file():
             session['user_assistants'] = user_settings['assistants']
             session.modified = True
         
-        # Use user's API keys if provided, otherwise fallback to system keys
-        deepl_api_key = user_api_keys.get('deepl_api_key') or DEEPL_API_KEY
+        # Get API keys (must be provided by the user)
+        deepl_api_key = user_api_keys.get('deepl_api_key')
+        if not deepl_api_key:
+            return json_error('DeepL API-nyckel saknas. Lägg till en på API-nyckelsidan.')
         
         # Handle assistant selection and OpenAI settings
         if not skip_openai:
-            openai_api_key = user_api_keys.get('openai_api_key') or OPENAI_API_KEY
+            openai_api_key = user_api_keys.get('openai_api_key')
+            if not openai_api_key:
+                return json_error('OpenAI API-nyckel saknas. Lägg till en på API-nyckelsidan eller avaktivera OpenAI-förbättringen.')
             
             # If user selected a specific assistant, use that
             if assistant_id_selected:
@@ -929,9 +941,9 @@ def upload_file():
                     openai_assistant_id = assistant_data.get('assistant_id')
                     logger.info(f"Using selected assistant: {assistant_data.get('name')} ({openai_assistant_id})")
                 else:
-                    openai_assistant_id = user_api_keys.get('openai_assistant_id') or OPENAI_ASSISTANT_ID
+                    openai_assistant_id = OPENAI_ASSISTANT_ID
             else:
-                openai_assistant_id = user_api_keys.get('openai_assistant_id') or OPENAI_ASSISTANT_ID
+                openai_assistant_id = OPENAI_ASSISTANT_ID
         else:
             openai_api_key = None
             openai_assistant_id = None
@@ -939,7 +951,6 @@ def upload_file():
         logger.info(f"Using {'user' if user_api_keys.get('deepl_api_key') else 'system'} DeepL API key")
         if not skip_openai:
             logger.info(f"Using {'user' if user_api_keys.get('openai_api_key') else 'system'} OpenAI API key")
-            logger.info(f"Using {'user' if user_api_keys.get('openai_assistant_id') else 'system'} OpenAI Assistant ID")
 
         # Get custom instructions if using a specific assistant
         custom_instructions = None

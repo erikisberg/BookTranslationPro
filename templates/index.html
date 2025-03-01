@@ -9,6 +9,17 @@
             </div>
             <div class="card-body">
                 <div class="upload-container text-center">
+                    {% if not user_settings or not user_settings.get('api_keys') or not user_settings.get('api_keys').get('openai_api_key') or not user_settings.get('api_keys').get('deepl_api_key') %}
+                    <div class="alert alert-warning mb-3">
+                        <i class="bi bi-exclamation-triangle-fill"></i> 
+                        <strong>Du behöver konfigurera API-nycklar innan du kan översätta dokument.</strong>
+                        <div class="mt-2">
+                            <a href="{{ url_for('api_keys_settings') }}" class="btn btn-outline-primary">
+                                <i class="bi bi-key"></i> Lägg till dina API-nycklar
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
                     <form id="uploadForm" class="mb-4">
                         <div class="mb-3">
                             <label for="pdfFile" class="form-label">Välj dokument att översätta</label>
@@ -110,7 +121,10 @@
                             <label class="form-check-label" for="skipOpenAI">Hoppa över OpenAI-granskning (snabbare, använder endast DeepL-översättning)</label>
                         </div>
                         <div class="d-grid gap-2 col-md-6 mx-auto">
-                            <button type="submit" class="btn btn-primary" id="uploadButton">
+                            <button type="submit" class="btn btn-primary" id="uploadButton" 
+                                {% if not user_settings or not user_settings.get('api_keys') or not user_settings.get('api_keys').get('deepl_api_key') %}
+                                disabled title="Du behöver konfigurera API-nycklar innan du kan översätta"
+                                {% endif %}>
                                 <span class="button-text">Översätt dokument</span>
                                 <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                             </button>
