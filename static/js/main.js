@@ -58,28 +58,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
             clearInterval(progressInterval);
 
+            const data = await response.json();
+
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Upload failed');
+                throw new Error(data.error || 'Upload failed');
             }
 
             // Handle successful response
             progressBar.style.width = '100%';
-            statusText.textContent = 'Translation complete!';
+            statusText.textContent = 'Translation complete! Redirecting to review...';
 
-            // Trigger download
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = 'translated_' + file.name;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(downloadUrl);
-            document.body.removeChild(a);
-
-            // Reset form after 2 seconds
-            setTimeout(resetForm, 2000);
+            // Redirect to review page
+            if (data.redirect) {
+                window.location.href = data.redirect;
+            }
 
         } catch (error) {
             showError(error.message);

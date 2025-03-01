@@ -147,13 +147,17 @@ def upload_file():
             instructions,
             target_language,
             review_style,
-            return_segments=True  # New parameter to return segments instead of PDF
+            return_segments=True
         )
 
         # Store translations in session for review
         session['translations'] = translations
 
-        return redirect(url_for('review'))
+        # Return success response with redirect URL
+        return jsonify({
+            'success': True,
+            'redirect': url_for('review')
+        })
 
     except Exception as e:
         logger.error(f"Error processing file: {str(e)}")
