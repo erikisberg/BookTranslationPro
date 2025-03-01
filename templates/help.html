@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h1 class="card-title"><i class="bi bi-question-circle"></i> Hjälp & Information</h1>
+                </div>
+                <div class="card-body">
+                    <!-- Table of contents -->
+                    <div class="mb-4">
+                        <h5>Innehåll</h5>
+                        <ul class="list-unstyled">
+                            <li><a href="#about" class="text-decoration-none">Vad är BookTranslationPro?</a></li>
+                            <li><a href="#getting-started" class="text-decoration-none">Kom igång</a></li>
+                            <li><a href="#deepl" class="text-decoration-none">DeepL översättning</a></li>
+                            <li><a href="#openai" class="text-decoration-none">OpenAI assistenter</a></li>
+                            <li><a href="#assistants" class="text-decoration-none">Anpassa assistenter</a></li>
+                            <li><a href="#api-keys" class="text-decoration-none">Använda egna API-nycklar</a></li>
+                            <li><a href="#analytics" class="text-decoration-none">Analys och datainsamling</a></li>
+                        </ul>
+                    </div>
+                    
+                    <!-- About section -->
+                    <section id="about" class="mb-5">
+                        <h2 class="border-bottom pb-2">Vad är BookTranslationPro?</h2>
+                        <p>
+                            BookTranslationPro är en tjänst som hjälper dig att översätta böcker och dokument med hög kvalitet. 
+                            Tjänsten kombinerar DeepL:s träffsäkra maskinöversättning med OpenAI:s AI-assistenter för att skapa 
+                            översättningar som bevarar författarens stil, ton och intentioner.
+                        </p>
+                        <p>
+                            Huvudfunktioner:
+                        </p>
+                        <ul>
+                            <li>Ladda upp och översätt PDF-filer, Word-dokument och textfiler</li>
+                            <li>Granska och redigera översättningar i ett intuitivt gränssnitt</li>
+                            <li>Anpassa AI-assistenter för olika författare och genrer</li>
+                            <li>Exportera översättningar i olika format (PDF, Word, text, HTML)</li>
+                            <li>Spara översättningar i ditt personliga bibliotek</li>
+                        </ul>
+                    </section>
+                    
+                    <!-- Getting started section -->
+                    <section id="getting-started" class="mb-5">
+                        <h2 class="border-bottom pb-2">Kom igång</h2>
+                        <p>
+                            Det är enkelt att komma igång med BookTranslationPro:
+                        </p>
+                        <ol>
+                            <li>
+                                <strong>Ladda upp en fil</strong> - På startsidan, klicka på "Bläddra" för att välja en fil från din 
+                                dator. Du kan ladda upp PDF-filer, Word-dokument (DOCX/DOC), textfiler (TXT) och mer.
+                            </li>
+                            <li>
+                                <strong>Välj inställningar</strong> - Välj källspråk och målspråk för översättningen. Du kan också välja 
+                                en anpassad assistent om du har skapat någon.
+                            </li>
+                            <li>
+                                <strong>Granska översättningen</strong> - Efter uppladdning kommer du till granskningssidan där du kan se 
+                                originaltext och översättning sida vid sida. Här kan du redigera översättningen vid behov.
+                            </li>
+                            <li>
+                                <strong>Spara eller exportera</strong> - När du är nöjd med översättningen kan du spara den i ditt 
+                                bibliotek eller ladda ner den i önskat format.
+                            </li>
+                        </ol>
+                    </section>
+                    
+                    <!-- DeepL section -->
+                    <section id="deepl" class="mb-5">
+                        <h2 class="border-bottom pb-2">DeepL översättning</h2>
+                        <p>
+                            BookTranslationPro använder DeepL som primär översättningsmotor. DeepL är känt för att producera 
+                            högkvalitativa översättningar som ofta överträffar andra maskinöversättningstjänster.
+                        </p>
+                        <p>
+                            <strong>Fördelar med DeepL:</strong>
+                        </p>
+                        <ul>
+                            <li>Exceptionell kvalitet på grundöversättningar</li>
+                            <li>Bättre förståelse för kontext och nyanser</li>
+                            <li>Stöd för många språkkombinationer</li>
+                        </ul>
+                        <p>
+                            Systemet använder i första hand vår API-nyckel för DeepL, men du kan också använda din egen nyckel (se avsnittet om API-nycklar).
+                        </p>
+                    </section>
+                    
+                    <!-- OpenAI section -->
+                    <section id="openai" class="mb-5">
+                        <h2 class="border-bottom pb-2">OpenAI assistenter</h2>
+                        <p>
+                            Efter att texten översatts med DeepL, används OpenAI:s assistanter för att granska och förfina översättningen. 
+                            Detta ger en mer litterär och stilistiskt anpassad slutprodukt.
+                        </p>
+                        <p>
+                            <strong>Vad assistenterna gör:</strong>
+                        </p>
+                        <ul>
+                            <li>Förbättrar flyt och naturlighet i målspråket</li>
+                            <li>Anpassar översättningen för att bevara författarens stil</li>
+                            <li>Korrigerar felaktigheter och missförstånd</li>
+                            <li>Anpassar kulturella referenser när det behövs</li>
+                        </ul>
+                        <p>
+                            Du kan välja att hoppa över AI-granskningen genom att markera "Skippa OpenAI-granskning" vid uppladdning.
+                        </p>
+                    </section>
+                    
+                    <!-- Assistants section -->
+                    <section id="assistants" class="mb-5">
+                        <h2 class="border-bottom pb-2">Anpassa assistenter</h2>
+                        <p>
+                            En av de kraftfullaste funktionerna i BookTranslationPro är möjligheten att skapa anpassade assistenter 
+                            för olika författare och genrer.
+                        </p>
+                        <h5>Skapa en ny assistent</h5>
+                        <ol>
+                            <li>Gå till <a href="{{ url_for('assistant_config') }}">Inställningar</a> och klicka på fliken "Assistenter"</li>
+                            <li>Klicka på "Skapa ny assistent"</li>
+                            <li>Fyll i detaljer om assistenten:
+                                <ul>
+                                    <li><strong>Namn:</strong> Ett namn för att identifiera assistenten (t.ex. "Astrid Lindgren-stil")</li>
+                                    <li><strong>OpenAI Assistant ID:</strong> ID för en OpenAI-assistent du skapat</li>
+                                    <li><strong>Författare:</strong> Vilken författare assistenten är anpassad för</li>
+                                    <li><strong>Genre:</strong> Vilken litterär genre assistenten specialiserar sig på</li>
+                                </ul>
+                            </li>
+                            <li>Skriv detaljerade instruktioner till assistenten (se nedan)</li>
+                            <li>Klicka på "Spara assistent"</li>
+                        </ol>
+                        
+                        <h5>Skriva effektiva instruktioner</h5>
+                        <p>
+                            För att få bästa resultat med assistenter bör du ge dem tydliga och specifika instruktioner:
+                        </p>
+                        <div class="card mb-3">
+                            <div class="card-header">Exempel på instruktioner för skönlitteratur</div>
+                            <div class="card-body">
+                                <pre class="mb-0">Översätt med bevarande av författarens unika stil och ton. 
+Var särskilt uppmärksam på:
+1. Bevarande av metaforer och liknelser 
+2. Känslan och flytet i dialogen
+3. Stilistiska element som är karakteristiska för författaren
+4. Anpassning av kulturella referenser när det behövs</pre>
+                            </div>
+                        </div>
+                        <div class="card mb-3">
+                            <div class="card-header">Exempel på instruktioner för facklitteratur</div>
+                            <div class="card-body">
+                                <pre class="mb-0">Översätt med fokus på precision och tydlighet. 
+Var särskilt uppmärksam på:
+1. Korrekt fackterminologi
+2. Konsekvent användning av termer
+3. Tydlig och pedagogisk meningsbyggnad
+4. Bevarande av originalets informationsstruktur</pre>
+                            </div>
+                        </div>
+                        <p>
+                            Ju mer specifika instruktioner du ger, desto bättre blir resultatet. Inkludera exempel på stilistiska element 
+                            som är viktiga för författaren, eller specifik terminologi som måste översättas på ett visst sätt.
+                        </p>
+                    </section>
+                    
+                    <!-- API Keys section -->
+                    <section id="api-keys" class="mb-5">
+                        <h2 class="border-bottom pb-2">Använda egna API-nycklar</h2>
+                        <p>
+                            BookTranslationPro använder våra egna API-nycklar som standard, men du kan också använda dina egna för 
+                            ökad flexibilitet eller högre användningsvolymer.
+                        </p>
+                        <h5>Varför använda egna nycklar?</h5>
+                        <ul>
+                            <li>Inga begränsningar i antal översättningar</li>
+                            <li>Möjlighet att använda dina egna OpenAI-assistenter</li>
+                            <li>Full kontroll över API-användning och kostnader</li>
+                        </ul>
+                        
+                        <h5>Hur du lägger till dina nycklar</h5>
+                        <ol>
+                            <li>Skaffa API-nycklar från <a href="https://www.deepl.com/pro-api" target="_blank">DeepL</a> och/eller <a href="https://platform.openai.com/" target="_blank">OpenAI</a></li>
+                            <li>Gå till "Inställningar" &gt; "API-nycklar" i navigationslänken</li>
+                            <li>Ange dina API-nycklar i respektive fält</li>
+                            <li>Klicka på "Spara API-nycklar"</li>
+                        </ol>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Dina API-nycklar sparas säkert och används endast för dina egna översättningar.
+                        </div>
+                    </section>
+                    
+                    <!-- Analytics section -->
+                    <section id="analytics" class="mb-5">
+                        <h2 class="border-bottom pb-2">Analys och datainsamling</h2>
+                        <p>
+                            BookTranslationPro använder PostHog för anonym användaranalys för att förbättra tjänsten.
+                        </p>
+                        <h5>Vad samlas in?</h5>
+                        <ul>
+                            <li>Sidvisningar och grundläggande användningsmönster</li>
+                            <li>Vilka funktioner som används mest</li>
+                            <li>Prestanda och eventuella felmeddelanden</li>
+                        </ul>
+                        <h5>Vad samlas INTE in?</h5>
+                        <ul>
+                            <li>Innehållet i dina dokument eller översättningar</li>
+                            <li>API-nycklar eller annan känslig information</li>
+                            <li>Personuppgifter utöver anonym användaridentifiering</li>
+                        </ul>
+                        <p>
+                            Analysen hjälper oss att förstå hur tjänsten används och vilka förbättringar som behövs.
+                        </p>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

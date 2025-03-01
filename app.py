@@ -52,12 +52,13 @@ def inject_user():
 # Middleware to capture request data for PostHog and enforce login for main pages
 @app.before_request
 def before_request():
-    # Skip login check for authentication routes and static files
+    # Skip login check for authentication routes, help page, and static files
     if (request.path.startswith('/static/') or 
         request.path == '/login' or 
         request.path == '/signup' or 
         request.path == '/reset-password' or
-        request.path == '/logout'):
+        request.path == '/logout' or
+        request.path == '/help'):
         pass
     elif 'user' not in session and request.endpoint != 'login' and request.endpoint != 'signup':
         # Skip redirecting AJAX requests to avoid breaking client-side functionality
@@ -607,6 +608,10 @@ def delete_assistant_route(assistant_id):
 def export_settings():
     # Redirect to the combined settings page
     return redirect(url_for('assistant_config'))
+
+@app.route('/help')
+def help_page():
+    return render_template('help.html')
 
 @app.route('/api_keys_settings', methods=['GET', 'POST'])
 @login_required

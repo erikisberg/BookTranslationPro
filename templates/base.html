@@ -61,10 +61,11 @@
                             {{ current_user.name }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('profile') }}">Profil</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person"></i> Profil</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('api_keys_settings') }}"><i class="bi bi-key"></i> API-nycklar</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('help_page') }}"><i class="bi bi-question-circle"></i> Hjälp</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">Logga ut</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right"></i> Logga ut</a></li>
                         </ul>
                     </li>
                     {% else %}
