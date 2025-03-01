@@ -267,10 +267,13 @@ def create_docx_with_text(text_content, font_family='helvetica', font_size=12, p
                          include_page_numbers=True, header_text='', footer_text=''):
     """Create a Word document with the given text content using the specified formatting options"""
     try:
-        # Import python-docx library
+        # Import python-docx library - will fail if not installed
         from docx import Document
         from docx.shared import Pt, Inches, Mm
         from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+        
+        # Log settings for debugging
+        logger.info(f"Creating DOCX with settings: font={font_family}, size={font_size}, page={page_size}, orientation={orientation}")
         
         # Create a new document
         doc = Document()
@@ -359,13 +362,19 @@ def create_docx_with_text(text_content, font_family='helvetica', font_size=12, p
             else:
                 para.paragraph_format.line_spacing = line_spacing
         
-        # Save the document
+        # Save the document to a temporary file with proper error handling
         temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
-        doc.save(temp_output.name)
-        return temp_output.name
+        try:
+            doc.save(temp_output.name)
+            logger.info(f"DOCX created successfully at: {temp_output.name}")
+            return temp_output.name
+        except Exception as save_error:
+            logger.error(f"Error saving DOCX file: {str(save_error)}")
+            raise Exception(f"Could not save DOCX file: {str(save_error)}")
         
-    except ImportError:
-        logger.error("python-docx library not installed. Creating PDF instead.")
+    except ImportError as import_error:
+        logger.error(f"python-docx library not installed: {str(import_error)}")
+        logger.info("Falling back to PDF format")
         # Fall back to PDF if python-docx is not available
         return create_pdf_with_formatting(
             text_content, font_family, font_size, page_size, 
@@ -374,7 +383,13 @@ def create_docx_with_text(text_content, font_family='helvetica', font_size=12, p
         )
     except Exception as e:
         logger.error(f"Error creating DOCX: {str(e)}")
-        raise Exception(f"Failed to create Word document: {str(e)}")
+        logger.info("Falling back to PDF format")
+        # Also fall back to PDF on any other error
+        return create_pdf_with_formatting(
+            text_content, font_family, font_size, page_size, 
+            orientation, margin, line_spacing, alignment,
+            include_page_numbers, header_text, footer_text
+        )
 
 def create_html_with_text(text_content, font_family='helvetica', font_size=12, 
                          line_spacing=1.5, alignment='left',
