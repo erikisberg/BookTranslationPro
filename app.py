@@ -3,7 +3,7 @@ from flask import Flask, render_template, request, jsonify, send_file, redirect,
 from werkzeug.utils import secure_filename
 import tempfile
 import logging
-from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
+from utils import process_pdf, is_allowed_file, create_pdf_with_text
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -62,15 +62,6 @@ def save_assistant_config():
         target_language = request.form.get('target_language')
         review_style = request.form.get('review_style')
 
-        # Update the OpenAI assistant configuration
-        update_assistant_config(
-            OPENAI_API_KEY,
-            OPENAI_ASSISTANT_ID,
-            instructions,
-            target_language,
-            review_style
-        )
-
         # Store in environment for persistence
         os.environ['ASSISTANT_INSTRUCTIONS'] = instructions
         os.environ['TARGET_LANGUAGE'] = target_language
@@ -86,6 +77,55 @@ def save_assistant_config():
             return json_error(str(e), 500)
         return redirect(url_for('assistant_config'))
 
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return redirect(url_for('index'))
+
+    if 'file' not in request.files:
+        return json_error('No file provided')
+
+    file = request.files['file']
+    if file.filename == '':
+        return json_error('No file selected')
+
+    if not is_allowed_file(file.filename):
+        return json_error('Invalid file type. Please upload a PDF.')
+
+    try:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Process the PDF and get translations
+        translations = process_pdf(
+            filepath,
+            DEEPL_API_KEY,
+            OPENAI_API_KEY,
+            OPENAI_ASSISTANT_ID,
+            return_segments=True
+        )
+
+        # Store translations in session for review
+        session['translations'] = translations
+
+        return json_response({
+            'success': True,
+            'redirect': url_for('review')
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing file: {str(e)}")
+        return json_error(str(e), 500)
+
+    finally:
+        # Cleanup temporary files
+        if 'filepath' in locals():
+            try:
+                os.remove(filepath)
+            except:
+                pass
+
 @app.route('/review')
 def review():
     translations = session.get('translations', [])
@@ -95,6 +135,8 @@ def review():
 def save_reviews():
     try:
         translations = session.get('translations', [])
+        if not translations:
+            return json_error('No translations to save')
 
         # Update translations with reviewed text
         for translation in translations:
@@ -123,10 +165,7 @@ def download_final():
         return redirect(url_for('index'))
 
     try:
-        # Combine all reviewed translations
         final_text = '\n\n'.join(t['translated_text'] for t in translations)
-
-        # Create final PDF
         output_path = create_pdf_with_text(final_text)
 
         return send_file(
@@ -134,73 +173,17 @@ def download_final():
             as_attachment=True,
             download_name='final_translation.pdf'
         )
+
     except Exception as e:
         logger.error(f"Error creating final PDF: {str(e)}")
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return json_error(str(e), 500)
         return redirect(url_for('index'))
+
     finally:
-        # Cleanup
         if 'output_path' in locals():
             try:
                 os.remove(output_path)
-            except:
-                pass
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
-        return redirect(url_for('index'))
-
-    if 'file' not in request.files:
-        return json_error('No file provided')
-
-    file = request.files['file']
-    if file.filename == '':
-        return json_error('No file selected')
-
-    if not is_allowed_file(file.filename):
-        return json_error('Invalid file type. Please upload a PDF.')
-
-    try:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        # Get current configuration
-        instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
-        target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
-        review_style = os.environ.get('REVIEW_STYLE', 'balanced')
-
-        # Process the PDF and get translations
-        translations = process_pdf(
-            filepath,
-            DEEPL_API_KEY,
-            OPENAI_API_KEY,
-            OPENAI_ASSISTANT_ID,
-            instructions,
-            target_language,
-            review_style,
-            return_segments=True
-        )
-
-        # Store translations in session for review
-        session['translations'] = translations
-
-        return json_response({
-            'success': True,
-            'redirect': url_for('review')
-        })
-
-    except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
-        return json_error(str(e), 500)
-
-    finally:
-        # Cleanup temporary files
-        if 'filepath' in locals():
-            try:
-                os.remove(filepath)
             except:
                 pass
 

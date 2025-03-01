@@ -5,6 +5,7 @@ import deepl
 from openai import OpenAI
 import tempfile
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -26,109 +27,86 @@ def translate_text(text, deepl_api_key, target_language='SV'):
         logger.error(f"DeepL translation error: {str(e)}")
         raise Exception(f"Translation failed: {str(e)}")
 
-def update_assistant_config(api_key, assistant_id, instructions, target_language, review_style):
-    client = OpenAI(api_key=api_key)
-
-    # Format instructions based on review style
-    style_instructions = {
-        'conservative': "Make minimal changes while fixing only clear errors.",
-        'balanced': "Make moderate improvements while maintaining the original style.",
-        'creative': "Enhance the text significantly while keeping the core meaning."
-    }
-
-    # Make it clear that the assistant is reviewing Swedish translations
-    full_instructions = f"""
-You are a Swedish language expert reviewing translations.
-{instructions}
-
-Target Language: {target_language}
-Review Style: {style_instructions[review_style]}
-
-Important: You are reviewing text that has already been translated to Swedish.
-Focus on improving the Swedish language quality, naturalness, and accuracy.
-"""
-
-    try:
-        # Update the assistant's configuration
-        client.beta.assistants.update(
-            assistant_id=assistant_id,
-            instructions=full_instructions
-        )
-        logger.info("Assistant configuration updated successfully")
-    except Exception as e:
-        logger.error(f"Error updating assistant configuration: {str(e)}")
-        raise Exception(f"Failed to update assistant configuration: {str(e)}")
-
 def review_translation(text, openai_api_key, assistant_id):
     """Second step: Review the Swedish translation using OpenAI Assistant"""
     # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
     client = OpenAI(api_key=openai_api_key)
 
     try:
+        logger.info("Creating new thread for translation review")
         thread = client.beta.threads.create()
 
-        # Add the message to the thread, explicitly mentioning it's a Swedish translation
+        logger.info("Adding message to thread")
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
             content=f"Review and improve this Swedish translation, focusing on natural language flow and accuracy: {text}"
         )
 
-        # Run the assistant
+        logger.info("Starting assistant run")
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=assistant_id
         )
 
-        # Wait for completion
-        while True:
+        # Simplified exponential backoff
+        max_retries = 5
+        delay = 1
+        max_delay = 16
+
+        for attempt in range(max_retries):
+            logger.info(f"Checking run status (attempt {attempt + 1}/{max_retries})")
             run_status = client.beta.threads.runs.retrieve(
                 thread_id=thread.id,
                 run_id=run.id
             )
-            if run_status.status == 'completed':
-                break
 
-        # Get the assistant's response
+            if run_status.status == 'completed':
+                logger.info("Run completed successfully")
+                break
+            elif run_status.status in ['failed', 'cancelled', 'expired']:
+                logger.error(f"Run failed with status: {run_status.status}")
+                raise Exception(f"OpenAI run failed with status: {run_status.status}")
+
+            if attempt < max_retries - 1:
+                sleep_time = min(delay * (2 ** attempt), max_delay)
+                logger.info(f"Waiting {sleep_time} seconds before next check")
+                time.sleep(sleep_time)
+            else:
+                logger.error("Maximum retry attempts reached")
+                raise Exception("Translation review timed out")
+
+        logger.info("Retrieving assistant's response")
         messages = client.beta.threads.messages.list(thread_id=thread.id)
         text_content = next(
             content.text.value
             for content in messages.data[0].content
             if hasattr(content, 'text')
         )
-        logger.info("Translation successfully reviewed by OpenAI Assistant")
+
+        logger.info("Translation review completed successfully")
         return text_content
 
     except Exception as e:
-        logger.error(f"OpenAI review error: {str(e)}")
-        raise Exception(f"Review failed: {str(e)}")
+        logger.error(f"Error in review_translation: {str(e)}")
+        raise Exception(f"Translation review failed: {str(e)}")
 
 def create_pdf_with_text(text_content):
     pdf = FPDF()
     pdf.add_page()
-
-    # Set basic font configuration
     pdf.set_font('helvetica', size=12)
-
-    # Handle text encoding properly
-    # Split text into lines to fit page width
     pdf.set_auto_page_break(auto=True, margin=15)
 
     try:
-        # Split text into paragraphs
         paragraphs = text_content.split('\n')
         for paragraph in paragraphs:
-            # Write each paragraph
-            # Encode as UTF-8 to handle special characters
             cleaned_text = paragraph.encode('latin-1', errors='replace').decode('latin-1')
             pdf.multi_cell(0, 10, cleaned_text)
-            # Add some space between paragraphs
             pdf.ln(5)
     except Exception as e:
         logger.error(f"Error writing text to PDF: {str(e)}")
         raise Exception(f"Failed to create PDF: {str(e)}")
 
-    # Save to temporary file
     temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
     pdf.output(temp_output.name)
     return temp_output.name
@@ -142,30 +120,25 @@ def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id,
             translations = []
 
             for page_num in range(len(pdf_reader.pages)):
-                # Extract text from page
+                logger.info(f"Processing page {page_num + 1}")
                 original_text = extract_text_from_page(pdf_reader, page_num)
-
-                # Translate text
                 translated_text = translate_text(original_text, deepl_api_key, target_language)
-
-                # Review translation
                 reviewed_text = review_translation(
                     translated_text,
                     openai_api_key,
                     assistant_id
                 )
 
-                # Store both original and translated text
                 translations.append({
                     'id': page_num,
                     'original_text': original_text,
                     'translated_text': reviewed_text
                 })
+                logger.info(f"Completed processing page {page_num + 1}")
 
             if return_segments:
                 return translations
             else:
-                # Combine all pages into a single PDF
                 combined_text = '\n\n'.join(t['translated_text'] for t in translations)
                 return create_pdf_with_text(combined_text)
 
