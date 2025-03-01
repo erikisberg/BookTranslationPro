@@ -1,7 +1,7 @@
 import os
 import logging
 import traceback
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, make_response
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
 from werkzeug.utils import secure_filename
 import tempfile
 from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
@@ -48,39 +48,24 @@ def wants_json():
         request.headers.get('Accept', '').startswith('application/json')
     )
 
-def ensure_json_response(response):
-    """Ensure response is JSON when needed"""
-    if wants_json() and not isinstance(response, str):
-        if not response.headers.get('Content-Type', '').startswith('application/json'):
-            # Convert response to JSON if it isn't already
-            data = {'error': str(response.get_data(as_text=True))} if response.status_code >= 400 else response.get_json()
-            json_response = jsonify(data)
-            json_response.status_code = response.status_code
-            return json_response
-    return response
-
 @app.before_request
-def setup_request():
-    """Initialize request context"""
-    if wants_json():
-        logger.info("Request wants JSON response")
-        # Force response to be JSON
-        request.environ['wsgi.errors_passthrough'] = True
-
-@app.after_request
-def after_request(response):
-    """Ensure proper response format"""
-    return ensure_json_response(response)
+def before_request():
+    """Log request details"""
+    logger.info(f"Received {request.method} request to {request.path}")
+    logger.debug(f"Headers: {dict(request.headers)}")
+    logger.debug(f"Form data: {dict(request.form)}")
+    logger.debug(f"Files: {request.files}")
+    logger.debug(f"Wants JSON: {wants_json()}")
 
 @app.errorhandler(Exception)
-def handle_exception(e):
-    """Global exception handler"""
-    status_code = getattr(e, 'status_code', 500)
-    error_msg = str(e)
+def handle_exception(error):
+    """Global exception handler with detailed logging"""
+    error_msg = str(error)
+    status_code = getattr(error, 'status_code', 500)
 
     logger.error(f"Error occurred: {error_msg}")
-    logger.error(f"Error type: {type(e).__name__}")
-    logger.error(traceback.format_exc())
+    logger.error(f"Error type: {type(error).__name__}")
+    logger.error(f"Stack trace:\n{traceback.format_exc()}")
 
     if wants_json():
         response = jsonify({
@@ -99,12 +84,11 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload"""
+    """Handle file upload with detailed error logging"""
     logger.info("Processing file upload")
-    logger.debug(f"Request headers: {dict(request.headers)}")
-    logger.debug(f"Files: {request.files}")
 
     try:
+        # Validate request
         if 'file' not in request.files:
             raise APIError('No file provided')
 
@@ -115,17 +99,20 @@ def upload_file():
         if not is_allowed_file(file.filename):
             raise APIError('Invalid file type. Please upload a PDF.')
 
+        # Save and process file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
         try:
+            logger.info(f"Saving file: {filepath}")
             file.save(filepath)
-            logger.info(f"File saved: {filepath}")
 
+            # Process the file
             instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
             target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
             review_style = os.environ.get('REVIEW_STYLE', 'balanced')
 
+            logger.info("Starting PDF processing")
             translations = process_pdf(
                 filepath,
                 DEEPL_API_KEY,
@@ -138,6 +125,7 @@ def upload_file():
             )
 
             session['translations'] = translations
+            logger.info("PDF processing completed successfully")
 
             if wants_json():
                 return jsonify({
@@ -146,19 +134,26 @@ def upload_file():
                 })
             return redirect(url_for('review'))
 
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}")
+            raise APIError(str(e))
+
         finally:
             # Cleanup temporary file
             if os.path.exists(filepath):
                 try:
                     os.remove(filepath)
                     logger.info(f"Cleaned up file: {filepath}")
-                except Exception as e:
-                    logger.error(f"Failed to clean up file: {e}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up file: {cleanup_error}")
 
+    except APIError as e:
+        logger.error(f"API error: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"Upload error: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}")
         logger.error(traceback.format_exc())
-        raise APIError(str(e))
+        raise APIError("An unexpected error occurred while processing your request", status_code=500)
 
 @app.route('/assistant-config', methods=['GET'])
 def assistant_config():
@@ -198,6 +193,7 @@ def save_assistant_config():
         return redirect(url_for('assistant_config'))
 
     except Exception as e:
+        logger.error(f"Error saving configuration: {str(e)}")
         raise APIError(str(e))
 
 @app.route('/review')
@@ -210,7 +206,7 @@ def save_reviews():
     try:
         translations = session.get('translations', [])
         if not translations:
-            raise APIError('No translations to save')
+            raise APIError('No translations available to save')
 
         for translation in translations:
             key = f'translation_{translation["id"]}'
@@ -220,13 +216,11 @@ def save_reviews():
         session['translations'] = translations
 
         if wants_json():
-            return jsonify({
-                'success': True,
-                'redirect': url_for('review')
-            })
+            return jsonify({'success': True, 'redirect': url_for('review')})
         return redirect(url_for('review'))
 
     except Exception as e:
+        logger.error(f"Error saving reviews: {str(e)}")
         raise APIError(str(e))
 
 @app.route('/download-final')
@@ -246,6 +240,7 @@ def download_final():
         )
 
     except Exception as e:
+        logger.error(f"Error creating final PDF: {str(e)}")
         raise APIError(str(e))
 
     finally:
