@@ -208,9 +208,8 @@ def login():
         
         # Ensure user exists in the users table (needed for foreign key constraints)
         user_data = {
-            'email': response.user.email,
-            'name': response.user.user_metadata.get('name', 'Användare'),
-            'last_login': 'now()'
+            'email': response.user.email or 'user@example.com',  # Ensure email is never null
+            'name': response.user.user_metadata.get('name', 'Användare')
         }
         save_user_data(response.user.id, user_data)
         
@@ -290,10 +289,8 @@ def signup():
         # Create user record in the users table (needed for foreign key constraints)
         if response.user and response.user.id:
             user_data = {
-                'email': email,
-                'name': name,
-                'created_at': 'now()',
-                'last_login': 'now()'
+                'email': email or 'user@example.com',  # Ensure email is never null
+                'name': name or 'User'  # Ensure name is never empty
             }
             save_user_data(response.user.id, user_data)
         
@@ -803,9 +800,8 @@ def download_final():
         if user_id:
             # Ensure user exists in the users table before saving translation
             user_data = {
-                'email': session['user'].get('email', ''),
-                'name': session['user'].get('name', ''),
-                'last_login': 'now()'
+                'email': session.get('user', {}).get('email') or 'user@example.com',  # Ensure email is never null
+                'name': session.get('user', {}).get('name') or 'User'  # Ensure name is never empty
             }
             save_user_data(user_id, user_data)
             
