@@ -1,7 +1,7 @@
 import os
 import logging
 import traceback
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, g
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, g, make_response
 from werkzeug.utils import secure_filename
 import tempfile
 from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
@@ -13,11 +13,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class RequestContext:
-    """Track request context for proper response handling"""
-    def __init__(self):
-        self.wants_json = False
-        self.error_caught = None
+class APIError(Exception):
+    """Custom exception class for API errors"""
+    def __init__(self, message, status_code=400):
+        super().__init__(message)
+        self.status_code = status_code
 
 # Create Flask app
 app = Flask(__name__)
@@ -41,44 +41,56 @@ DEFAULT_INSTRUCTIONS = """Review and improve this translation while:
 4. Keeping technical terms accurate
 5. Adapting cultural references appropriately"""
 
+def wants_json():
+    """Check if the request expects a JSON response"""
+    return (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+        request.headers.get('Accept', '').startswith('application/json')
+    )
+
+def ensure_json_response(response):
+    """Ensure response is JSON when needed"""
+    if wants_json() and not isinstance(response, str):
+        if not response.headers.get('Content-Type', '').startswith('application/json'):
+            # Convert response to JSON if it isn't already
+            data = {'error': str(response.get_data(as_text=True))} if response.status_code >= 400 else response.get_json()
+            json_response = jsonify(data)
+            json_response.status_code = response.status_code
+            return json_response
+    return response
+
 @app.before_request
 def setup_request():
     """Initialize request context"""
-    g.context = RequestContext()
-    g.context.wants_json = (
-        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
-        'application/json' in request.accept_mimetypes
-    )
-    logger.info(f"Request initialized - Wants JSON: {g.context.wants_json}")
+    if wants_json():
+        logger.info("Request wants JSON response")
+        # Force response to be JSON
+        request.environ['wsgi.errors_passthrough'] = True
 
 @app.after_request
 def after_request(response):
     """Ensure proper response format"""
-    if g.context.wants_json and not response.headers.get('Content-Type', '').startswith('application/json'):
-        # If we caught an error and need JSON response
-        if g.context.error_caught:
-            data = {'error': str(g.context.error_caught), 'status': 'error'}
-            response = jsonify(data)
-            response.status_code = 500
-
-    return response
+    return ensure_json_response(response)
 
 @app.errorhandler(Exception)
-def handle_exception(error):
+def handle_exception(e):
     """Global exception handler"""
-    logger.error(f"Uncaught exception: {str(error)}")
-    logger.error(f"Type: {type(error).__name__}")
+    status_code = getattr(e, 'status_code', 500)
+    error_msg = str(e)
+
+    logger.error(f"Error occurred: {error_msg}")
+    logger.error(f"Error type: {type(e).__name__}")
     logger.error(traceback.format_exc())
 
-    g.context.error_caught = error
-
-    if g.context.wants_json:
-        return jsonify({
-            'error': str(error),
+    if wants_json():
+        response = jsonify({
+            'error': error_msg,
             'status': 'error'
-        }), 500
+        })
+        response.status_code = status_code
+        return response
 
-    return render_template('500.html'), 500
+    return render_template('500.html'), status_code
 
 @app.route('/')
 def index():
@@ -86,21 +98,21 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload with robust error handling"""
+    """Handle file upload"""
     logger.info("Processing file upload")
     logger.debug(f"Request headers: {dict(request.headers)}")
-    logger.debug(f"Request files: {request.files}")
+    logger.debug(f"Files: {request.files}")
 
     try:
         if 'file' not in request.files:
-            raise ValueError('No file provided')
+            raise APIError('No file provided')
 
         file = request.files['file']
         if file.filename == '':
-            raise ValueError('No file selected')
+            raise APIError('No file selected')
 
         if not is_allowed_file(file.filename):
-            raise ValueError('Invalid file type. Please upload a PDF.')
+            raise APIError('Invalid file type. Please upload a PDF.')
 
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -126,7 +138,7 @@ def upload_file():
 
             session['translations'] = translations
 
-            if g.context.wants_json:
+            if wants_json():
                 return jsonify({
                     'success': True,
                     'redirect': url_for('review')
@@ -134,6 +146,7 @@ def upload_file():
             return redirect(url_for('review'))
 
         finally:
+            # Cleanup temporary file
             if os.path.exists(filepath):
                 try:
                     os.remove(filepath)
@@ -142,9 +155,9 @@ def upload_file():
                     logger.error(f"Failed to clean up file: {e}")
 
     except Exception as e:
-        logger.error("Upload failed")
+        logger.error(f"Upload error: {str(e)}")
         logger.error(traceback.format_exc())
-        raise
+        raise APIError(str(e))
 
 @app.route('/assistant-config', methods=['GET'])
 def assistant_config():
@@ -179,7 +192,7 @@ def save_assistant_config():
         os.environ['TARGET_LANGUAGE'] = target_language
         os.environ['REVIEW_STYLE'] = review_style
 
-        if g.context.wants_json:
+        if wants_json():
             return jsonify({
                 'success': True,
                 'redirect': url_for('assistant_config')
@@ -208,7 +221,7 @@ def save_reviews():
 
         session['translations'] = translations
 
-        if g.context.wants_json:
+        if wants_json():
             return jsonify({
                 'success': True,
                 'redirect': url_for('review')
