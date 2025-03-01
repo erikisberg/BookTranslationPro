@@ -2811,14 +2811,15 @@ def setup_database():
             # Create storage bucket if it doesn't exist
             try:
                 # List buckets to check if 'documents' exists
-                buckets_response = supabase.storage.list_buckets().execute()
+                buckets_response = supabase.storage.list_buckets()
+                
                 if hasattr(buckets_response, 'data'):
                     buckets = buckets_response.data
                     bucket_exists = any(b['name'] == 'documents' for b in buckets)
                     
                     if not bucket_exists:
                         # Create the documents bucket
-                        supabase.storage.create_bucket('documents', {'public': False}).execute()
+                        supabase.storage.create_bucket('documents', {'public': False})
                         logger.info("Created 'documents' storage bucket")
                 else:
                     error_messages.append("Could not check existing buckets")
