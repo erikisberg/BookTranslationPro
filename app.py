@@ -1,25 +1,19 @@
 import os
+import logging
+import traceback
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
 from werkzeug.utils import secure_filename
 import tempfile
-import logging
 from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
-import traceback
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging with more detail
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Helper functions for JSON responses
-def json_response(data, status=200):
-    """Helper function to ensure consistent JSON responses"""
-    return jsonify(data), status, {'Content-Type': 'application/json'}
-
-def json_error(message, status=400):
-    """Helper function for JSON error responses"""
-    return json_response({'error': message}, status)
-
-# Create and configure the app
+# Create Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET")
 
@@ -43,71 +37,81 @@ DEFAULT_INSTRUCTIONS = """Review and improve this translation while:
 
 def wants_json():
     """Check if the request wants a JSON response"""
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return True
-    if request.headers.get('Accept', '').startswith('application/json'):
-        return True
-    return False
+    return (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+        request.headers.get('Accept', '').startswith('application/json')
+    )
 
 @app.before_request
 def before_request():
-    """Setup request context"""
-    logger.debug(f"Incoming request: {request.method} {request.path}")
-    logger.debug(f"Request headers: {dict(request.headers)}")
+    """Log request details"""
+    logger.info(f"Received {request.method} request to {request.path}")
+    logger.debug(f"Headers: {dict(request.headers)}")
+    logger.debug(f"Form data: {dict(request.form)}")
+    logger.debug(f"Files: {request.files}")
     request.wants_json = wants_json()
-    logger.debug(f"Request wants JSON: {request.wants_json}")
-
-@app.after_request
-def after_request(response):
-    """Ensure proper content type for JSON responses"""
-    logger.debug(f"Processing response: status={response.status_code}, content-type={response.content_type}")
-    return response
+    logger.info(f"Request wants JSON response: {request.wants_json}")
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Global exception handler"""
+    """Global exception handler with detailed logging"""
     error_msg = str(e)
     logger.error(f"Uncaught exception: {error_msg}")
-    logger.error(traceback.format_exc())
+    logger.error(f"Exception type: {type(e).__name__}")
+    logger.error(f"Traceback:\n{traceback.format_exc()}")
+    logger.error(f"Request path: {request.path}")
+    logger.error(f"Request method: {request.method}")
+    logger.error(f"Request headers: {dict(request.headers)}")
 
-    if wants_json():
-        logger.debug("Returning JSON error response")
-        try:
-            return jsonify({'error': error_msg}), 500
-        except Exception as json_error:
-            logger.error(f"Error creating JSON error response: {str(json_error)}")
-            return jsonify({'error': 'Internal server error'}), 500
+    if request.wants_json:
+        logger.info("Returning JSON error response")
+        response = jsonify({
+            'error': error_msg,
+            'status': 'error'
+        })
+        response.status_code = 500
+        response.headers['Content-Type'] = 'application/json'
+        return response
 
-    logger.debug("Returning HTML error response")
+    logger.info("Returning HTML error response")
     return render_template('500.html'), 500
-
-@app.route('/')
-def index():
-    return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    logger.debug("Processing file upload")
+    """Handle file upload with detailed error logging"""
+    logger.info("Processing file upload request")
     try:
+        # Validate request
         if 'file' not in request.files:
+            logger.warning("No file in request")
             raise ValueError('No file provided')
 
         file = request.files['file']
         if file.filename == '':
+            logger.warning("Empty filename")
             raise ValueError('No file selected')
 
         if not is_allowed_file(file.filename):
+            logger.warning(f"Invalid file type: {file.filename}")
             raise ValueError('Invalid file type. Please upload a PDF.')
 
+        # Save and process file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        logger.info(f"Saving file to {filepath}")
         file.save(filepath)
 
         try:
+            # Get configuration
             instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
             target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
             review_style = os.environ.get('REVIEW_STYLE', 'balanced')
 
+            logger.info("Processing PDF with configuration")
+            logger.debug(f"Target language: {target_language}")
+            logger.debug(f"Review style: {review_style}")
+
+            # Process PDF
             translations = process_pdf(
                 filepath,
                 DEEPL_API_KEY,
@@ -119,29 +123,43 @@ def upload_file():
                 return_segments=True
             )
 
+            # Store result
             session['translations'] = translations
+            logger.info("Successfully processed PDF")
 
-            if wants_json():
+            # Return response
+            if request.wants_json:
+                logger.info("Returning JSON success response")
                 return jsonify({
                     'success': True,
                     'redirect': url_for('review')
-                })
+                }), 200, {'Content-Type': 'application/json'}
+
+            logger.info("Redirecting to review page")
             return redirect(url_for('review'))
 
         finally:
+            # Cleanup
             try:
                 os.remove(filepath)
-            except Exception as e:
-                logger.error(f"Error removing temporary file: {e}")
+                logger.info(f"Cleaned up temporary file: {filepath}")
+            except Exception as cleanup_error:
+                logger.error(f"Error cleaning up file: {cleanup_error}")
 
     except Exception as e:
-        logger.error(f"Error processing upload: {e}")
+        logger.error(f"Error processing upload: {str(e)}")
         logger.error(traceback.format_exc())
-        if wants_json():
-            return jsonify({'error': str(e)}), 500
+        if request.wants_json:
+            return jsonify({
+                'error': str(e),
+                'status': 'error'
+            }), 500, {'Content-Type': 'application/json'}
         return redirect(url_for('index'))
 
-# Rest of the routes...
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 @app.route('/assistant-config', methods=['GET'])
 def assistant_config():
     current_instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
