@@ -1,7 +1,7 @@
 import os
 import logging
 import traceback
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, g
 from werkzeug.utils import secure_filename
 import tempfile
 from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
@@ -13,26 +13,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class APIError(Exception):
-    """Custom exception class for API errors"""
-    def __init__(self, message, status_code=400):
-        super().__init__(message)
-        self.status_code = status_code
-
-def is_ajax():
-    """Check if the request is an AJAX request"""
-    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-
-def json_response(data, status=200):
-    """Create a JSON response with proper headers"""
-    response = jsonify(data)
-    response.status_code = status
-    response.headers['Content-Type'] = 'application/json'
-    return response
-
-def error_response(message, status=400):
-    """Create a JSON error response"""
-    return json_response({'error': message, 'status': 'error'}, status)
+class RequestContext:
+    """Track request context for proper response handling"""
+    def __init__(self):
+        self.wants_json = False
+        self.error_caught = None
 
 # Create Flask app
 app = Flask(__name__)
@@ -56,6 +41,28 @@ DEFAULT_INSTRUCTIONS = """Review and improve this translation while:
 4. Keeping technical terms accurate
 5. Adapting cultural references appropriately"""
 
+@app.before_request
+def setup_request():
+    """Initialize request context"""
+    g.context = RequestContext()
+    g.context.wants_json = (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
+        'application/json' in request.accept_mimetypes
+    )
+    logger.info(f"Request initialized - Wants JSON: {g.context.wants_json}")
+
+@app.after_request
+def after_request(response):
+    """Ensure proper response format"""
+    if g.context.wants_json and not response.headers.get('Content-Type', '').startswith('application/json'):
+        # If we caught an error and need JSON response
+        if g.context.error_caught:
+            data = {'error': str(g.context.error_caught), 'status': 'error'}
+            response = jsonify(data)
+            response.status_code = 500
+
+    return response
+
 @app.errorhandler(Exception)
 def handle_exception(error):
     """Global exception handler"""
@@ -63,18 +70,15 @@ def handle_exception(error):
     logger.error(f"Type: {type(error).__name__}")
     logger.error(traceback.format_exc())
 
-    if is_ajax():
-        status_code = getattr(error, 'status_code', 500)
-        return error_response(str(error), status_code)
+    g.context.error_caught = error
+
+    if g.context.wants_json:
+        return jsonify({
+            'error': str(error),
+            'status': 'error'
+        }), 500
 
     return render_template('500.html'), 500
-
-@app.errorhandler(404)
-def not_found_error(error):
-    """Handle 404 errors"""
-    if is_ajax():
-        return error_response('Resource not found', 404)
-    return render_template('404.html'), 404
 
 @app.route('/')
 def index():
@@ -82,21 +86,22 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload with proper error handling"""
+    """Handle file upload with robust error handling"""
     logger.info("Processing file upload")
+    logger.debug(f"Request headers: {dict(request.headers)}")
+    logger.debug(f"Request files: {request.files}")
 
     try:
         if 'file' not in request.files:
-            raise APIError('No file provided')
+            raise ValueError('No file provided')
 
         file = request.files['file']
         if file.filename == '':
-            raise APIError('No file selected')
+            raise ValueError('No file selected')
 
         if not is_allowed_file(file.filename):
-            raise APIError('Invalid file type. Please upload a PDF.')
+            raise ValueError('Invalid file type. Please upload a PDF.')
 
-        # Process file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
@@ -104,12 +109,10 @@ def upload_file():
             file.save(filepath)
             logger.info(f"File saved: {filepath}")
 
-            # Get configuration
             instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
             target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
             review_style = os.environ.get('REVIEW_STYLE', 'balanced')
 
-            # Process PDF
             translations = process_pdf(
                 filepath,
                 DEEPL_API_KEY,
@@ -123,15 +126,14 @@ def upload_file():
 
             session['translations'] = translations
 
-            if is_ajax():
-                return json_response({
+            if g.context.wants_json:
+                return jsonify({
                     'success': True,
                     'redirect': url_for('review')
                 })
             return redirect(url_for('review'))
 
         finally:
-            # Cleanup
             if os.path.exists(filepath):
                 try:
                     os.remove(filepath)
@@ -177,8 +179,8 @@ def save_assistant_config():
         os.environ['TARGET_LANGUAGE'] = target_language
         os.environ['REVIEW_STYLE'] = review_style
 
-        if is_ajax():
-            return json_response({
+        if g.context.wants_json:
+            return jsonify({
                 'success': True,
                 'redirect': url_for('assistant_config')
             })
@@ -206,8 +208,8 @@ def save_reviews():
 
         session['translations'] = translations
 
-        if is_ajax():
-            return json_response({
+        if g.context.wants_json:
+            return jsonify({
                 'success': True,
                 'redirect': url_for('review')
             })
