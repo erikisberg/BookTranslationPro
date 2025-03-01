@@ -5,71 +5,21 @@ import deepl
 from openai import OpenAI
 import tempfile
 import logging
-from datetime import datetime
-import models
 
 logger = logging.getLogger(__name__)
 
 def is_allowed_file(filename):
     return filename.lower().endswith('.pdf')
 
-def get_from_translation_memory(text):
-    """Check if a translation exists in memory"""
-    try:
-        memory = models.TranslationMemory.query.filter_by(source_text=text).first()
-        if memory:
-            # Update usage statistics
-            memory.last_used_at = datetime.utcnow()
-            memory.use_count += 1
-            models.db.session.commit()
-            logger.info(f"Translation found in memory (ID: {memory.id}), used {memory.use_count} times")
-            return memory.translated_text
-        logger.info("No translation found in memory, proceeding with new translation")
-        return None
-    except Exception as e:
-        logger.error(f"Error accessing translation memory: {str(e)}")
-        return None
-
-def store_in_translation_memory(source_text, translated_text):
-    """Store a new translation in memory"""
-    try:
-        memory = models.TranslationMemory(
-            source_text=source_text,
-            translated_text=translated_text,
-            source_language='EN',
-            target_language='SV'
-        )
-        models.db.session.add(memory)
-        models.db.session.commit()
-        logger.info(f"New translation stored in memory with ID: {memory.id}")
-    except Exception as e:
-        logger.error(f"Failed to store translation in memory: {str(e)}")
-        models.db.session.rollback()
-
 def extract_text_from_page(pdf_reader, page_num):
     page = pdf_reader.pages[page_num]
     return page.extract_text()
 
 def translate_text(text, deepl_api_key):
-    # First check translation memory
-    logger.info("Checking translation memory for existing translation")
-    cached_translation = get_from_translation_memory(text)
-    if cached_translation:
-        logger.info("Using cached translation from memory")
-        return cached_translation
-
-    # If not in memory, translate with DeepL
-    logger.info("No cached translation found, using DeepL API")
     translator = deepl.Translator(deepl_api_key)
     try:
         result = translator.translate_text(text, target_lang="SV")
-        translated_text = result.text
-
-        # Store the new translation in memory
-        logger.info("Storing new translation in memory")
-        store_in_translation_memory(text, translated_text)
-
-        return translated_text
+        return result.text
     except Exception as e:
         logger.error(f"DeepL translation error: {str(e)}")
         raise Exception(f"Translation failed: {str(e)}")

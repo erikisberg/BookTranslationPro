@@ -3,7 +3,6 @@ from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 import tempfile
 import logging
-import models
 from utils import process_pdf, is_allowed_file
 
 # Configure logging
@@ -18,16 +17,6 @@ app.secret_key = os.environ.get("SESSION_SECRET")
 UPLOAD_FOLDER = tempfile.gettempdir()
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-
-# Configure database
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-}
-
-# Initialize database after app creation
-models.db.init_app(app)
 
 # Get API keys from environment
 DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
@@ -88,8 +77,4 @@ def upload_file():
                 pass
 
 if __name__ == '__main__':
-    with app.app_context():
-        # Create all database tables
-        models.db.create_all()
-        logger.info("Database tables created successfully")
     app.run(host='0.0.0.0', port=5000, debug=True)
