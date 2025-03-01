@@ -87,6 +87,7 @@ def upload_file():
     """Handle file upload with streaming response"""
     logger.info("Processing file upload")
 
+    temp_file = None
     try:
         if 'file' not in request.files:
             raise APIError('No file provided')
@@ -98,17 +99,23 @@ def upload_file():
         if not is_allowed_file(file.filename):
             raise APIError('Invalid file type. Please upload a PDF.')
 
-        # Create unique filename to avoid conflicts
-        temp_dir = tempfile.gettempdir()
-        temp_filename = next(tempfile._get_candidate_names()) + '.pdf'
-        filepath = os.path.join(temp_dir, temp_filename)
+        # Create a named temporary file that will be automatically cleaned up
+        logger.info("Creating temporary file")
+        temp_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+        filepath = temp_file.name
+        logger.info(f"Temporary file created at: {filepath}")
 
-        logger.info(f"Attempting to save file to: {filepath}")
         try:
+            # Save uploaded file
             file.save(filepath)
+            logger.info(f"File saved successfully at: {filepath}")
+
+            # Verify file exists and is not empty
             if not os.path.exists(filepath):
                 raise APIError("Failed to save uploaded file")
-            logger.info(f"File saved successfully at: {filepath}")
+
+            if os.path.getsize(filepath) == 0:
+                raise APIError("Uploaded file is empty")
 
             instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
             target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
@@ -132,19 +139,21 @@ def upload_file():
             logger.error(f"Error processing file: {str(e)}")
             raise APIError(str(e))
 
-        finally:
-            # Cleanup temporary file in finally block
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                    logger.info(f"Cleaned up file: {filepath}")
-                except Exception as cleanup_error:
-                    logger.error(f"Failed to clean up file: {cleanup_error}")
-
     except Exception as e:
         logger.error(f"Upload error: {str(e)}")
         logger.error(traceback.format_exc())
         raise APIError(str(e))
+
+    finally:
+        # Cleanup temporary file in finally block
+        if temp_file is not None:
+            try:
+                temp_file.close()
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
+                    logger.info(f"Cleaned up temporary file: {temp_file.name}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up temporary file: {cleanup_error}")
 
 @app.route('/save-translations', methods=['POST'])
 def save_translations():

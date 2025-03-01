@@ -7,6 +7,7 @@ from openai import OpenAI
 import tempfile
 import logging
 import time
+import traceback
 from flask import stream_with_context, Response
 
 logger = logging.getLogger(__name__)
@@ -120,40 +121,60 @@ def process_pdf_stream(input_path, deepl_api_key, openai_api_key, assistant_id,
     """Process PDF with streaming to avoid timeouts"""
     def generate():
         try:
+            logger.info(f"Starting PDF processing for file: {input_path}")
+
+            # First verify all API keys are present
             check_api_keys()
+
+            # Verify input file exists
+            if not os.path.exists(input_path):
+                raise Exception(f"Input file not found: {input_path}")
+
+            if os.path.getsize(input_path) == 0:
+                raise Exception("Input file is empty")
+
             translations = []
-
             with open(input_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                total_pages = len(pdf_reader.pages)
+                try:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    total_pages = len(pdf_reader.pages)
+                    logger.info(f"Successfully opened PDF with {total_pages} pages")
 
-                yield f'data: {json.dumps({"status": "started", "total_pages": total_pages})}\n\n'
+                    yield f'data: {json.dumps({"status": "started", "total_pages": total_pages})}\n\n'
 
-                for page_num in range(total_pages):
-                    logger.info(f"Processing page {page_num + 1} of {total_pages}")
+                    for page_num in range(total_pages):
+                        logger.info(f"Processing page {page_num + 1} of {total_pages}")
 
-                    # Extract text
-                    original_text = extract_text_from_page(pdf_reader, page_num)
-                    yield f'data: {json.dumps({"status": "extracting", "page": page_num + 1, "total_pages": total_pages})}\n\n'
+                        # Extract text
+                        original_text = extract_text_from_page(pdf_reader, page_num)
+                        if not original_text.strip():
+                            logger.warning(f"Page {page_num + 1} appears to be empty")
+                        yield f'data: {json.dumps({"status": "extracting", "page": page_num + 1, "total_pages": total_pages})}\n\n'
 
-                    # Translate
-                    translated_text = translate_text(original_text, deepl_api_key, target_language)
-                    yield f'data: {json.dumps({"status": "translating", "page": page_num + 1, "total_pages": total_pages})}\n\n'
+                        # Translate
+                        translated_text = translate_text(original_text, deepl_api_key, target_language)
+                        yield f'data: {json.dumps({"status": "translating", "page": page_num + 1, "total_pages": total_pages})}\n\n'
 
-                    # Review
-                    reviewed_text = review_translation(translated_text, openai_api_key, assistant_id)
-                    yield f'data: {json.dumps({"status": "reviewing", "page": page_num + 1, "total_pages": total_pages})}\n\n'
+                        # Review
+                        reviewed_text = review_translation(translated_text, openai_api_key, assistant_id)
+                        yield f'data: {json.dumps({"status": "reviewing", "page": page_num + 1, "total_pages": total_pages})}\n\n'
 
-                    translations.append({
-                        'id': page_num,
-                        'original_text': original_text,
-                        'translated_text': reviewed_text
-                    })
+                        translations.append({
+                            'id': page_num,
+                            'original_text': original_text,
+                            'translated_text': reviewed_text
+                        })
 
-                yield f'data: {json.dumps({"status": "completed", "translations": translations})}\n\n'
+                    logger.info("PDF processing completed successfully")
+                    yield f'data: {json.dumps({"status": "completed", "translations": translations})}\n\n'
+
+                except PyPDF2.PdfReadError as e:
+                    logger.error(f"Failed to read PDF: {str(e)}")
+                    raise Exception(f"Invalid or corrupted PDF file: {str(e)}")
 
         except Exception as e:
             logger.error(f"PDF processing error: {str(e)}")
+            logger.error(traceback.format_exc())
             yield f'data: {json.dumps({"status": "error", "message": str(e)})}\n\n'
 
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
