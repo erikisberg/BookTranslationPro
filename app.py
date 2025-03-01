@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 
 # Create and configure the app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET")
+app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key-for-dev")
 
-# Make PostHog configuration available to templates
-app.config['POSTHOG_API_KEY'] = POSTHOG_API_KEY
-app.config['POSTHOG_HOST'] = POSTHOG_HOST
+# Make PostHog configuration available to templates if API key exists
+app.config['POSTHOG_API_KEY'] = os.environ.get('POSTHOG_API_KEY')
+app.config['POSTHOG_HOST'] = os.environ.get('POSTHOG_HOST', 'https://app.posthog.com')
 
 # Context processor to make current user available in templates
 @app.context_processor
@@ -99,7 +99,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID')
-POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY')
+POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY', None)  # Default to None if not provided
 POSTHOG_HOST = os.environ.get('POSTHOG_HOST', 'https://app.posthog.com')
 
 # Initialize PostHog if API key is available
@@ -110,6 +110,8 @@ if POSTHOG_API_KEY:
         host=POSTHOG_HOST
     )
     logger.info("PostHog initialized successfully")
+else:
+    logger.info("PostHog API key not provided, analytics disabled")
 
 # Log API key info for debugging
 logger.info(f"DEEPL_API_KEY present: {'Yes' if DEEPL_API_KEY else 'No'}")
