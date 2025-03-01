@@ -102,24 +102,43 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
 
         const fileInput = document.getElementById('pdfFile');
-        const file = fileInput.files[0];
+        const files = fileInput.files;
 
-        if (!file) {
-            showError('Välj en fil att översätta.');
+        if (!files || files.length === 0) {
+            showError('Välj minst en fil att översätta.');
             return;
         }
         
-        // Check if file extension is supported
+        // Check if all file extensions are supported
         const allowedExtensions = ['.pdf', '.docx', '.doc', '.txt', '.rtf', '.odt'];
-        const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        let invalidFiles = [];
         
-        if (!allowedExtensions.includes(fileExtension)) {
-            showError('Filformatet stöds inte. Använd PDF, Word (DOCX/DOC), text (TXT), RTF eller ODT.');
+        for (let i = 0; i < files.length; i++) {
+            const fileExtension = files[i].name.substring(files[i].name.lastIndexOf('.')).toLowerCase();
+            if (!allowedExtensions.includes(fileExtension)) {
+                invalidFiles.push(files[i].name);
+            }
+        }
+        
+        if (invalidFiles.length > 0) {
+            showError(`Följande filer har format som inte stöds: ${invalidFiles.join(', ')}. Använd PDF, Word (DOCX/DOC), text (TXT), RTF eller ODT.`);
             return;
         }
 
+        // Create the FormData with all files
         const formData = new FormData();
-        formData.append('file', file);
+        
+        // Show a batch indicator if multiple files
+        if (files.length > 1) {
+            statusText.textContent = `Förbereder ${files.length} filer för översättning...`;
+            progressContainer.classList.remove('d-none');
+            progressBar.style.width = '5%';
+        }
+        
+        // Add all files to the form data
+        for (let i = 0; i < files.length; i++) {
+            formData.append('files[]', files[i]);
+        }
         
         // Add the skipOpenAI checkbox value
         const skipOpenAI = document.getElementById('skipOpenAI').checked;
@@ -147,23 +166,29 @@ document.addEventListener('DOMContentLoaded', function() {
             let progress = 0;
             let progressSteps;
             
-            // Get the file extension
-            const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-            const isWord = ['.docx', '.doc'].includes(fileExtension);
-            const isText = ['.txt', '.rtf', '.odt'].includes(fileExtension);
-            const isPdf = fileExtension === '.pdf';
+            // Create messages based on multiple files or single file
+            const fileCount = files.length;
+            let extractMessage = fileCount > 1 
+                ? `Extraherar text från ${fileCount} dokument...` 
+                : "Extraherar text från dokument...";
             
-            // Create a file type message based on the extension
-            let extractMessage = "Extraherar text från dokument...";
-            if (isPdf) extractMessage = "Extraherar text från PDF...";
-            if (isWord) extractMessage = "Extraherar text från Word-dokument...";
-            if (isText) extractMessage = "Bearbetar textfil...";
+            // For single file, be more specific about file type
+            if (fileCount === 1) {
+                const fileExtension = files[0].name.substring(files[0].name.lastIndexOf('.')).toLowerCase();
+                const isWord = ['.docx', '.doc'].includes(fileExtension);
+                const isText = ['.txt', '.rtf', '.odt'].includes(fileExtension);
+                const isPdf = fileExtension === '.pdf';
+                
+                if (isPdf) extractMessage = "Extraherar text från PDF...";
+                if (isWord) extractMessage = "Extraherar text från Word-dokument...";
+                if (isText) extractMessage = "Bearbetar textfil...";
+            }
             
             if (skipOpenAI) {
                 // Shorter progress sequence when skipping OpenAI
                 progressSteps = [
                     {progress: 15, message: extractMessage},
-                    {progress: 35, message: "Förbereder innehåll för översättning..."},
+                    {progress: 35, message: fileCount > 1 ? "Förbereder batch för översättning..." : "Förbereder innehåll för översättning..."},
                     {progress: 55, message: "Översätter med DeepL..."},
                     {progress: 80, message: "Slutför översättning..."},
                     {progress: 90, message: "Nästan klar..."}
@@ -172,10 +197,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Full progress sequence with OpenAI review
                 progressSteps = [
                     {progress: 10, message: extractMessage},
-                    {progress: 25, message: "Förbereder innehåll för översättning..."},
+                    {progress: 25, message: fileCount > 1 ? "Förbereder batch för översättning..." : "Förbereder innehåll för översättning..."},
                     {progress: 40, message: "Översätter med DeepL..."},
-                    {progress: 60, message: "Granskar översättning med OpenAI..."},
-                    {progress: 80, message: "Slutför översättning..."},
+                    {progress: 60, message: "Granskar översättningar med OpenAI..."},
+                    {progress: 80, message: "Slutför batch-översättning..."},
                     {progress: 90, message: "Nästan klar..."}
                 ];
             }

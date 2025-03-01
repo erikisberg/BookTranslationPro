@@ -887,14 +887,32 @@ def upload_file():
     if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
         return redirect(url_for('index'))
 
-    if 'file' not in request.files:
-        return json_error('No file provided')
+    # Check for files - both single file and batch mode
+    files = []
+    
+    # Check for batch mode (files[])
+    if 'files[]' in request.files:
+        files = request.files.getlist('files[]')
+    # Check for single file mode
+    elif 'file' in request.files:
+        files = [request.files['file']]
+    
+    if not files:
+        return json_error('No files provided')
+    
+    # Filter out empty filenames
+    files = [f for f in files if f.filename != '']
+    
+    if not files:
+        return json_error('No files selected')
 
-    file = request.files['file']
-    if file.filename == '':
-        return json_error('No file selected')
-
-    if not is_allowed_file(file.filename):
+    # Validate all files
+    invalid_files = []
+    for file in files:
+        if not is_allowed_file(file.filename):
+            invalid_files.append(file.filename)
+    
+    if invalid_files:
         # Track invalid file type upload attempt
         if posthog:
             posthog.capture(
@@ -902,16 +920,25 @@ def upload_file():
                 event='file_upload_error',
                 properties={
                     'error': 'invalid_file_type',
-                    'filename': file.filename,
-                    'file_extension': os.path.splitext(file.filename)[1].lower() if file.filename else None
+                    'filenames': invalid_files,
+                    'file_count': len(invalid_files)
                 }
             )
-        return json_error('Invalid file type. Please upload PDF, Word (DOCX/DOC), text (TXT), RTF, or ODT file.')
+        return json_error(f'Invalid file type(s): {", ".join(invalid_files)}. Please upload PDF, Word (DOCX/DOC), text (TXT), RTF, or ODT files only.')
 
     try:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+        # We'll process each file and collect their translations
+        all_translations = []
+        filepaths = []
+        
+        # Save all files
+        for file in files:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            filepaths.append(filepath)
+        
+        logger.info(f"Processing {len(filepaths)} files in batch mode")
         
         # Check if OpenAI review should be skipped
         skip_openai = request.form.get('skipOpenAI') == 'true'
@@ -986,40 +1013,63 @@ def upload_file():
                     custom_instructions = assistant_data.get('instructions')
                     logger.info(f"Using custom instructions for assistant from DB: {assistant_data.get('name')}")
         
-        # Process the document and get translations
-        translations = process_document(
-            filepath,
-            deepl_api_key,
-            openai_api_key,
-            openai_assistant_id,
-            source_language=source_language,
-            target_language=target_language,
-            custom_instructions=custom_instructions,
-            return_segments=True
-        )
+        # Process each document and collect translations
+        original_filenames = []
+        total_sections = 0
+        
+        for i, filepath in enumerate(filepaths):
+            try:
+                logger.info(f"Processing file {i+1}/{len(filepaths)}: {os.path.basename(filepath)}")
+                
+                # Process this document
+                file_translations = process_document(
+                    filepath,
+                    deepl_api_key,
+                    openai_api_key,
+                    openai_assistant_id,
+                    source_language=source_language,
+                    target_language=target_language,
+                    custom_instructions=custom_instructions,
+                    return_segments=True
+                )
+                
+                # Store original filename in each translation item for multi-file identification
+                for item in file_translations:
+                    item['original_file'] = os.path.basename(filepath)
+                
+                # Add to the overall translations
+                all_translations.extend(file_translations)
+                original_filenames.append(os.path.basename(filepath))
+                total_sections += len(file_translations)
+                
+                logger.info(f"Successfully processed file {i+1}: {len(file_translations)} sections")
+            except Exception as e:
+                logger.error(f"Error processing file {i+1}: {str(e)}")
+                # Continue with other files even if one fails
 
         # Generate a unique ID for this translation session
         translation_id = str(int(time.time()))
         session['translation_id'] = translation_id
 
-        # Store translations in file
+        # Store all translations in file
         translation_file = os.path.join(TRANSLATIONS_DIR, f"{translation_id}.json")
         with open(translation_file, 'w') as f:
-            json.dump(translations, f)
+            json.dump(all_translations, f)
             
-        # Store filename for later
-        session['original_filename'] = secure_filename(file.filename)
+        # Store filenames for later - joined with comma for multiple files
+        session['original_filename'] = ", ".join(original_filenames) if len(original_filenames) > 1 else original_filenames[0]
+        session['file_count'] = len(original_filenames)
 
         # Track successful file upload and translation
         if posthog:
             posthog.capture(
                 distinct_id=get_user_id(),
-                event='file_translated',
+                event='files_translated',
                 properties={
-                    'filename': filename,
+                    'filenames': original_filenames,
+                    'file_count': len(original_filenames),
                     'skip_openai_review': skip_openai,
-                    'file_size_kb': os.path.getsize(filepath) / 1024,
-                    'page_count': len(translations),
+                    'total_sections': total_sections,
                     'translation_id': translation_id
                 }
             )
@@ -1035,11 +1085,14 @@ def upload_file():
 
     finally:
         # Cleanup temporary files
-        if 'filepath' in locals():
-            try:
-                os.remove(filepath)
-            except:
-                pass
+        if 'filepaths' in locals():
+            for filepath in filepaths:
+                try:
+                    os.remove(filepath)
+                    logger.debug(f"Removed temporary file: {filepath}")
+                except Exception as e:
+                    logger.error(f"Failed to remove temporary file {filepath}: {str(e)}")
+                    pass
 
 @app.route('/review')
 @login_required

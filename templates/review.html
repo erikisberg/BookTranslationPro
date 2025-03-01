@@ -10,10 +10,15 @@
                 {% for translation in translations %}
                 <div class="card mb-4 translation-card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <span class="badge bg-primary">Sida {{ loop.index }} av {{ translations|length }}</span>
+                        <div>
+                            <span class="badge bg-primary">{{ loop.index }} av {{ translations|length }}</span>
+                            {% if translation.original_file %}
+                            <span class="badge bg-secondary ms-2">{{ translation.original_file }}</span>
+                            {% endif %}
+                        </div>
                         <div class="btn-group">
                             <button type="button" class="btn btn-sm btn-outline-secondary toggle-preview" data-id="{{ translation.id }}">
-                                Förhandsvisning
+                                <i class="bi bi-eye"></i> Förhandsvisning
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-secondary fullscreen-btn" data-id="{{ translation.id }}">
                                 <i class="bi bi-arrows-fullscreen"></i> Helskärm
@@ -23,13 +28,21 @@
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-6">
-                                <h5>Originaltext</h5>
-                                <div class="original-text mb-3 p-3 bg-light" id="original_{{ translation.id }}" style="height: 250px; overflow-y: auto;">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5>Originaltext</h5>
+                                    <span class="badge bg-info">{{ translation.source }}</span>
+                                </div>
+                                <div class="original-text mb-3 p-3" id="original_{{ translation.id }}" style="height: 250px; overflow-y: auto;">
                                     {{ translation.original_text }}
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <h5>Översättning</h5>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5>Översättning</h5>
+                                    <span class="translation-status {{ 'success' if translation.status == 'success' else 'danger' }}">
+                                        {{ 'OK' if translation.status == 'success' else 'Error' }}
+                                    </span>
+                                </div>
                                 <textarea 
                                     name="translation_{{ translation.id }}" 
                                     id="translation_{{ translation.id }}"

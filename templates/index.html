@@ -23,8 +23,9 @@
                     <form id="uploadForm" class="mb-4">
                         <div class="mb-3">
                             <label for="pdfFile" class="form-label">Välj dokument att översätta</label>
-                            <input type="file" class="form-control" id="pdfFile" accept=".pdf,.docx,.doc,.txt,.rtf,.odt" required>
+                            <input type="file" class="form-control" id="pdfFile" accept=".pdf,.docx,.doc,.txt,.rtf,.odt" multiple required>
                             <div class="form-text">Stödda format: PDF, Word (DOCX/DOC), textfiler (TXT), RTF och OpenDocument (ODT)</div>
+                            <div class="form-text text-primary"><i class="bi bi-info-circle"></i> Du kan välja flera dokument för att översätta dem samtidigt</div>
                         </div>
                         <div class="mb-3">
                             <label for="sourceLanguage" class="form-label">Källspråk</label>
