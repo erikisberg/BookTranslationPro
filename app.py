@@ -52,19 +52,35 @@ def wants_json():
 @app.before_request
 def before_request():
     """Setup request context"""
+    logger.debug(f"Incoming request: {request.method} {request.path}")
+    logger.debug(f"Request headers: {dict(request.headers)}")
     request.wants_json = wants_json()
+    logger.debug(f"Request wants JSON: {request.wants_json}")
 
 @app.after_request
 def after_request(response):
     """Ensure proper content type for JSON responses"""
-    if request.wants_json and not response.headers.get('Content-Type', '').startswith('application/json'):
-        try:
-            # If we have an error response, convert it to JSON
-            data = {'error': response.get_data(as_text=True)}
-            response.data = jsonify(data).get_data()
-            response.content_type = 'application/json'
-        except Exception as e:
-            logger.error(f"Error converting response to JSON: {e}")
+    logger.debug(f"Processing response: status={response.status_code}, content-type={response.content_type}")
+
+    if request.wants_json:
+        if not response.headers.get('Content-Type', '').startswith('application/json'):
+            logger.warning("Non-JSON response for AJAX request, converting to JSON")
+            try:
+                original_data = response.get_data(as_text=True)
+                logger.debug(f"Original response data: {original_data}")
+
+                data = {'error': original_data}
+                json_response = jsonify(data)
+
+                logger.debug(f"Converted to JSON response: {json_response.get_data(as_text=True)}")
+
+                response.data = json_response.get_data()
+                response.content_type = 'application/json'
+            except Exception as e:
+                logger.error(f"Error converting response to JSON: {str(e)}")
+                logger.error(traceback.format_exc())
+
+    logger.debug(f"Final response: status={response.status_code}, content-type={response.content_type}")
     return response
 
 @app.errorhandler(Exception)
@@ -75,7 +91,17 @@ def handle_exception(e):
     logger.error(traceback.format_exc())
 
     if request.wants_json:
-        return jsonify({'error': error_msg}), 500, {'Content-Type': 'application/json'}
+        logger.debug("Generating JSON error response")
+        try:
+            response = jsonify({'error': error_msg})
+            logger.debug(f"JSON error response: {response.get_data(as_text=True)}")
+            return response, 500, {'Content-Type': 'application/json'}
+        except Exception as json_error:
+            logger.error(f"Error creating JSON error response: {str(json_error)}")
+            logger.error(traceback.format_exc())
+            return jsonify({'error': 'Internal server error'}), 500, {'Content-Type': 'application/json'}
+
+    logger.debug("Generating HTML error response")
     return render_template('500.html'), 500
 
 @app.route('/')
