@@ -16,7 +16,8 @@ from utils import (
 from auth import login_required, get_current_user, get_user_id, sign_up, sign_in, sign_out, reset_password
 from supabase_config import (
     get_user_data, save_user_data, get_user_translations, save_translation,
-    get_full_translation, delete_translation, get_user_settings, save_user_settings
+    get_full_translation, delete_translation, get_user_settings, save_user_settings,
+    get_user_assistants, get_assistant, save_assistant, delete_assistant
 )
 
 # Load environment variables from .env file
