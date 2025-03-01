@@ -61,26 +61,6 @@ def before_request():
 def after_request(response):
     """Ensure proper content type for JSON responses"""
     logger.debug(f"Processing response: status={response.status_code}, content-type={response.content_type}")
-
-    if request.wants_json:
-        if not response.headers.get('Content-Type', '').startswith('application/json'):
-            logger.warning("Non-JSON response for AJAX request, converting to JSON")
-            try:
-                original_data = response.get_data(as_text=True)
-                logger.debug(f"Original response data: {original_data}")
-
-                data = {'error': original_data}
-                json_response = jsonify(data)
-
-                logger.debug(f"Converted to JSON response: {json_response.get_data(as_text=True)}")
-
-                response.data = json_response.get_data()
-                response.content_type = 'application/json'
-            except Exception as e:
-                logger.error(f"Error converting response to JSON: {str(e)}")
-                logger.error(traceback.format_exc())
-
-    logger.debug(f"Final response: status={response.status_code}, content-type={response.content_type}")
     return response
 
 @app.errorhandler(Exception)
@@ -90,18 +70,15 @@ def handle_exception(e):
     logger.error(f"Uncaught exception: {error_msg}")
     logger.error(traceback.format_exc())
 
-    if request.wants_json:
-        logger.debug("Generating JSON error response")
+    if wants_json():
+        logger.debug("Returning JSON error response")
         try:
-            response = jsonify({'error': error_msg})
-            logger.debug(f"JSON error response: {response.get_data(as_text=True)}")
-            return response, 500, {'Content-Type': 'application/json'}
+            return jsonify({'error': error_msg}), 500
         except Exception as json_error:
             logger.error(f"Error creating JSON error response: {str(json_error)}")
-            logger.error(traceback.format_exc())
-            return jsonify({'error': 'Internal server error'}), 500, {'Content-Type': 'application/json'}
+            return jsonify({'error': 'Internal server error'}), 500
 
-    logger.debug("Generating HTML error response")
+    logger.debug("Returning HTML error response")
     return render_template('500.html'), 500
 
 @app.route('/')
@@ -110,22 +87,17 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    logger.debug("Processing file upload")
     try:
         if 'file' not in request.files:
-            if request.wants_json:
-                return jsonify({'error': 'No file provided'}), 400
-            return redirect(url_for('index'))
+            raise ValueError('No file provided')
 
         file = request.files['file']
         if file.filename == '':
-            if request.wants_json:
-                return jsonify({'error': 'No file selected'}), 400
-            return redirect(url_for('index'))
+            raise ValueError('No file selected')
 
         if not is_allowed_file(file.filename):
-            if request.wants_json:
-                return jsonify({'error': 'Invalid file type. Please upload a PDF.'}), 400
-            return redirect(url_for('index'))
+            raise ValueError('Invalid file type. Please upload a PDF.')
 
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -149,11 +121,11 @@ def upload_file():
 
             session['translations'] = translations
 
-            if request.wants_json:
+            if wants_json():
                 return jsonify({
                     'success': True,
                     'redirect': url_for('review')
-                }), 200
+                })
             return redirect(url_for('review'))
 
         finally:
@@ -165,10 +137,11 @@ def upload_file():
     except Exception as e:
         logger.error(f"Error processing upload: {e}")
         logger.error(traceback.format_exc())
-        if request.wants_json:
+        if wants_json():
             return jsonify({'error': str(e)}), 500
         return redirect(url_for('index'))
 
+# Rest of the routes...
 @app.route('/assistant-config', methods=['GET'])
 def assistant_config():
     current_instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
@@ -176,9 +149,9 @@ def assistant_config():
     review_style = os.environ.get('REVIEW_STYLE', 'balanced')
 
     return render_template('config.html',
-                         current_instructions=current_instructions,
-                         target_language=target_language,
-                         review_style=review_style)
+                        current_instructions=current_instructions,
+                        target_language=target_language,
+                        review_style=review_style)
 
 @app.route('/save-assistant-config', methods=['POST'])
 def save_assistant_config():
@@ -199,14 +172,14 @@ def save_assistant_config():
         os.environ['TARGET_LANGUAGE'] = target_language
         os.environ['REVIEW_STYLE'] = review_style
 
-        if request.wants_json:
-            return json_response({'success': True, 'redirect': url_for('assistant_config')})
+        if wants_json():
+            return jsonify({'success': True, 'redirect': url_for('assistant_config')})
         return redirect(url_for('assistant_config'))
 
     except Exception as e:
         logger.error(f"Error saving configuration: {str(e)}")
-        if request.wants_json:
-            return json_error(str(e), 500)
+        if wants_json():
+            return jsonify({'error': str(e)}), 500
         return redirect(url_for('assistant_config'))
 
 @app.route('/review')
@@ -225,22 +198,22 @@ def save_reviews():
 
         session['translations'] = translations
 
-        if request.wants_json:
-            return json_response({'success': True, 'redirect': url_for('review')})
+        if wants_json():
+            return jsonify({'success': True, 'redirect': url_for('review')})
         return redirect(url_for('review'))
 
     except Exception as e:
         logger.error(f"Error saving reviews: {str(e)}")
-        if request.wants_json:
-            return json_error(str(e), 500)
+        if wants_json():
+            return jsonify({'error': str(e)}), 500
         return redirect(url_for('review'))
 
 @app.route('/download-final')
 def download_final():
     translations = session.get('translations', [])
     if not translations:
-        if request.wants_json:
-            return json_error('No translations available', 400)
+        if wants_json():
+            return jsonify({'error': 'No translations available'}), 400
         return redirect(url_for('index'))
 
     try:
@@ -252,11 +225,13 @@ def download_final():
             as_attachment=True,
             download_name='final_translation.pdf'
         )
+
     except Exception as e:
         logger.error(f"Error creating final PDF: {str(e)}")
-        if request.wants_json:
-            return json_error(str(e), 500)
+        if wants_json():
+            return jsonify({'error': str(e)}), 500
         return redirect(url_for('index'))
+
     finally:
         if 'output_path' in locals():
             try:
