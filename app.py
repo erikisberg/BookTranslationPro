@@ -10,6 +10,15 @@ import traceback
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Helper functions for JSON responses
+def json_response(data, status=200):
+    """Helper function to ensure consistent JSON responses"""
+    return jsonify(data), status, {'Content-Type': 'application/json'}
+
+def json_error(message, status=400):
+    """Helper function for JSON error responses"""
+    return json_response({'error': message}, status)
+
 # Create and configure the app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET")
@@ -228,14 +237,6 @@ def download_final():
                 os.remove(output_path)
             except:
                 pass
-
-def json_response(data, status=200):
-    """Helper function to ensure consistent JSON responses"""
-    return jsonify(data), status, {'Content-Type': 'application/json'}
-
-def json_error(message, status=400):
-    """Helper function for JSON error responses"""
-    return json_response({'error': message}, status)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
