@@ -16,9 +16,11 @@ def extract_text_from_page(pdf_reader, page_num):
     return page.extract_text()
 
 def translate_text(text, deepl_api_key, target_language='SV'):
+    """First step: Translate text using DeepL"""
     translator = deepl.Translator(deepl_api_key)
     try:
         result = translator.translate_text(text, target_lang=target_language)
+        logger.info("Text successfully translated with DeepL")
         return result.text
     except Exception as e:
         logger.error(f"DeepL translation error: {str(e)}")
@@ -34,11 +36,16 @@ def update_assistant_config(api_key, assistant_id, instructions, target_language
         'creative': "Enhance the text significantly while keeping the core meaning."
     }
 
+    # Make it clear that the assistant is reviewing Swedish translations
     full_instructions = f"""
+You are a Swedish language expert reviewing translations.
 {instructions}
 
 Target Language: {target_language}
 Review Style: {style_instructions[review_style]}
+
+Important: You are reviewing text that has already been translated to Swedish.
+Focus on improving the Swedish language quality, naturalness, and accuracy.
 """
 
     try:
@@ -53,17 +60,18 @@ Review Style: {style_instructions[review_style]}
         raise Exception(f"Failed to update assistant configuration: {str(e)}")
 
 def review_translation(text, openai_api_key, assistant_id):
+    """Second step: Review the Swedish translation using OpenAI Assistant"""
     # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
     client = OpenAI(api_key=openai_api_key)
 
     try:
         thread = client.beta.threads.create()
 
-        # Add the message to the thread
+        # Add the message to the thread, explicitly mentioning it's a Swedish translation
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content=text
+            content=f"Review and improve this Swedish translation, focusing on natural language flow and accuracy: {text}"
         )
 
         # Run the assistant
@@ -91,6 +99,7 @@ def review_translation(text, openai_api_key, assistant_id):
             for content in first_message.content
             if hasattr(content, 'text')
         )
+        logger.info("Translation successfully reviewed by OpenAI Assistant")
         return text_content
 
     except Exception as e:
