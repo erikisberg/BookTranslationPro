@@ -5,12 +5,14 @@ A comprehensive PDF book translation application that extracts text, translates 
 ## Features
 
 - **PDF Text Extraction**: Extract text from PDF documents with PyPDF2
-- **Professional Translation**: High-quality translation using DeepL API
+- **Professional Translation**: High-quality translation using DeepL API with language selection
 - **AI-Powered Review**: Enhanced translation quality with OpenAI review
 - **Multiple Export Formats**: PDF, DOCX, HTML and TXT with customizable formatting
 - **User Authentication**: Complete user system with Supabase integration
 - **Translation History**: Save and browse past translations
 - **Export Settings**: Personalized export preferences saved to user profiles
+- **Custom API Keys**: Use your own DeepL and OpenAI API keys
+- **Language Selection**: Choose source and target languages for translation
 - **Usage Analytics**: User behavior tracking with PostHog
 
 ## Setup
@@ -46,8 +48,24 @@ python app.py
 
 For production deployment, use Gunicorn:
 ```
-gunicorn -c gunicorn_config.py app:app
+gunicorn main:app -c gunicorn_config.py
 ```
+
+## User Guide
+
+### Translation Process
+1. Upload your PDF file on the home page
+2. Select source and target languages 
+3. Choose whether to use OpenAI review (optional)
+4. Review the translated text and make any edits
+5. Download the finished translation in your preferred format
+
+### API Keys
+You can use your own API keys for DeepL and OpenAI:
+1. Go to your profile page
+2. Click on "API-nycklar" in the settings section
+3. Enter your personal API keys
+4. Save your settings
 
 ## Contributing
 
