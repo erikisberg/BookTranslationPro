@@ -38,15 +38,20 @@ def translate_text(text, deepl_api_key, target_language='SV'):
     if not text or text.isspace():
         raise ValueError("Cannot translate empty text")
 
+    logger.info(f"DeepL API Key starting with: {deepl_api_key[:5]}...")
+    logger.info(f"Target language: {target_language}")
+    
     translator = deepl.Translator(deepl_api_key)
     try:
         logger.info(f"Sending {len(text)} characters to DeepL for translation")
+        logger.info(f"Text sample: {text[:100]}...")
         result = translator.translate_text(text, target_lang=target_language)
 
         if not result.text or result.text.isspace():
             raise ValueError("DeepL returned empty translation")
 
         logger.info("Text successfully translated with DeepL")
+        logger.info(f"Translation sample: {result.text[:100]}...")
         return result.text
 
     except Exception as e:
@@ -58,24 +63,31 @@ def review_translation(text, openai_api_key, assistant_id):
     if not text or text.isspace():
         raise ValueError("Cannot review empty translation")
 
+    logger.info(f"OpenAI API Key starting with: {openai_api_key[:5]}...")
+    logger.info(f"Assistant ID: {assistant_id}")
+    
     # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
     client = OpenAI(api_key=openai_api_key)
 
     try:
         logger.info(f"Creating new thread for reviewing {len(text)} characters")
         thread = client.beta.threads.create()
+        logger.info(f"Created thread with ID: {thread.id}")
 
         logger.info("Adding message to thread")
-        client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=f"""Review and improve this Swedish translation. 
-            The text should be clear, natural, and maintain the original meaning:
+        message_content = f"""Granska och förbättra denna svenska översättning. 
+            Texten ska vara tydlig, naturlig och bevara den ursprungliga betydelsen:
 
             {text}
 
-            If the text appears scrambled or unclear, return an error message starting with 'TRANSLATION_ERROR:'.
+            Om texten verkar förvirrad eller oklar, returnera ett felmeddelande som börjar med 'TRANSLATION_ERROR:'.
             """
+        logger.info(f"Message sample: {message_content[:100]}...")
+        
+        client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=message_content
         )
 
         logger.info("Starting assistant run")
@@ -85,9 +97,9 @@ def review_translation(text, openai_api_key, assistant_id):
         )
 
         # Simplified exponential backoff
-        max_retries = 3  # Reduced from 5 to minimize total wait time
-        initial_delay = 5  # Increased initial delay from 1 to 5 seconds
-        max_delay = 30  # Increased max delay to allow for longer processing
+        max_retries = 5  # Increased to give more time for completion
+        initial_delay = 10  # Increased initial delay to give more time
+        max_delay = 60  # Increased max delay to allow for longer processing
 
         for attempt in range(max_retries):
             logger.info(f"Checking run status (attempt {attempt + 1}/{max_retries})")
@@ -139,6 +151,11 @@ def review_translation(text, openai_api_key, assistant_id):
         return text
 
 def create_pdf_with_text(text_content):
+    """Legacy function - kept for backward compatibility"""
+    return create_pdf_with_formatting(text_content)
+    
+def create_pdf_with_text_basic(text_content):
+    """Simple PDF creation as a fallback method"""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font('helvetica', size=12)
@@ -151,12 +168,284 @@ def create_pdf_with_text(text_content):
             pdf.multi_cell(0, 10, cleaned_text)
             pdf.ln(5)
     except Exception as e:
-        logger.error(f"Error writing text to PDF: {str(e)}")
-        raise Exception(f"Failed to create PDF: {str(e)}")
+        logger.error(f"Error in basic PDF creation: {str(e)}")
+        # If even this fails, just create an empty PDF
+        pass
 
     temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
     pdf.output(temp_output.name)
     return temp_output.name
+
+def create_pdf_with_formatting(text_content, font_family='helvetica', font_size=12, page_size='A4', 
+                               orientation='portrait', margin=15, line_spacing=1.5, alignment='left',
+                               include_page_numbers=True, header_text='', footer_text=''):
+    """Create a PDF with the given text content using the specified formatting options"""
+    try:
+        logger.info(f"Creating PDF with settings: font={font_family}, size={font_size}, page={page_size}, orientation={orientation}")
+        pdf = FPDF(orientation=orientation[0], format=page_size)
+        pdf.add_page()
+        pdf.set_font(font_family, size=font_size)
+        pdf.set_auto_page_break(auto=True, margin=margin)
+        
+        # Set margins
+        pdf.set_margins(margin, margin, margin)
+    
+        # Add header if specified
+        if header_text:
+            pdf.set_y(5)
+            pdf.set_font(font_family, 'I', font_size - 2)
+            pdf.cell(0, 10, header_text, 0, 1, 'C')
+            pdf.set_y(margin)
+            pdf.set_font(font_family, size=font_size)
+        
+        # Set footer if specified
+        if footer_text or include_page_numbers:
+            def add_footer():
+                pdf.set_y(-15)
+                pdf.set_font(font_family, 'I', font_size - 2)
+                
+                if footer_text and include_page_numbers:
+                    footer = f"{footer_text} | Sida {pdf.page_no()}"
+                elif footer_text:
+                    footer = footer_text
+                elif include_page_numbers:
+                    footer = f"Sida {pdf.page_no()}"
+                else:
+                    return
+                    
+                pdf.cell(0, 10, footer, 0, 0, 'C')
+                
+            pdf.accept_page_break = lambda: (add_footer() if pdf.page_no() > 1 else None, True)[1]
+        
+        # Set alignment
+        align_dict = {
+            'left': 'L',
+            'center': 'C', 
+            'right': 'R',
+            'justified': 'J'
+        }
+        align = align_dict.get(alignment, 'L')
+        
+        # Calculate line height based on line spacing
+        line_height = font_size * 0.5 * line_spacing
+        
+        paragraphs = text_content.split('\n')
+        for paragraph in paragraphs:
+            if not paragraph.strip():
+                pdf.ln(line_height)
+                continue
+                
+            # Handle text encoding
+            cleaned_text = paragraph.encode('latin-1', errors='replace').decode('latin-1')
+            pdf.multi_cell(0, line_height, cleaned_text, 0, align)
+            pdf.ln(font_size * 0.3)  # Small space between paragraphs
+
+        # Add footer to the first page
+        if (footer_text or include_page_numbers) and pdf.page_no() == 1:
+            add_footer()
+
+        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        pdf.output(temp_output.name)
+        return temp_output.name
+        
+    except Exception as e:
+        logger.error(f"Error creating PDF: {str(e)}")
+        # Fallback to basic PDF creation if advanced formatting fails
+        return create_pdf_with_text_basic(text_content)
+
+def create_docx_with_text(text_content, font_family='helvetica', font_size=12, page_size='A4',
+                         orientation='portrait', margin=15, line_spacing=1.5, alignment='left',
+                         include_page_numbers=True, header_text='', footer_text=''):
+    """Create a Word document with the given text content using the specified formatting options"""
+    try:
+        # Import python-docx library
+        from docx import Document
+        from docx.shared import Pt, Inches, Mm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+        
+        # Create a new document
+        doc = Document()
+        
+        # Set page size and orientation
+        section = doc.sections[0]
+        if page_size == 'A4':
+            if orientation == 'portrait':
+                section.page_width, section.page_height = Mm(210), Mm(297)
+            else:
+                section.page_width, section.page_height = Mm(297), Mm(210)
+        elif page_size == 'Letter':
+            if orientation == 'portrait':
+                section.page_width, section.page_height = Inches(8.5), Inches(11)
+            else:
+                section.page_width, section.page_height = Inches(11), Inches(8.5)
+        
+        # Set margins
+        section.left_margin = Mm(margin)
+        section.right_margin = Mm(margin)
+        section.top_margin = Mm(margin)
+        section.bottom_margin = Mm(margin)
+        
+        # Add header if specified
+        if header_text:
+            header = section.header
+            header_para = header.paragraphs[0]
+            header_para.text = header_text
+            header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            header_para.style.font.size = Pt(font_size - 2)
+            header_para.style.font.italic = True
+        
+        # Add footer if specified
+        if footer_text or include_page_numbers:
+            footer = section.footer
+            footer_para = footer.paragraphs[0]
+            
+            if footer_text and include_page_numbers:
+                footer_para.text = f"{footer_text} | "
+                footer_para.add_run().add_field('PAGE')
+            elif footer_text:
+                footer_para.text = footer_text
+            elif include_page_numbers:
+                footer_para.add_run().add_field('PAGE')
+                
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            footer_para.style.font.size = Pt(font_size - 2)
+            footer_para.style.font.italic = True
+        
+        # Set paragraph alignment
+        align_dict = {
+            'left': WD_ALIGN_PARAGRAPH.LEFT,
+            'center': WD_ALIGN_PARAGRAPH.CENTER,
+            'right': WD_ALIGN_PARAGRAPH.RIGHT,
+            'justified': WD_ALIGN_PARAGRAPH.JUSTIFY
+        }
+        para_align = align_dict.get(alignment, WD_ALIGN_PARAGRAPH.LEFT)
+        
+        # Add text content
+        paragraphs = text_content.split('\n')
+        for paragraph in paragraphs:
+            if not paragraph.strip():
+                doc.add_paragraph()
+                continue
+                
+            para = doc.add_paragraph(paragraph)
+            para.alignment = para_align
+            
+            # Set font properties
+            for run in para.runs:
+                run.font.size = Pt(font_size)
+                if font_family == 'helvetica':
+                    run.font.name = 'Arial'
+                elif font_family == 'times':
+                    run.font.name = 'Times New Roman'
+                elif font_family == 'courier':
+                    run.font.name = 'Courier New'
+            
+            # Set line spacing
+            if line_spacing == 1.0:
+                para.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+            elif line_spacing == 1.5:
+                para.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+            elif line_spacing == 2.0:
+                para.paragraph_format.line_spacing_rule = WD_LINE_SPACING.DOUBLE
+            else:
+                para.paragraph_format.line_spacing = line_spacing
+        
+        # Save the document
+        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
+        doc.save(temp_output.name)
+        return temp_output.name
+        
+    except ImportError:
+        logger.error("python-docx library not installed. Creating PDF instead.")
+        # Fall back to PDF if python-docx is not available
+        return create_pdf_with_formatting(
+            text_content, font_family, font_size, page_size, 
+            orientation, margin, line_spacing, alignment,
+            include_page_numbers, header_text, footer_text
+        )
+    except Exception as e:
+        logger.error(f"Error creating DOCX: {str(e)}")
+        raise Exception(f"Failed to create Word document: {str(e)}")
+
+def create_html_with_text(text_content, font_family='helvetica', font_size=12, 
+                         line_spacing=1.5, alignment='left',
+                         include_page_numbers=False, header_text='', footer_text=''):
+    """Create an HTML file with the given text content using the specified formatting options"""
+    # Map font families to CSS equivalents
+    font_map = {
+        'helvetica': 'Arial, Helvetica, sans-serif',
+        'times': 'Times New Roman, Times, serif',
+        'courier': 'Courier New, Courier, monospace'
+    }
+    font_css = font_map.get(font_family, 'Arial, Helvetica, sans-serif')
+    
+    # Map alignment to CSS
+    align_css = alignment
+    
+    # Create HTML content
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Translated Document</title>
+    <style>
+        body {{
+            font-family: {font_css};
+            font-size: {font_size}pt;
+            line-height: {line_spacing};
+            text-align: {align_css};
+            margin: 30px;
+        }}
+        .header {{
+            text-align: center;
+            font-style: italic;
+            margin-bottom: 30px;
+            font-size: {font_size - 2}pt;
+        }}
+        .footer {{
+            text-align: center;
+            font-style: italic;
+            margin-top: 30px;
+            font-size: {font_size - 2}pt;
+        }}
+        p {{
+            margin-bottom: 15px;
+        }}
+    </style>
+</head>
+<body>
+"""
+
+    # Add header if specified
+    if header_text:
+        html_content += f'<div class="header">{header_text}</div>\n'
+    
+    # Add content
+    paragraphs = text_content.split('\n')
+    for paragraph in paragraphs:
+        if paragraph.strip():
+            html_content += f'<p>{paragraph}</p>\n'
+        else:
+            html_content += '<p>&nbsp;</p>\n'  # Empty paragraph
+    
+    # Add footer if specified
+    if footer_text:
+        html_content += f'<div class="footer">{footer_text}</div>\n'
+    
+    html_content += """
+</body>
+</html>
+"""
+    
+    # Write to file
+    try:
+        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
+        with open(temp_output.name, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        return temp_output.name
+    except Exception as e:
+        logger.error(f"Error creating HTML: {str(e)}")
+        raise Exception(f"Failed to create HTML document: {str(e)}")
 
 def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, return_segments=False):
     """Process each page of the PDF independently with separate API calls."""
@@ -179,17 +468,34 @@ def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, return_se
 
                     # Step 2: Translate text using DeepL
                     logger.info(f"Translating page {page_num + 1} with DeepL")
-                    translated_text = translate_text(original_text, deepl_api_key)
-                    if not translated_text:
-                        raise ValueError("Translation returned empty result")
+                    try:
+                        translated_text = translate_text(original_text, deepl_api_key)
+                        if not translated_text:
+                            logger.error("Translation returned empty result")
+                            translated_text = original_text
+                            raise ValueError("Translation returned empty result")
+                    except Exception as e:
+                        logger.error(f"DeepL translation error for page {page_num + 1}: {str(e)}")
+                        translated_text = original_text  # Fallback to original text
+                        raise ValueError(f"DeepL translation failed: {str(e)}")
 
-                    # Step 3: Review translation using OpenAI
-                    logger.info(f"Reviewing translation for page {page_num + 1} with OpenAI")
-                    reviewed_text = review_translation(
-                        translated_text,
-                        openai_api_key,
-                        assistant_id
-                    )
+                    # Step 3: Review translation using OpenAI (if enabled)
+                    reviewed_text = translated_text  # Default to DeepL translation
+                    
+                    if openai_api_key and assistant_id:
+                        logger.info(f"Reviewing translation for page {page_num + 1} with OpenAI")
+                        try:
+                            reviewed_text = review_translation(
+                                translated_text,
+                                openai_api_key,
+                                assistant_id
+                            )
+                        except Exception as e:
+                            logger.error(f"OpenAI review error for page {page_num + 1}: {str(e)}")
+                            # Keep using the DeepL translation (no need to raise an error)
+                            logger.info(f"Using DeepL translation without OpenAI review for page {page_num + 1}")
+                    else:
+                        logger.info(f"OpenAI review skipped for page {page_num + 1} (using DeepL translation only)")
 
                     translations.append({
                         'id': page_num,

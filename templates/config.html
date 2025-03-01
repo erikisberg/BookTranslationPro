@@ -5,32 +5,32 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title text-center">OpenAI Assistant Configuration</h2>
+                <h2 class="card-title text-center">OpenAI-assistentinställningar</h2>
             </div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('save_assistant_config') }}">
                     <div class="mb-3">
-                        <label for="instructions" class="form-label">Assistant Instructions</label>
+                        <label for="instructions" class="form-label">Instruktioner till assistenten</label>
                         <textarea class="form-control" id="instructions" name="instructions" rows="5" required>{{ current_instructions }}</textarea>
-                        <div class="form-text">Specify how the assistant should review and improve translations.</div>
+                        <div class="form-text">Ange hur assistenten ska granska och förbättra översättningarna.</div>
                     </div>
                     <div class="mb-3">
-                        <label for="targetLanguage" class="form-label">Target Language</label>
+                        <label for="targetLanguage" class="form-label">Målspråk</label>
                         <select class="form-select" id="targetLanguage" name="target_language" required>
-                            <option value="SV" {% if target_language == 'SV' %}selected{% endif %}>Swedish</option>
-                            <option value="NO" {% if target_language == 'NO' %}selected{% endif %}>Norwegian</option>
-                            <option value="DA" {% if target_language == 'DA' %}selected{% endif %}>Danish</option>
+                            <option value="SV" {% if target_language == 'SV' %}selected{% endif %}>Svenska</option>
+                            <option value="NO" {% if target_language == 'NO' %}selected{% endif %}>Norska</option>
+                            <option value="DA" {% if target_language == 'DA' %}selected{% endif %}>Danska</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="reviewStyle" class="form-label">Review Style</label>
+                        <label for="reviewStyle" class="form-label">Granskningsstil</label>
                         <select class="form-select" id="reviewStyle" name="review_style" required>
-                            <option value="conservative" {% if review_style == 'conservative' %}selected{% endif %}>Conservative - Minimal changes</option>
-                            <option value="balanced" {% if review_style == 'balanced' %}selected{% endif %}>Balanced - Moderate improvements</option>
-                            <option value="creative" {% if review_style == 'creative' %}selected{% endif %}>Creative - Significant enhancements</option>
+                            <option value="conservative" {% if review_style == 'conservative' %}selected{% endif %}>Konservativ - Minimala ändringar</option>
+                            <option value="balanced" {% if review_style == 'balanced' %}selected{% endif %}>Balanserad - Måttliga förbättringar</option>
+                            <option value="creative" {% if review_style == 'creative' %}selected{% endif %}>Kreativ - Betydande förbättringar</option>
                         </select>
                     </div>
-                    <button type="submit" class="btn btn-primary">Save Configuration</button>
+                    <button type="submit" class="btn btn-primary">Spara konfiguration</button>
                 </form>
             </div>
         </div>

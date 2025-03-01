@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title text-center">Skapa konto</h2>
+            </div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <form method="POST" action="{{ url_for('signup') }}">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Namn</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">E-postadress</label>
+                        <input type="email" class="form-control" id="email" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Lösenord</label>
+                        <input type="password" class="form-control" id="password" name="password" required minlength="8">
+                        <div class="form-text">Minst 8 tecken, inklusive siffror och specialtecken.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password_confirm" class="form-label">Bekräfta lösenord</label>
+                        <input type="password" class="form-control" id="password_confirm" name="password_confirm" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="terms" name="terms" required>
+                        <label class="form-check-label" for="terms">Jag godkänner <a href="#" data-bs-toggle="modal" data-bs-target="#termsModal">användarvillkor</a></label>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">Skapa konto</button>
+                    </div>
+                </form>
+                
+                <div class="mt-3 text-center">
+                    <p>Har du redan ett konto? <a href="{{ url_for('login') }}">Logga in</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Terms and Conditions Modal -->
+<div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="termsModalLabel">Användarvillkor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Användarvillkor för BookTranslationPro</h6>
+                <p>Genom att använda BookTranslationPro godkänner du följande villkor:</p>
+                <ul>
+                    <li>Vi lagrar och bearbetar dina översättningar för att förbättra tjänsten</li>
+                    <li>Vi delar inte dina översättningar med tredje part utan ditt medgivande</li>
+                    <li>Du är ansvarig för att du har rätt att översätta de dokument du laddar upp</li>
+                    <li>Tjänsten får inte användas för olagliga ändamål</li>
+                </ul>
+                <p>Vi förbehåller oss rätten att ändra dessa villkor när som helst. Större ändringar kommer att meddelas via e-post.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Stäng</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

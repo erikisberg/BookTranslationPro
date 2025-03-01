@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title text-center">Min profil</h2>
+            </div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <form method="POST" action="{{ url_for('profile') }}">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Namn</label>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ current_user.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">E-postadress</label>
+                        <input type="email" class="form-control" id="email" value="{{ current_user.email }}" disabled>
+                        <div class="form-text">E-postadressen kan inte ändras.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Uppdatera profil</button>
+                </form>
+                
+                <hr class="my-4">
+                
+                <h4>Konto</h4>
+                <div class="mb-3">
+                    <p>Du kan ändra ditt lösenord genom att klicka på länken nedan.</p>
+                    <a href="{{ url_for('reset_password_request') }}" class="btn btn-outline-secondary">Ändra lösenord</a>
+                </div>
+                
+                <div class="mb-3">
+                    <h5>Inställningar</h5>
+                    <div class="list-group mb-3">
+                        <a href="{{ url_for('export_settings') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Exportinställningar</h6>
+                                <small><i class="bi bi-gear"></i></small>
+                            </div>
+                            <p class="mb-1">Anpassa filformat och utseende på dina exporterade översättningar.</p>
+                        </a>
+                        <a href="{{ url_for('assistant_config') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Assistentinställningar</h6>
+                                <small><i class="bi bi-robot"></i></small>
+                            </div>
+                            <p class="mb-1">Konfigurera hur OpenAI-assistenten granskar och förbättrar översättningar.</p>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <h5>Aktivitet</h5>
+                    <a href="{{ url_for('history') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-clock-history"></i> Se din översättningshistorik
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

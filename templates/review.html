@@ -4,42 +4,62 @@
 <div class="container">
     <div class="row">
         <div class="col-12">
-            <h2 class="mb-4">Translation Review</h2>
+            <h2 class="mb-4">Granska översättningar</h2>
             {% if translations %}
             <form method="POST" action="{{ url_for('save_reviews') }}">
                 {% for translation in translations %}
-                <div class="card mb-4">
+                <div class="card mb-4 translation-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="badge bg-primary">Sida {{ loop.index }} av {{ translations|length }}</span>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary toggle-preview" data-id="{{ translation.id }}">
+                                Förhandsvisning
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary fullscreen-btn" data-id="{{ translation.id }}">
+                                <i class="bi bi-arrows-fullscreen"></i> Helskärm
+                            </button>
+                        </div>
+                    </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-6">
-                                <h5>Original Text</h5>
-                                <div class="original-text mb-3 p-3 bg-light">
+                                <h5>Originaltext</h5>
+                                <div class="original-text mb-3 p-3 bg-light" id="original_{{ translation.id }}" style="height: 250px; overflow-y: auto;">
                                     {{ translation.original_text }}
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <h5>Translation</h5>
+                                <h5>Översättning</h5>
                                 <textarea 
                                     name="translation_{{ translation.id }}" 
-                                    class="form-control mb-3"
-                                    rows="5"
+                                    id="translation_{{ translation.id }}"
+                                    class="form-control mb-3 translation-textarea"
+                                    rows="10"
+                                    style="height: 250px; resize: vertical;"
                                 >{{ translation.translated_text }}</textarea>
                             </div>
                         </div>
-                        <div class="mt-2">
-                            <small class="text-muted">Segment {{ loop.index }} of {{ translations|length }}</small>
+                        
+                        <div class="preview-container d-none mt-3 p-3 border rounded" id="preview_{{ translation.id }}">
+                            <h5>Förhandsvisning</h5>
+                            <div class="preview-content"></div>
+                        </div>
+                        
+                        <div class="diff-view d-none mt-3" id="diff_{{ translation.id }}">
+                            <h5>Jämförelse</h5>
+                            <div class="diff-content p-3 border rounded"></div>
                         </div>
                     </div>
                 </div>
                 {% endfor %}
                 <div class="d-flex justify-content-between">
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                    <a href="{{ url_for('download_final') }}" class="btn btn-success">Download Final PDF</a>
+                    <button type="submit" class="btn btn-primary">Spara ändringar</button>
+                    <a href="{{ url_for('download_final') }}" class="btn btn-success">Ladda ner översatt PDF</a>
                 </div>
             </form>
             {% else %}
             <div class="alert alert-info">
-                No translations available for review. Please upload a PDF first.
+                Inga översättningar tillgängliga för granskning. Vänligen ladda upp en PDF-fil först.
             </div>
             {% endif %}
         </div>

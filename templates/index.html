@@ -5,19 +5,25 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title text-center">PDF Translation Tool</h2>
+                <h2 class="card-title text-center">PDF-översättningsverktyg</h2>
             </div>
             <div class="card-body">
                 <div class="upload-container text-center">
                     <form id="uploadForm" class="mb-4">
                         <div class="mb-3">
-                            <label for="pdfFile" class="form-label">Select PDF file to translate</label>
+                            <label for="pdfFile" class="form-label">Välj PDF-fil att översätta</label>
                             <input type="file" class="form-control" id="pdfFile" accept=".pdf" required>
                         </div>
-                        <button type="submit" class="btn btn-primary" id="uploadButton">
-                            <span class="button-text">Translate PDF</span>
-                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                        </button>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="skipOpenAI" name="skipOpenAI">
+                            <label class="form-check-label" for="skipOpenAI">Hoppa över OpenAI-granskning (snabbare, använder endast DeepL-översättning)</label>
+                        </div>
+                        <div class="d-grid gap-2 col-md-6 mx-auto">
+                            <button type="submit" class="btn btn-primary" id="uploadButton">
+                                <span class="button-text">Översätt PDF</span>
+                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                        </div>
                     </form>
                 </div>
 
