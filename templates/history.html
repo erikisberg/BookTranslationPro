@@ -110,7 +110,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Avbryt</button>
-                <form method="POST" action="{{ url_for('delete_translation') }}" id="delete-form">
+                <form method="POST" action="{{ url_for('delete_translation_route') }}" id="delete-form">
                     <input type="hidden" name="translation_id" id="translation-id-input">
                     <button type="submit" class="btn btn-danger">Ta bort</button>
                 </form>
