@@ -114,43 +114,14 @@ def save_reviews():
             return json_error(str(e), 500)
         return redirect(url_for('review'))
 
-@app.route('/download-final')
-def download_final():
-    translations = session.get('translations', [])
-    if not translations:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_error('No translations available', 400)
-        return redirect(url_for('index'))
-
-    try:
-        # Combine all reviewed translations
-        final_text = '\n\n'.join(t['translated_text'] for t in translations)
-
-        # Create final PDF
-        output_path = create_pdf_with_text(final_text)
-
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name='final_translation.pdf'
-        )
-    except Exception as e:
-        logger.error(f"Error creating final PDF: {str(e)}")
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_error(str(e), 500)
-        return redirect(url_for('index'))
-    finally:
-        # Cleanup
-        if 'output_path' in locals():
-            try:
-                os.remove(output_path)
-            except:
-                pass
-
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
         return redirect(url_for('index'))
+
+    # Log request details for debugging
+    logger.debug(f"Request headers: {dict(request.headers)}")
+    logger.debug(f"Request files: {request.files}")
 
     if 'file' not in request.files:
         return json_error('No file provided')
@@ -187,6 +158,8 @@ def upload_file():
         # Store translations in session for review
         session['translations'] = translations
 
+        # Log successful response
+        logger.debug("Successfully processed file, returning JSON response")
         return json_response({
             'success': True,
             'redirect': url_for('review')
@@ -201,6 +174,35 @@ def upload_file():
         if 'filepath' in locals():
             try:
                 os.remove(filepath)
+            except:
+                pass
+
+@app.route('/download-final')
+def download_final():
+    translations = session.get('translations', [])
+    if not translations:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error('No translations available', 400)
+        return redirect(url_for('index'))
+
+    try:
+        final_text = '\n\n'.join(t['translated_text'] for t in translations)
+        output_path = create_pdf_with_text(final_text)
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name='final_translation.pdf'
+        )
+    except Exception as e:
+        logger.error(f"Error creating final PDF: {str(e)}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error(str(e), 500)
+        return redirect(url_for('index'))
+    finally:
+        if 'output_path' in locals():
+            try:
+                os.remove(output_path)
             except:
                 pass
 

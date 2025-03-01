@@ -15,17 +15,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const spinner = uploadButton ? uploadButton.querySelector('.spinner-border') : null;
 
     async function handleResponse(response) {
-        // Check if response is JSON
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            throw new Error('Server error: Invalid response format');
-        }
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+        console.log('Response status:', response.status);
 
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.error || 'Operation failed');
+        try {
+            const data = await response.json();
+            console.log('Response data:', data);
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Operation failed');
+            }
+            return data;
+        } catch (error) {
+            console.error('Error parsing response:', error);
+            throw new Error('Server error: Could not process response');
         }
-        return data;
     }
 
     uploadForm.addEventListener('submit', async function(e) {
@@ -87,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
         } catch (error) {
+            console.error('Upload error:', error);
             showError(error.message);
             resetForm();
         }
@@ -130,6 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
             } catch (error) {
+                console.error('Review error:', error);
                 alert('Error saving reviews: ' + error.message);
             }
         });
