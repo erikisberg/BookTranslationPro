@@ -553,3 +553,372 @@ def apply_glossary_to_text(text, glossary_id):
     except Exception as e:
         logger.error(f"Error applying glossary to text: {e}")
         return text
+        
+# Document Management Functions
+
+def get_user_folders(user_id, limit=50, offset=0):
+    """Fetch user's document folders"""
+    try:
+        logger.debug(f"Fetching folders for user_id: {user_id}")
+        response = supabase.table('document_folders').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(limit).offset(offset).execute()
+        if hasattr(response, 'data'):
+            logger.debug(f"Found {len(response.data)} folders for user_id: {user_id}")
+            return response.data
+        logger.warning(f"No data returned when fetching folders for user_id: {user_id}")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching folders: {e}")
+        return []
+
+def get_folder(user_id, folder_id):
+    """Fetch a specific folder"""
+    try:
+        logger.debug(f"Fetching folder {folder_id} for user_id: {user_id}")
+        response = supabase.table('document_folders').select('*').eq('id', folder_id).eq('user_id', user_id).limit(1).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        logger.warning(f"No folder found with id: {folder_id} for user_id: {user_id}")
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching folder: {e}")
+        return None
+
+def create_folder(user_id, folder_data):
+    """Create a new folder"""
+    try:
+        # Ensure required fields
+        if not folder_data.get('name'):
+            logger.error("Folder name is required")
+            return None
+            
+        data = {
+            'id': str(uuid.uuid4()),
+            'user_id': user_id,
+            'name': folder_data.get('name'),
+            'description': folder_data.get('description', ''),
+            'color': folder_data.get('color', '#3498db'),  # Default blue color
+            'created_at': 'now()',
+            'updated_at': 'now()'
+        }
+        
+        logger.debug(f"Creating new folder for user_id: {user_id}")
+        response = supabase.table('document_folders').insert(data).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Folder created successfully: {response.data[0]['id']}")
+            return response.data[0]
+        logger.warning("Failed to create folder")
+        return None
+    except Exception as e:
+        logger.error(f"Error creating folder: {e}")
+        return None
+
+def update_folder(user_id, folder_id, folder_data):
+    """Update an existing folder"""
+    try:
+        # Check if folder exists
+        if not get_folder(user_id, folder_id):
+            logger.warning(f"Folder not found: {folder_id}")
+            return None
+            
+        update_data = {
+            'name': folder_data.get('name'),
+            'description': folder_data.get('description'),
+            'color': folder_data.get('color'),
+            'updated_at': 'now()'
+        }
+        
+        # Remove any None values
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+        
+        logger.debug(f"Updating folder {folder_id} for user_id: {user_id}")
+        response = supabase.table('document_folders').update(update_data).eq('id', folder_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Folder updated successfully: {folder_id}")
+            return response.data[0]
+        logger.warning(f"Failed to update folder: {folder_id}")
+        return None
+    except Exception as e:
+        logger.error(f"Error updating folder: {e}")
+        return None
+
+def delete_folder(user_id, folder_id):
+    """Delete a folder"""
+    try:
+        # First update documents to remove folder association
+        logger.debug(f"Updating documents for deleted folder {folder_id}")
+        supabase.table('documents').update({
+            'folder_id': None,
+            'updated_at': 'now()'
+        }).eq('folder_id', folder_id).eq('user_id', user_id).execute()
+        
+        # Then delete the folder
+        logger.debug(f"Deleting folder {folder_id} for user_id: {user_id}")
+        response = supabase.table('document_folders').delete().eq('id', folder_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data'):
+            logger.info(f"Folder deleted successfully: {folder_id}")
+            return True
+        logger.warning(f"Failed to delete folder: {folder_id}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting folder: {e}")
+        return False
+
+def get_user_documents(user_id, folder_id=None, limit=50, offset=0):
+    """Fetch user's documents, optionally filtered by folder"""
+    try:
+        logger.debug(f"Fetching documents for user_id: {user_id}")
+        query = supabase.table('documents').select('*').eq('user_id', user_id)
+        
+        # Filter by folder if specified
+        if folder_id:
+            query = query.eq('folder_id', folder_id)
+            
+        response = query.order('created_at', desc=True).limit(limit).offset(offset).execute()
+        
+        if hasattr(response, 'data'):
+            logger.debug(f"Found {len(response.data)} documents for user_id: {user_id}")
+            return response.data
+        logger.warning(f"No data returned when fetching documents for user_id: {user_id}")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching documents: {e}")
+        return []
+
+def get_document(user_id, document_id):
+    """Fetch a specific document"""
+    try:
+        logger.debug(f"Fetching document {document_id} for user_id: {user_id}")
+        response = supabase.table('documents').select('*').eq('id', document_id).eq('user_id', user_id).limit(1).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        logger.warning(f"No document found with id: {document_id} for user_id: {user_id}")
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching document: {e}")
+        return None
+
+def create_document(user_id, document_data):
+    """Create a new document"""
+    try:
+        # Ensure required fields
+        if not document_data.get('title'):
+            logger.error("Document title is required")
+            return None
+            
+        data = {
+            'id': str(uuid.uuid4()),
+            'user_id': user_id,
+            'title': document_data.get('title'),
+            'description': document_data.get('description', ''),
+            'original_filename': document_data.get('original_filename', ''),
+            'file_type': document_data.get('file_type', ''),
+            'folder_id': document_data.get('folder_id'),
+            'source_language': document_data.get('source_language', ''),
+            'target_language': document_data.get('target_language', ''),
+            'word_count': document_data.get('word_count', 0),
+            'version': 1,  # Initial version
+            'tags': document_data.get('tags', []),
+            'status': document_data.get('status', 'completed'),
+            'settings': document_data.get('settings', {}),
+            'created_at': 'now()',
+            'updated_at': 'now()'
+        }
+        
+        logger.debug(f"Creating new document for user_id: {user_id}")
+        response = supabase.table('documents').insert(data).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            document_id = response.data[0]['id']
+            logger.info(f"Document created successfully: {document_id}")
+            
+            # If content is provided, save it to storage
+            source_content = document_data.get('source_content')
+            translated_content = document_data.get('translated_content')
+            
+            if source_content:
+                save_document_content(user_id, document_id, source_content, content_type='source')
+                
+            if translated_content:
+                save_document_content(user_id, document_id, translated_content, content_type='translated')
+            
+            return response.data[0]
+        logger.warning("Failed to create document")
+        return None
+    except Exception as e:
+        logger.error(f"Error creating document: {e}")
+        return None
+
+def update_document(user_id, document_id, document_data, create_new_version=False):
+    """Update an existing document, optionally creating a new version"""
+    try:
+        # Get current document
+        current_doc = get_document(user_id, document_id)
+        if not current_doc:
+            logger.warning(f"Document not found: {document_id}")
+            return None
+        
+        if create_new_version:
+            # Create a new version by copying the document with an incremented version number
+            new_version = current_doc.get('version', 1) + 1
+            
+            # Create historical record for old version
+            history_data = current_doc.copy()
+            history_data['document_id'] = document_id
+            history_data['id'] = str(uuid.uuid4())
+            history_data['created_at'] = 'now()'
+            
+            # Save historical version
+            history_response = supabase.table('document_versions').insert(history_data).execute()
+            if not (hasattr(history_response, 'data') and history_response.data):
+                logger.warning(f"Failed to create version history for document: {document_id}")
+            
+            # Update document with new version number
+            document_data['version'] = new_version
+        
+        # Prepare update data
+        update_data = {k: v for k, v in document_data.items() if k not in ['id', 'user_id', 'created_at']}
+        update_data['updated_at'] = 'now()'
+        
+        logger.debug(f"Updating document {document_id} for user_id: {user_id}")
+        response = supabase.table('documents').update(update_data).eq('id', document_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Document updated successfully: {document_id}")
+            
+            # If content is provided, save it to storage
+            source_content = document_data.get('source_content')
+            translated_content = document_data.get('translated_content')
+            
+            if source_content:
+                save_document_content(user_id, document_id, source_content, content_type='source')
+                
+            if translated_content:
+                save_document_content(user_id, document_id, translated_content, content_type='translated')
+                
+            return response.data[0]
+        logger.warning(f"Failed to update document: {document_id}")
+        return None
+    except Exception as e:
+        logger.error(f"Error updating document: {e}")
+        return None
+
+def delete_document(user_id, document_id):
+    """Delete a document and all its versions/content"""
+    try:
+        # First delete all version history
+        logger.debug(f"Deleting version history for document {document_id}")
+        supabase.table('document_versions').delete().eq('document_id', document_id).execute()
+        
+        # Delete document content from storage
+        try:
+            # Source content
+            source_path = f"documents/{user_id}/{document_id}/source"
+            supabase.storage.from_('documents').remove([source_path])
+        except:
+            logger.warning(f"Could not delete source content for document {document_id}")
+            
+        try:
+            # Translated content
+            translated_path = f"documents/{user_id}/{document_id}/translated"
+            supabase.storage.from_('documents').remove([translated_path])
+        except:
+            logger.warning(f"Could not delete translated content for document {document_id}")
+        
+        # Then delete the document
+        logger.debug(f"Deleting document {document_id} for user_id: {user_id}")
+        response = supabase.table('documents').delete().eq('id', document_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data'):
+            logger.info(f"Document deleted successfully: {document_id}")
+            return True
+        logger.warning(f"Failed to delete document: {document_id}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting document: {e}")
+        return False
+
+def get_document_versions(user_id, document_id, limit=20, offset=0):
+    """Get version history for a document"""
+    try:
+        logger.debug(f"Fetching version history for document {document_id}")
+        
+        # First get the current document
+        current = get_document(user_id, document_id)
+        if not current:
+            logger.warning(f"Document not found: {document_id}")
+            return []
+            
+        # Then get historical versions
+        response = supabase.table('document_versions').select('*').eq('document_id', document_id).order('version', desc=True).limit(limit).offset(offset).execute()
+        
+        versions = []
+        if hasattr(response, 'data'):
+            versions = response.data
+            
+        # Add the current version at the beginning
+        if current:
+            # Mark as current version
+            current['is_current'] = True
+            versions.insert(0, current)
+            
+        logger.debug(f"Found {len(versions)} versions for document {document_id}")
+        return versions
+    except Exception as e:
+        logger.error(f"Error fetching document versions: {e}")
+        return []
+
+def save_document_content(user_id, document_id, content, content_type='translated'):
+    """Save document content to storage"""
+    try:
+        if not content:
+            logger.warning(f"Empty content for document {document_id}, not saving")
+            return False
+            
+        # Create path for the content
+        storage_path = f"documents/{user_id}/{document_id}/{content_type}"
+        
+        # Convert content to bytes if it's not already
+        if isinstance(content, str):
+            content = content.encode('utf-8')
+        
+        # Upload to storage
+        logger.debug(f"Saving {content_type} content for document {document_id}")
+        storage_response = supabase.storage.from_('documents').upload(
+            storage_path,
+            content,
+            file_options={"content-type": "text/plain", "upsert": True}
+        )
+        
+        logger.info(f"Content saved successfully for document {document_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving document content: {e}")
+        return False
+
+def get_document_content(user_id, document_id, content_type='translated', version_id=None):
+    """Get document content from storage"""
+    try:
+        # If version_id is provided, get content from version history
+        if version_id:
+            # Get the version
+            version_response = supabase.table('document_versions').select('*').eq('id', version_id).eq('document_id', document_id).limit(1).execute()
+            if hasattr(version_response, 'data') and version_response.data:
+                # This would require storing content in the version table
+                # For this implementation, we're assuming content is stored in storage
+                pass
+        
+        # Get content from storage
+        storage_path = f"documents/{user_id}/{document_id}/{content_type}"
+        
+        try:
+            response = supabase.storage.from_('documents').download(storage_path)
+            return response.decode('utf-8')
+        except Exception as storage_error:
+            logger.error(f"Error downloading document content: {storage_error}")
+            return None
+    except Exception as e:
+        logger.error(f"Error getting document content: {e}")
+        return None

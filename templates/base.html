@@ -51,6 +51,11 @@
                             <i class="bi bi-clock-history"></i> Historik
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'documents' or request.endpoint == 'documents_folder' %}active{% endif %}" href="{{ url_for('documents') }}">
+                            <i class="bi bi-folder2-open"></i> Dokument
+                        </a>
+                    </li>
                     {% endif %}
                 </ul>
                 

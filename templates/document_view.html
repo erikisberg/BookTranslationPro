@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }}{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{{ url_for('documents') }}">Documents</a></li>
+                    {% if document.folder_id %}
+                        <li class="breadcrumb-item">
+                            <a href="{{ url_for('documents_folder', folder_id=document.folder_id) }}">{{ folder_name }}</a>
+                        </li>
+                    {% endif %}
+                    <li class="breadcrumb-item active">{{ document.title }}</li>
+                </ol>
+            </nav>
+        </div>
+        <div>
+            <div class="btn-group">
+                <a href="{{ url_for('edit_document', document_id=document.id) }}" class="btn btn-outline-primary">
+                    <i class="bi bi-pencil"></i> Edit
+                </a>
+                <a href="{{ url_for('download_document', document_id=document.id) }}" class="btn btn-outline-primary">
+                    <i class="bi bi-download"></i> Download
+                </a>
+                <button type="button" class="btn btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span class="visually-hidden">More</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="{{ url_for('document_versions', document_id=document.id) }}"><i class="bi bi-clock-history"></i> View Versions</a></li>
+                    <li><a class="dropdown-item" href="#" id="moveDocumentBtn"><i class="bi bi-folder-symlink"></i> Move to Folder</a></li>
+                    <li><a class="dropdown-item" href="#" id="createVersionBtn"><i class="bi bi-plus-circle"></i> Create New Version</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item text-danger" href="#" id="deleteDocumentBtn"><i class="bi bi-trash"></i> Delete Document</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Document Details</h5>
+                </div>
+                <div class="card-body">
+                    <h4>{{ document.title }}</h4>
+                    {% if document.description %}
+                        <p class="text-muted">{{ document.description }}</p>
+                    {% endif %}
+                    
+                    <div class="metadata mt-4">
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">File:</div>
+                            <div class="col-8">{{ document.original_filename }}</div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Languages:</div>
+                            <div class="col-8">
+                                <span class="badge bg-light text-dark">{{ document.source_language }}</span>
+                                <i class="bi bi-arrow-right"></i>
+                                <span class="badge bg-light text-dark">{{ document.target_language }}</span>
+                            </div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Words:</div>
+                            <div class="col-8">{{ document.word_count }}</div>
+                        </div>
+                        {% if document.version %}
+                            <div class="row mb-2">
+                                <div class="col-4 text-muted">Version:</div>
+                                <div class="col-8">
+                                    <span class="badge bg-info">v{{ document.version }}</span>
+                                </div>
+                            </div>
+                        {% endif %}
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Created:</div>
+                            <div class="col-8">{{ document.created_at|datetime }}</div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Updated:</div>
+                            <div class="col-8">{{ document.updated_at|datetime }}</div>
+                        </div>
+                        {% if document.folder_id %}
+                            <div class="row mb-2">
+                                <div class="col-4 text-muted">Folder:</div>
+                                <div class="col-8">
+                                    <a href="{{ url_for('documents_folder', folder_id=document.folder_id) }}">
+                                        <i class="bi bi-folder-fill" style="color: {{ folder_color }};"></i>
+                                        {{ folder_name }}
+                                    </a>
+                                </div>
+                            </div>
+                        {% endif %}
+                        {% if document.tags and document.tags|length > 0 %}
+                            <div class="row mb-2">
+                                <div class="col-4 text-muted">Tags:</div>
+                                <div class="col-8">
+                                    {% for tag in document.tags %}
+                                        <span class="badge bg-secondary">{{ tag }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Document Content</h5>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="viewMode" id="viewSource" autocomplete="off">
+                        <label class="btn btn-outline-secondary" for="viewSource">Source</label>
+                        
+                        <input type="radio" class="btn-check" name="viewMode" id="viewSideBySide" autocomplete="off" checked>
+                        <label class="btn btn-outline-secondary" for="viewSideBySide">Side by Side</label>
+                        
+                        <input type="radio" class="btn-check" name="viewMode" id="viewTranslated" autocomplete="off">
+                        <label class="btn btn-outline-secondary" for="viewTranslated">Translated</label>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="sourceView" class="p-3 d-none">
+                        <div class="source-content">
+                            <pre class="source-text">{{ source_content }}</pre>
+                        </div>
+                    </div>
+                    
+                    <div id="translatedView" class="p-3 d-none">
+                        <div class="translated-content">
+                            <pre class="translated-text">{{ translated_content }}</pre>
+                        </div>
+                    </div>
+                    
+                    <div id="sideBySideView" class="d-flex">
+                        <div class="source-panel p-3 border-end" style="width: 50%;">
+                            <h6 class="text-muted text-center mb-3">Source ({{ document.source_language }})</h6>
+                            <pre class="source-text">{{ source_content }}</pre>
+                        </div>
+                        <div class="translated-panel p-3" style="width: 50%;">
+                            <h6 class="text-muted text-center mb-3">Translation ({{ document.target_language }})</h6>
+                            <pre class="translated-text">{{ translated_content }}</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Version History Preview -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Version History</h5>
+                    <a href="{{ url_for('document_versions', document_id=document.id) }}" class="btn btn-sm btn-outline-primary">
+                        View All Versions
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% if versions %}
+                            {% for version in versions %}
+                                <a href="{{ url_for('view_document_version', document_id=document.id, version_id=version.id) }}" 
+                                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {{ 'active' if version.is_current else '' }}">
+                                    <div>
+                                        <span class="badge bg-info me-2">v{{ version.version }}</span>
+                                        {% if version.is_current %}
+                                            <span class="badge bg-success">Current</span>
+                                        {% endif %}
+                                        <span class="ms-2">{{ version.updated_at|datetime }}</span>
+                                    </div>
+                                    <span class="text-muted small">{{ version.word_count }} words</span>
+                                </a>
+                            {% endfor %}
+                        {% else %}
+                            <div class="list-group-item text-center text-muted py-3">
+                                No version history available
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Move Document Modal -->
+<div class="modal fade" id="moveDocumentModal" tabindex="-1" aria-labelledby="moveDocumentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="moveDocumentModalLabel">Move Document</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="moveDocumentForm">
+                    <div class="mb-3">
+                        <label for="targetFolder" class="form-label">Select Destination Folder</label>
+                        <select class="form-select" id="targetFolder">
+                            <option value="">No Folder (Root)</option>
+                            {% if folders %}
+                                {% for folder in folders %}
+                                    <option value="{{ folder.id }}" {{ 'selected' if document.folder_id == folder.id else '' }}>
+                                        {{ folder.name }}
+                                    </option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="moveDocumentConfirmBtn">Move</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Version Modal -->
+<div class="modal fade" id="createVersionModal" tabindex="-1" aria-labelledby="createVersionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createVersionModalLabel">Create New Version</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Creating a new version will save the current state as version {{ document.version }} and create a new version {{ document.version + 1 }} that you can edit.</p>
+                <p>This is useful when you want to make substantial changes while keeping a history of previous versions.</p>
+                <form id="createVersionForm">
+                    <div class="mb-3">
+                        <label for="versionNotes" class="form-label">Version Notes (Optional)</label>
+                        <textarea class="form-control" id="versionNotes" rows="3" placeholder="Describe what changes you plan to make in this new version..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="createVersionConfirmBtn">Create New Version</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteConfirmModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the document "{{ document.title }}"?</p>
+                <p class="text-danger"><strong>This action cannot be undone and will delete all versions of this document.</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete Document</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize modals
+        const moveDocumentModal = new bootstrap.Modal(document.getElementById('moveDocumentModal'));
+        const createVersionModal = new bootstrap.Modal(document.getElementById('createVersionModal'));
+        const deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        
+        // View mode toggle
+        document.getElementById('viewSource').addEventListener('change', function() {
+            if (this.checked) {
+                document.getElementById('sourceView').classList.remove('d-none');
+                document.getElementById('translatedView').classList.add('d-none');
+                document.getElementById('sideBySideView').classList.add('d-none');
+            }
+        });
+        
+        document.getElementById('viewTranslated').addEventListener('change', function() {
+            if (this.checked) {
+                document.getElementById('sourceView').classList.add('d-none');
+                document.getElementById('translatedView').classList.remove('d-none');
+                document.getElementById('sideBySideView').classList.add('d-none');
+            }
+        });
+        
+        document.getElementById('viewSideBySide').addEventListener('change', function() {
+            if (this.checked) {
+                document.getElementById('sourceView').classList.add('d-none');
+                document.getElementById('translatedView').classList.add('d-none');
+                document.getElementById('sideBySideView').classList.remove('d-none');
+            }
+        });
+        
+        // Move document button
+        document.getElementById('moveDocumentBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            moveDocumentModal.show();
+        });
+        
+        // Move document confirmation
+        document.getElementById('moveDocumentConfirmBtn').addEventListener('click', function() {
+            const targetFolderId = document.getElementById('targetFolder').value;
+            
+            fetch(`/documents/{{ document.id }}/move`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    folder_id: targetFolderId || null
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Document moved successfully', 'success');
+                    
+                    // Reload the page to update the UI
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Failed to move document', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error moving document:', error);
+                showToast('Failed to move document', 'error');
+            });
+        });
+        
+        // Create version button
+        document.getElementById('createVersionBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            createVersionModal.show();
+        });
+        
+        // Create version confirmation
+        document.getElementById('createVersionConfirmBtn').addEventListener('click', function() {
+            const notes = document.getElementById('versionNotes').value;
+            
+            fetch(`/documents/{{ document.id }}/versions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    notes: notes
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'New version created successfully', 'success');
+                    
+                    // Redirect to the document view
+                    window.location.href = `/documents/${data.document_id}`;
+                } else {
+                    showToast(data.message || 'Failed to create new version', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating version:', error);
+                showToast('Failed to create new version', 'error');
+            });
+        });
+        
+        // Delete document button
+        document.getElementById('deleteDocumentBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            deleteConfirmModal.show();
+        });
+        
+        // Confirm delete button
+        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+            fetch('/documents/{{ document.id }}', {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Document deleted successfully', 'success');
+                    
+                    // Redirect to the documents page
+                    window.location.href = '/documents';
+                } else {
+                    showToast(data.message || 'Failed to delete document', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting document:', error);
+                showToast('Failed to delete document', 'error');
+            });
+        });
+        
+        // Utility function for displaying toast notifications
+        function showToast(message, type = 'info') {
+            // Use the existing toast system from base.html if available
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            } else {
+                alert(message);
+            }
+        }
+    });
+</script>
+
+<style>
+    pre.source-text, pre.translated-text {
+        white-space: pre-wrap;
+        font-family: inherit;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        margin: 0;
+    }
+    
+    #sideBySideView {
+        min-height: 400px;
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    
+    .source-panel, .translated-panel {
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}

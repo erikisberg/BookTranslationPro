@@ -144,6 +144,8 @@ LANGUAGE_CODES = {
     'DE': 'German',
     'EL': 'Greek',
     'EN': 'English',
+    'EN-GB': 'English (British)',
+    'EN-US': 'English (American)',
     'ES': 'Spanish',
     'ET': 'Estonian',
     'FI': 'Finnish',
@@ -159,6 +161,8 @@ LANGUAGE_CODES = {
     'NL': 'Dutch',
     'PL': 'Polish',
     'PT': 'Portuguese',
+    'PT-BR': 'Portuguese (Brazilian)',
+    'PT-PT': 'Portuguese (European)',
     'RO': 'Romanian',
     'RU': 'Russian',
     'SK': 'Slovak',
@@ -1110,6 +1114,84 @@ def upload_file():
         with open(translation_file, 'w') as f:
             json.dump(all_translations, f)
             
+        # Save as a document for document management
+        if len(filepaths) == 1:
+            # Single file - use its filename as the document title
+            original_filename = os.path.basename(filepaths[0])
+            title = os.path.splitext(original_filename)[0]
+            
+            # Combine all translated segments
+            translated_text = '\n\n'.join([t['translated_text'] for t in all_translations if t['status'] == 'success'])
+            source_text = '\n\n'.join([t['original_text'] for t in all_translations if t['status'] == 'success'])
+            
+            # Create document data
+            doc_data = {
+                'title': title,
+                'description': f"Translated from {original_filename}",
+                'original_filename': original_filename,
+                'file_type': os.path.splitext(original_filename)[1].lower(),
+                'source_language': source_language,
+                'target_language': target_language,
+                'word_count': len(translated_text.split()),
+                'status': 'completed',
+                'settings': {
+                    'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+                },
+                'source_content': source_text,
+                'translated_content': translated_text
+            }
+            
+            # Save document
+            try:
+                doc_result = create_document(user_id, doc_data)
+                logger.info(f"Created document with ID: {doc_result['id']}")
+            except Exception as doc_error:
+                logger.error(f"Error saving document: {str(doc_error)}")
+        else:
+            # Multiple files - create a document for each file
+            for i, filepath in enumerate(filepaths):
+                try:
+                    # Get translations for this file
+                    file_translations = [t for t in all_translations if t.get('original_file') == os.path.basename(filepath)]
+                    
+                    if not file_translations:
+                        continue
+                        
+                    # Combine translated segments
+                    translated_text = '\n\n'.join([t['translated_text'] for t in file_translations if t['status'] == 'success'])
+                    source_text = '\n\n'.join([t['original_text'] for t in file_translations if t['status'] == 'success'])
+                    
+                    # Skip if empty
+                    if not translated_text or not source_text:
+                        continue
+                    
+                    # Create document
+                    original_filename = os.path.basename(filepath)
+                    title = os.path.splitext(original_filename)[0]
+                    
+                    doc_data = {
+                        'title': title,
+                        'description': f"Translated from {original_filename}",
+                        'original_filename': original_filename,
+                        'file_type': os.path.splitext(original_filename)[1].lower(),
+                        'source_language': source_language,
+                        'target_language': target_language,
+                        'word_count': len(translated_text.split()),
+                        'status': 'completed',
+                        'settings': {
+                            'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+                        },
+                        'source_content': source_text,
+                        'translated_content': translated_text
+                    }
+                    
+                    # Save document
+                    doc_result = create_document(user_id, doc_data)
+                    logger.info(f"Created document with ID: {doc_result['id']}")
+                except Exception as doc_error:
+                    logger.error(f"Error saving document {i+1}: {str(doc_error)}")
+                    continue
+            
         # Store filenames for later - joined with comma for multiple files
         session['original_filename'] = ", ".join(original_filenames) if len(original_filenames) > 1 else original_filenames[0]
         session['file_count'] = len(original_filenames)
@@ -1905,6 +1987,721 @@ def not_found_error(e):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return json_error('Resource not found', 404)
     return render_template('404.html'), 404
+
+# Document Management Routes
+@app.route('/documents')
+@login_required
+def documents():
+    """Show all user documents"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+        
+    # Get pagination params
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    offset = (page - 1) * per_page
+    
+    # Get search params
+    search = request.args.get('search', '')
+    
+    # Get all user folders for sidebar and document count
+    folders = get_user_folders(user_id)
+    
+    # Enrich folders with document count
+    for folder in folders:
+        folder_docs = get_user_documents(user_id, folder['id'])
+        folder['document_count'] = len(folder_docs)
+    
+    # Get documents, filtered by search if provided
+    documents = get_user_documents(user_id, limit=per_page, offset=offset)
+    
+    # Simple search on backend (ideally this would be done in the database query)
+    if search:
+        documents = [d for d in documents if search.lower() in d.get('title', '').lower() or 
+                                            search.lower() in d.get('description', '').lower()]
+    
+    # Get total document count for pagination
+    total_documents = len(get_user_documents(user_id))
+    total_pages = (total_documents + per_page - 1) // per_page
+    
+    return render_template(
+        'documents.html',
+        documents=documents,
+        folders=folders,
+        current_folder=None,
+        total_documents=total_documents,
+        page=page,
+        total_pages=total_pages,
+        search=search
+    )
+
+@app.route('/documents/folders/<folder_id>')
+@login_required
+def documents_folder(folder_id):
+    """Show documents in a specific folder"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Get the folder
+    folder = get_folder(user_id, folder_id)
+    if not folder:
+        flash('Folder not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get pagination params
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    offset = (page - 1) * per_page
+    
+    # Get search params
+    search = request.args.get('search', '')
+    
+    # Get all user folders for sidebar and document count
+    folders = get_user_folders(user_id)
+    
+    # Enrich folders with document count
+    for f in folders:
+        folder_docs = get_user_documents(user_id, f['id'])
+        f['document_count'] = len(folder_docs)
+    
+    # Get documents in this folder
+    documents = get_user_documents(user_id, folder_id, limit=per_page, offset=offset)
+    
+    # Simple search on backend (ideally this would be done in the database query)
+    if search:
+        documents = [d for d in documents if search.lower() in d.get('title', '').lower() or 
+                                            search.lower() in d.get('description', '').lower()]
+    
+    # Get total document count for pagination
+    total_documents = len(get_user_documents(user_id, folder_id))
+    total_pages = (total_documents + per_page - 1) // per_page
+    
+    return render_template(
+        'documents.html',
+        documents=documents,
+        folders=folders,
+        current_folder=folder,
+        total_documents=total_documents,
+        page=page,
+        total_pages=total_pages,
+        search=search
+    )
+
+@app.route('/documents/folders', methods=['POST'])
+@login_required
+def create_folder():
+    """Create a new folder"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get folder data from request
+    data = request.json
+    if not data or not data.get('name'):
+        return json_error('Folder name is required', 400)
+    
+    # Create folder
+    result = create_folder(user_id, data)
+    if not result:
+        return json_error('Failed to create folder', 500)
+    
+    # Track in analytics
+    if posthog:
+        try:
+            posthog.capture(
+                distinct_id=user_id,
+                event='folder_created',
+                properties={
+                    'folder_id': result['id'],
+                    'folder_name': result['name']
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error tracking folder creation: {str(e)}")
+    
+    return json_response({
+        'success': True,
+        'message': 'Folder created successfully',
+        'folder': result
+    })
+
+@app.route('/documents/folders/<folder_id>', methods=['PUT'])
+@login_required
+def update_folder_route(folder_id):
+    """Update an existing folder"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get folder data from request
+    data = request.json
+    if not data:
+        return json_error('No data provided', 400)
+    
+    # Check if folder exists
+    folder = get_folder(user_id, folder_id)
+    if not folder:
+        return json_error('Folder not found', 404)
+    
+    # Update folder
+    result = update_folder(user_id, folder_id, data)
+    if not result:
+        return json_error('Failed to update folder', 500)
+    
+    return json_response({
+        'success': True,
+        'message': 'Folder updated successfully',
+        'folder': result
+    })
+
+@app.route('/documents/folders/<folder_id>', methods=['DELETE'])
+@login_required
+def delete_folder_route(folder_id):
+    """Delete a folder"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Check if folder exists
+    folder = get_folder(user_id, folder_id)
+    if not folder:
+        return json_error('Folder not found', 404)
+    
+    # Delete folder
+    result = delete_folder(user_id, folder_id)
+    if not result:
+        return json_error('Failed to delete folder', 500)
+    
+    # Track in analytics
+    if posthog:
+        try:
+            posthog.capture(
+                distinct_id=user_id,
+                event='folder_deleted',
+                properties={
+                    'folder_id': folder_id,
+                    'folder_name': folder.get('name', 'unknown')
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error tracking folder deletion: {str(e)}")
+    
+    return json_response({
+        'success': True,
+        'message': 'Folder deleted successfully'
+    })
+
+@app.route('/documents/<document_id>')
+@login_required
+def view_document(document_id):
+    """View a document"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get document content
+    source_content = get_document_content(user_id, document_id, 'source')
+    translated_content = get_document_content(user_id, document_id, 'translated')
+    
+    # Get folder details if document is in a folder
+    folder_name = None
+    folder_color = None
+    if document.get('folder_id'):
+        folder = get_folder(user_id, document['folder_id'])
+        if folder:
+            folder_name = folder.get('name', 'Unknown Folder')
+            folder_color = folder.get('color', '#3498db')
+    
+    # Get all folders for the move document modal
+    folders = get_user_folders(user_id)
+    
+    # Get recent versions for preview
+    versions = get_document_versions(user_id, document_id, limit=5)
+    
+    return render_template(
+        'document_view.html',
+        document=document,
+        source_content=source_content,
+        translated_content=translated_content,
+        folder_name=folder_name,
+        folder_color=folder_color,
+        folders=folders,
+        versions=versions
+    )
+
+@app.route('/documents/<document_id>/versions')
+@login_required
+def document_versions(document_id):
+    """View document version history"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get all versions
+    versions = get_document_versions(user_id, document_id)
+    
+    return render_template(
+        'document_versions.html',
+        document=document,
+        versions=versions
+    )
+
+@app.route('/documents/<document_id>/versions/<version_id>')
+@login_required
+def view_document_version(document_id, version_id):
+    """View a specific version of a document"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get the version
+    versions = get_document_versions(user_id, document_id)
+    version = next((v for v in versions if v.get('id') == version_id), None)
+    
+    if not version:
+        flash('Version not found', 'danger')
+        return redirect(url_for('view_document', document_id=document_id))
+    
+    # Get document content for this version
+    source_content = get_document_content(user_id, document_id, 'source', version_id)
+    translated_content = get_document_content(user_id, document_id, 'translated', version_id)
+    
+    return render_template(
+        'document_version_view.html',
+        document=document,
+        version=version,
+        source_content=source_content,
+        translated_content=translated_content,
+        versions=versions
+    )
+
+@app.route('/documents/<document_id>/versions/<version_id>/restore', methods=['POST'])
+@login_required
+def restore_document_version(document_id, version_id):
+    """Restore a previous version of a document"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Get the version
+    versions = get_document_versions(user_id, document_id)
+    version = next((v for v in versions if v.get('id') == version_id), None)
+    
+    if not version:
+        return json_error('Version not found', 404)
+    
+    # Get version content
+    source_content = get_document_content(user_id, document_id, 'source', version_id)
+    translated_content = get_document_content(user_id, document_id, 'translated', version_id)
+    
+    # Get restoration notes
+    data = request.json or {}
+    notes = data.get('notes', f"Restored from version {version.get('version')}")
+    
+    # Create a new version based on the restored content
+    update_data = {
+        'version_notes': notes,
+        'source_content': source_content,
+        'translated_content': translated_content
+    }
+    
+    result = update_document(user_id, document_id, update_data, create_new_version=True)
+    if not result:
+        return json_error('Failed to restore version', 500)
+    
+    # Track in analytics
+    if posthog:
+        try:
+            posthog.capture(
+                distinct_id=user_id,
+                event='document_version_restored',
+                properties={
+                    'document_id': document_id,
+                    'document_title': document.get('title', 'unknown'),
+                    'from_version': version.get('version'),
+                    'to_version': result.get('version')
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error tracking version restoration: {str(e)}")
+    
+    return json_response({
+        'success': True,
+        'message': f"Successfully restored version {version.get('version')} as new version {result.get('version')}",
+        'document_id': document_id,
+        'version': result.get('version')
+    })
+
+@app.route('/documents/<document_id>/versions', methods=['POST'])
+@login_required
+def create_document_version(document_id):
+    """Create a new version of a document"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Get version notes
+    data = request.json or {}
+    notes = data.get('notes', '')
+    
+    # Update the document to create a new version
+    update_data = {
+        'version_notes': notes
+    }
+    
+    result = update_document(user_id, document_id, update_data, create_new_version=True)
+    if not result:
+        return json_error('Failed to create new version', 500)
+    
+    # Track in analytics
+    if posthog:
+        try:
+            posthog.capture(
+                distinct_id=user_id,
+                event='document_version_created',
+                properties={
+                    'document_id': document_id,
+                    'document_title': document.get('title', 'unknown'),
+                    'version': result.get('version')
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error tracking version creation: {str(e)}")
+    
+    return json_response({
+        'success': True,
+        'message': 'New version created successfully',
+        'document_id': document_id,
+        'version': result.get('version')
+    })
+
+@app.route('/documents/<document_id>/edit')
+@login_required
+def edit_document(document_id):
+    """Edit a document"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get document content
+    source_content = get_document_content(user_id, document_id, 'source')
+    translated_content = get_document_content(user_id, document_id, 'translated')
+    
+    # Get all folders for selection
+    folders = get_user_folders(user_id)
+    
+    return render_template(
+        'document_edit.html',
+        document=document,
+        source_content=source_content,
+        translated_content=translated_content,
+        folders=folders,
+        languages=LANGUAGE_CODES
+    )
+
+@app.route('/documents/<document_id>', methods=['PUT'])
+@login_required
+def update_document_route(document_id):
+    """Update document details"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Get update data
+    data = request.json
+    if not data:
+        return json_error('No data provided', 400)
+    
+    # Update document
+    result = update_document(user_id, document_id, data)
+    if not result:
+        return json_error('Failed to update document', 500)
+    
+    return json_response({
+        'success': True,
+        'message': 'Document updated successfully',
+        'document': result
+    })
+
+@app.route('/documents/<document_id>/content', methods=['PUT'])
+@login_required
+def update_document_content(document_id):
+    """Update document content"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Get update data
+    data = request.json
+    if not data:
+        return json_error('No data provided', 400)
+    
+    # Save source content if provided
+    source_content = data.get('source_content')
+    if source_content is not None:
+        save_document_content(user_id, document_id, source_content, 'source')
+    
+    # Save translated content if provided
+    translated_content = data.get('translated_content')
+    if translated_content is not None:
+        save_document_content(user_id, document_id, translated_content, 'translated')
+    
+    return json_response({
+        'success': True,
+        'message': 'Document content updated successfully'
+    })
+
+@app.route('/documents/<document_id>/move', methods=['POST'])
+@login_required
+def move_document(document_id):
+    """Move a document to a different folder"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Get target folder
+    data = request.json
+    folder_id = data.get('folder_id')
+    
+    # Check if target folder exists if a folder_id is provided
+    if folder_id:
+        folder = get_folder(user_id, folder_id)
+        if not folder:
+            return json_error('Target folder not found', 404)
+    
+    # Update document folder
+    update_data = {'folder_id': folder_id}
+    result = update_document(user_id, document_id, update_data)
+    if not result:
+        return json_error('Failed to move document', 500)
+    
+    # Determine destination name for message
+    destination = "root level" if not folder_id else f"folder '{folder['name']}'"
+    
+    return json_response({
+        'success': True,
+        'message': f'Document moved to {destination} successfully'
+    })
+
+@app.route('/documents/<document_id>/download')
+@login_required
+def download_document(document_id):
+    """Download a document"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get document content
+    translated_content = get_document_content(user_id, document_id, 'translated')
+    if not translated_content:
+        flash('Document content not found', 'danger')
+        return redirect(url_for('view_document', document_id=document_id))
+    
+    # Get export settings
+    export_format = request.args.get('format', 'pdf')
+    
+    # Use the document title for the download filename
+    safe_title = ''.join(c for c in document.get('title', 'document') if c.isalnum() or c in ' _-').strip()
+    safe_title = safe_title.replace(' ', '_')
+    
+    try:
+        # Generate output based on format
+        if export_format == 'txt':
+            # Create a temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_file.name, 'w', encoding='utf-8') as f:
+                f.write(translated_content)
+            
+            return send_file(
+                temp_file.name,
+                as_attachment=True,
+                download_name=f"{safe_title}.txt",
+                mimetype='text/plain'
+            )
+        
+        elif export_format == 'docx':
+            # Get user's export settings or use defaults
+            settings = document.get('settings', {}).get('export_settings', DEFAULT_EXPORT_SETTINGS)
+            
+            output_path = create_docx_with_text(
+                translated_content,
+                font_family=settings.get('font_family', 'helvetica'),
+                font_size=settings.get('font_size', 12),
+                page_size=settings.get('page_size', 'A4'),
+                orientation=settings.get('orientation', 'portrait'),
+                margin=settings.get('margin_size', 15),
+                line_spacing=float(settings.get('line_spacing', 1.5)),
+                alignment=settings.get('alignment', 'left'),
+                include_page_numbers=settings.get('include_page_numbers', True),
+                header_text=settings.get('header_text', ''),
+                footer_text=settings.get('footer_text', '')
+            )
+            
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=f"{safe_title}.docx",
+                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+        
+        elif export_format == 'html':
+            # Get user's export settings or use defaults
+            settings = document.get('settings', {}).get('export_settings', DEFAULT_EXPORT_SETTINGS)
+            
+            output_path = create_html_with_text(
+                translated_content,
+                font_family=settings.get('font_family', 'helvetica'),
+                font_size=settings.get('font_size', 12),
+                line_spacing=float(settings.get('line_spacing', 1.5)),
+                alignment=settings.get('alignment', 'left'),
+                include_page_numbers=settings.get('include_page_numbers', True),
+                header_text=settings.get('header_text', ''),
+                footer_text=settings.get('footer_text', '')
+            )
+            
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=f"{safe_title}.html",
+                mimetype='text/html'
+            )
+        
+        else:
+            # Default to PDF
+            settings = document.get('settings', {}).get('export_settings', DEFAULT_EXPORT_SETTINGS)
+            
+            output_path = create_pdf_with_formatting(
+                translated_content,
+                font_family=settings.get('font_family', 'helvetica'),
+                font_size=settings.get('font_size', 12),
+                page_size=settings.get('page_size', 'A4'),
+                orientation=settings.get('orientation', 'portrait'),
+                margin=settings.get('margin_size', 15),
+                line_spacing=float(settings.get('line_spacing', 1.5)),
+                alignment=settings.get('alignment', 'left'),
+                include_page_numbers=settings.get('include_page_numbers', True),
+                header_text=settings.get('header_text', ''),
+                footer_text=settings.get('footer_text', '')
+            )
+            
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=f"{safe_title}.pdf",
+                mimetype='application/pdf'
+            )
+    
+    except Exception as e:
+        logger.error(f"Error creating download file: {str(e)}")
+        flash(f"Error generating document: {str(e)}", 'danger')
+        return redirect(url_for('view_document', document_id=document_id))
+        
+    finally:
+        # Clean up temporary file
+        if 'temp_file' in locals():
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+        if 'output_path' in locals():
+            try:
+                os.unlink(output_path)
+            except:
+                pass
+
+@app.route('/documents/<document_id>', methods=['DELETE'])
+@login_required
+def delete_document_route(document_id):
+    """Delete a document"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Delete document
+    result = delete_document(user_id, document_id)
+    if not result:
+        return json_error('Failed to delete document', 500)
+    
+    # Track in analytics
+    if posthog:
+        try:
+            posthog.capture(
+                distinct_id=user_id,
+                event='document_deleted',
+                properties={
+                    'document_id': document_id,
+                    'document_title': document.get('title', 'unknown')
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error tracking document deletion: {str(e)}")
+    
+    return json_response({
+        'success': True,
+        'message': 'Document deleted successfully'
+    })
 
 @app.errorhandler(500)
 def internal_server_error(e):

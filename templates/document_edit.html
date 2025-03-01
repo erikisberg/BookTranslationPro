@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ document.title }}{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{{ url_for('documents') }}">Documents</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('view_document', document_id=document.id) }}">{{ document.title }}</a></li>
+                    <li class="breadcrumb-item active">Edit</li>
+                </ol>
+            </nav>
+        </div>
+        <div>
+            <div class="btn-group">
+                <a href="{{ url_for('view_document', document_id=document.id) }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-lg"></i> Cancel
+                </a>
+                <button type="button" id="saveChangesBtn" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Document Details</h5>
+                </div>
+                <div class="card-body">
+                    <form id="documentDetailsForm">
+                        <div class="mb-3">
+                            <label for="documentTitle" class="form-label">Title</label>
+                            <input type="text" class="form-control" id="documentTitle" value="{{ document.title }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="documentDescription" class="form-label">Description (Optional)</label>
+                            <textarea class="form-control" id="documentDescription" rows="3">{{ document.description }}</textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="documentFolder" class="form-label">Folder</label>
+                            <select class="form-select" id="documentFolder">
+                                <option value="">No Folder</option>
+                                {% if folders %}
+                                    {% for folder in folders %}
+                                        <option value="{{ folder.id }}" {{ 'selected' if document.folder_id == folder.id else '' }}>
+                                            {{ folder.name }}
+                                        </option>
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="documentTags" class="form-label">Tags (Optional, comma-separated)</label>
+                            <input type="text" class="form-control" id="documentTags" value="{{ document.tags|join(',') if document.tags else '' }}">
+                            <div class="form-text">Separate tags with commas (e.g. novel, fiction, historical)</div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="sourceLanguage" class="form-label">Source Language</label>
+                                    <select class="form-select" id="sourceLanguage">
+                                        <option value="">Select language</option>
+                                        {% for code, name in languages.items() %}
+                                            <option value="{{ code }}" {{ 'selected' if document.source_language == code else '' }}>{{ name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="targetLanguage" class="form-label">Target Language</label>
+                                    <select class="form-select" id="targetLanguage">
+                                        <option value="">Select language</option>
+                                        {% for code, name in languages.items() %}
+                                            <option value="{{ code }}" {{ 'selected' if document.target_language == code else '' }}>{{ name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <div class="alert alert-info mt-4" role="alert">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <strong>Current Version: {{ document.version }}</strong>
+                        <p class="mb-0 mt-2">Editing document content will update the current version. To preserve the current version before making changes, create a new version first.</p>
+                    </div>
+                    
+                    <div class="d-grid gap-2 mt-3">
+                        <button class="btn btn-outline-secondary" id="createVersionBeforeEditBtn">
+                            <i class="bi bi-plus-circle"></i> Create New Version Before Editing
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Edit Content</h5>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline-secondary" id="revertChangesBtn">
+                            <i class="bi bi-arrow-counterclockwise"></i> Revert
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" id="analyzeTextBtn">
+                            <i class="bi bi-lightbulb"></i> Analyze
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <ul class="nav nav-tabs" id="contentTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="source-tab" data-bs-toggle="tab" data-bs-target="#source-content" type="button" role="tab" aria-controls="source-content" aria-selected="true">Source Content</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="translated-tab" data-bs-toggle="tab" data-bs-target="#translated-content" type="button" role="tab" aria-controls="translated-content" aria-selected="false">Translated Content</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content p-3" id="contentTabsContent">
+                        <div class="tab-pane fade show active" id="source-content" role="tabpanel" aria-labelledby="source-tab">
+                            <textarea class="form-control" id="sourceContentEditor" rows="15">{{ source_content }}</textarea>
+                        </div>
+                        <div class="tab-pane fade" id="translated-content" role="tabpanel" aria-labelledby="translated-tab">
+                            <textarea class="form-control" id="translatedContentEditor" rows="15">{{ translated_content }}</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Version Modal -->
+<div class="modal fade" id="createVersionModal" tabindex="-1" aria-labelledby="createVersionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createVersionModalLabel">Create New Version</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Creating a new version will save the current state as version {{ document.version }} and create a new version {{ document.version + 1 }} that you can edit.</p>
+                <p>This is useful when you want to make substantial changes while keeping a history of previous versions.</p>
+                <form id="createVersionForm">
+                    <div class="mb-3">
+                        <label for="versionNotes" class="form-label">Version Notes (Optional)</label>
+                        <textarea class="form-control" id="versionNotes" rows="3" placeholder="Describe what changes you plan to make in this new version..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="createVersionConfirmBtn">Create New Version</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Text Analysis Modal -->
+<div class="modal fade" id="textAnalysisModal" tabindex="-1" aria-labelledby="textAnalysisModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="textAnalysisModalLabel">Text Analysis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Source Text</h6>
+                        <ul class="list-group mb-3">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Characters
+                                <span class="badge bg-primary rounded-pill" id="sourceChars">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Words
+                                <span class="badge bg-primary rounded-pill" id="sourceWords">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Sentences
+                                <span class="badge bg-primary rounded-pill" id="sourceSentences">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Paragraphs
+                                <span class="badge bg-primary rounded-pill" id="sourceParagraphs">0</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Translated Text</h6>
+                        <ul class="list-group mb-3">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Characters
+                                <span class="badge bg-primary rounded-pill" id="translatedChars">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Words
+                                <span class="badge bg-primary rounded-pill" id="translatedWords">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Sentences
+                                <span class="badge bg-primary rounded-pill" id="translatedSentences">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Paragraphs
+                                <span class="badge bg-primary rounded-pill" id="translatedParagraphs">0</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info mt-3">
+                    <h6 class="mb-2">Comparison</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="progress mb-2" style="height: 25px;">
+                                <div class="progress-bar" id="wordCountComparison" role="progressbar" style="width: 50%;" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100">Word Count</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div id="wordCountDiff" class="text-center"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize modals
+        const createVersionModal = new bootstrap.Modal(document.getElementById('createVersionModal'));
+        const textAnalysisModal = new bootstrap.Modal(document.getElementById('textAnalysisModal'));
+        
+        // Original content (for revert functionality)
+        const originalSourceContent = {{ source_content|tojson }};
+        const originalTranslatedContent = {{ translated_content|tojson }};
+        
+        // Handle creating a new version before editing
+        document.getElementById('createVersionBeforeEditBtn').addEventListener('click', function() {
+            createVersionModal.show();
+        });
+        
+        // Create version confirmation
+        document.getElementById('createVersionConfirmBtn').addEventListener('click', function() {
+            const notes = document.getElementById('versionNotes').value;
+            
+            fetch('/documents/{{ document.id }}/versions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    notes: notes
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'New version created successfully', 'success');
+                    
+                    // Reload the page to update with the new version
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Failed to create new version', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating version:', error);
+                showToast('Failed to create new version', 'error');
+            });
+        });
+        
+        // Save changes button
+        document.getElementById('saveChangesBtn').addEventListener('click', function() {
+            // Validate inputs
+            const title = document.getElementById('documentTitle').value.trim();
+            if (!title) {
+                showToast('Document title is required', 'warning');
+                return;
+            }
+            
+            // Show loading state
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+            
+            // First, save document details
+            const details = {
+                title: title,
+                description: document.getElementById('documentDescription').value.trim(),
+                folder_id: document.getElementById('documentFolder').value || null,
+                source_language: document.getElementById('sourceLanguage').value,
+                target_language: document.getElementById('targetLanguage').value,
+                tags: document.getElementById('documentTags').value.split(',')
+                    .map(tag => tag.trim())
+                    .filter(tag => tag.length > 0)
+            };
+            
+            fetch('/documents/{{ document.id }}', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(details)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to save document details');
+                return response.json();
+            })
+            .then(data => {
+                // Then save document content
+                const sourceContent = document.getElementById('sourceContentEditor').value;
+                const translatedContent = document.getElementById('translatedContentEditor').value;
+                
+                return fetch('/documents/{{ document.id }}/content', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        source_content: sourceContent,
+                        translated_content: translatedContent
+                    })
+                });
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to save document content');
+                return response.json();
+            })
+            .then(data => {
+                showToast('Document saved successfully', 'success');
+                
+                // Redirect to document view
+                window.location.href = '/documents/{{ document.id }}';
+            })
+            .catch(error => {
+                console.error('Error saving document:', error);
+                showToast('Failed to save document: ' + error.message, 'error');
+                
+                // Reset button
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-save"></i> Save Changes';
+            });
+        });
+        
+        // Revert changes button
+        document.getElementById('revertChangesBtn').addEventListener('click', function() {
+            if (confirm('Are you sure you want to revert all changes to the last saved version?')) {
+                document.getElementById('sourceContentEditor').value = originalSourceContent;
+                document.getElementById('translatedContentEditor').value = originalTranslatedContent;
+                showToast('Changes reverted', 'info');
+            }
+        });
+        
+        // Text analysis
+        document.getElementById('analyzeTextBtn').addEventListener('click', function() {
+            const sourceText = document.getElementById('sourceContentEditor').value;
+            const translatedText = document.getElementById('translatedContentEditor').value;
+            
+            // Count characters
+            document.getElementById('sourceChars').textContent = sourceText.length;
+            document.getElementById('translatedChars').textContent = translatedText.length;
+            
+            // Count words
+            const sourceWords = sourceText.split(/\s+/).filter(word => word.length > 0).length;
+            const translatedWords = translatedText.split(/\s+/).filter(word => word.length > 0).length;
+            document.getElementById('sourceWords').textContent = sourceWords;
+            document.getElementById('translatedWords').textContent = translatedWords;
+            
+            // Count sentences (approximation)
+            const sourceSentences = sourceText.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+            const translatedSentences = translatedText.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+            document.getElementById('sourceSentences').textContent = sourceSentences;
+            document.getElementById('translatedSentences').textContent = translatedSentences;
+            
+            // Count paragraphs
+            const sourceParagraphs = sourceText.split(/\n+/).filter(p => p.trim().length > 0).length;
+            const translatedParagraphs = translatedText.split(/\n+/).filter(p => p.trim().length > 0).length;
+            document.getElementById('sourceParagraphs').textContent = sourceParagraphs;
+            document.getElementById('translatedParagraphs').textContent = translatedParagraphs;
+            
+            // Word count comparison
+            const wordRatio = translatedWords / Math.max(1, sourceWords);
+            const percentage = Math.round(wordRatio * 100);
+            document.getElementById('wordCountComparison').style.width = percentage + '%';
+            document.getElementById('wordCountComparison').textContent = `${percentage}%`;
+            
+            // Word count difference
+            const wordDiff = translatedWords - sourceWords;
+            const diffText = wordDiff > 0 
+                ? `+${wordDiff} words (${percentage}% more words than source)` 
+                : wordDiff < 0 
+                ? `${wordDiff} words (${percentage}% fewer words than source)` 
+                : 'Same word count as source';
+            document.getElementById('wordCountDiff').textContent = diffText;
+            document.getElementById('wordCountDiff').className = wordDiff > 0 
+                ? 'text-success' 
+                : wordDiff < 0 
+                ? 'text-danger' 
+                : 'text-muted';
+            
+            // Show the analysis modal
+            textAnalysisModal.show();
+        });
+        
+        // Utility function for displaying toast notifications
+        function showToast(message, type = 'info') {
+            // Use the existing toast system from base.html if available
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            } else {
+                alert(message);
+            }
+        }
+    });
+</script>
+
+<style>
+    textarea.form-control {
+        min-height: 400px;
+        font-family: inherit;
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+</style>
+{% endblock %}

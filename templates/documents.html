@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block title %}Document Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid my-4">
+    <div class="row">
+        <!-- Sidebar for Folders -->
+        <div class="col-md-3">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Folders</h5>
+                    <button class="btn btn-sm btn-primary" id="createFolderBtn">
+                        <i class="bi bi-folder-plus"></i> New
+                    </button>
+                </div>
+                <div class="card-body folder-list p-2">
+                    <div class="list-group" id="folderList">
+                        <a href="{{ url_for('documents') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {{ 'active' if not current_folder else '' }}">
+                            <span><i class="bi bi-files"></i> All Documents</span>
+                            <span class="badge bg-primary rounded-pill">{{ total_documents }}</span>
+                        </a>
+                        
+                        {% if folders %}
+                            {% for folder in folders %}
+                                <a href="{{ url_for('documents_folder', folder_id=folder.id) }}" 
+                                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {{ 'active' if current_folder and current_folder.id == folder.id else '' }}"
+                                   data-id="{{ folder.id }}"
+                                   data-name="{{ folder.name }}"
+                                   data-description="{{ folder.description }}"
+                                   data-color="{{ folder.color }}">
+                                    <span>
+                                        <i class="bi bi-folder-fill" style="color: {{ folder.color }};"></i>
+                                        {{ folder.name }}
+                                    </span>
+                                    <span class="badge bg-primary rounded-pill">{{ folder.document_count }}</span>
+                                </a>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    
+                    {% if not folders %}
+                        <div class="text-center text-muted mt-3">
+                            <p>No folders created yet</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Folder Details (only shows when a folder is selected) -->
+            {% if current_folder %}
+                <div class="card" id="folderDetails">
+                    <div class="card-header">
+                        <h5 class="mb-0">Folder Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="folderForm">
+                            <input type="hidden" id="folderId" value="{{ current_folder.id }}">
+                            <div class="mb-3">
+                                <label for="folderName" class="form-label">Name</label>
+                                <input type="text" class="form-control" id="folderName" value="{{ current_folder.name }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="folderDescription" class="form-label">Description</label>
+                                <textarea class="form-control" id="folderDescription" rows="2">{{ current_folder.description }}</textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="folderColor" class="form-label">Color</label>
+                                <input type="color" class="form-control form-control-color" id="folderColor" value="{{ current_folder.color }}" title="Choose folder color">
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <button type="submit" class="btn btn-primary" id="saveFolderBtn">Save Changes</button>
+                                <button type="button" class="btn btn-outline-danger" id="deleteFolderBtn">Delete Folder</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Main Content - Documents -->
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        {% if current_folder %}
+                            <i class="bi bi-folder-fill" style="color: {{ current_folder.color }};"></i>
+                            {{ current_folder.name }}
+                        {% else %}
+                            <i class="bi bi-files"></i> All Documents
+                        {% endif %}
+                    </h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="importBtn">
+                            <i class="bi bi-upload"></i> Import
+                        </button>
+                        <a href="{{ url_for('index') }}" class="btn btn-sm btn-primary">
+                            <i class="bi bi-plus"></i> New Translation
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="searchDocuments" placeholder="Search documents...">
+                            <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Document list -->
+                    {% if documents %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Title</th>
+                                        <th>Languages</th>
+                                        <th>Created</th>
+                                        <th>Version</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for doc in documents %}
+                                        <tr data-id="{{ doc.id }}">
+                                            <td>
+                                                <a href="{{ url_for('view_document', document_id=doc.id) }}" class="text-decoration-none">
+                                                    {{ doc.title }}
+                                                </a>
+                                                {% if doc.description %}
+                                                    <small class="d-block text-muted">{{ doc.description|truncate(40) }}</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-light text-dark">{{ doc.source_language }}</span>
+                                                <i class="bi bi-arrow-right"></i>
+                                                <span class="badge bg-light text-dark">{{ doc.target_language }}</span>
+                                            </td>
+                                            <td>{{ doc.created_at|datetime }}</td>
+                                            <td>
+                                                <span class="badge bg-info">v{{ doc.version }}</span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group">
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                                        Actions
+                                                    </button>
+                                                    <ul class="dropdown-menu">
+                                                        <li><a class="dropdown-item" href="{{ url_for('view_document', document_id=doc.id) }}"><i class="bi bi-eye"></i> View</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('edit_document', document_id=doc.id) }}"><i class="bi bi-pencil"></i> Edit</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('document_versions', document_id=doc.id) }}"><i class="bi bi-clock-history"></i> Versions</a></li>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('download_document', document_id=doc.id) }}"><i class="bi bi-download"></i> Download</a></li>
+                                                        <li><a class="dropdown-item move-document-btn" href="#" data-id="{{ doc.id }}"><i class="bi bi-folder-symlink"></i> Move</a></li>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li><a class="dropdown-item text-danger delete-document-btn" href="#" data-id="{{ doc.id }}"><i class="bi bi-trash"></i> Delete</a></li>
+                                                    </ul>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Pagination -->
+                        {% if total_pages > 1 %}
+                            <nav aria-label="Document pagination">
+                                <ul class="pagination justify-content-center">
+                                    <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                                        <a class="page-link" href="{{ url_for('documents_folder', folder_id=current_folder.id, page=page-1) if current_folder else url_for('documents', page=page-1) }}">Previous</a>
+                                    </li>
+                                    
+                                    {% for p in range(1, total_pages + 1) %}
+                                        <li class="page-item {{ 'active' if p == page else '' }}">
+                                            <a class="page-link" href="{{ url_for('documents_folder', folder_id=current_folder.id, page=p) if current_folder else url_for('documents', page=p) }}">{{ p }}</a>
+                                        </li>
+                                    {% endfor %}
+                                    
+                                    <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                                        <a class="page-link" href="{{ url_for('documents_folder', folder_id=current_folder.id, page=page+1) if current_folder else url_for('documents', page=page+1) }}">Next</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        {% endif %}
+                        
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-journal-text display-1 text-muted mb-3"></i>
+                            <h4 class="text-muted">No documents found</h4>
+                            {% if current_folder %}
+                                <p class="text-muted">This folder is empty. Start by translating documents and moving them here.</p>
+                            {% else %}
+                                <p class="text-muted">You haven't translated any documents yet. Get started with a new translation.</p>
+                            {% endif %}
+                            <a href="{{ url_for('index') }}" class="btn btn-primary mt-3">
+                                <i class="bi bi-plus"></i> New Translation
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Folder Modal -->
+<div class="modal fade" id="folderModal" tabindex="-1" aria-labelledby="folderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="folderModalLabel">Create New Folder</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="newFolderForm">
+                    <div class="mb-3">
+                        <label for="newFolderName" class="form-label">Folder Name</label>
+                        <input type="text" class="form-control" id="newFolderName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newFolderDescription" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="newFolderDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newFolderColor" class="form-label">Color</label>
+                        <input type="color" class="form-control form-control-color" id="newFolderColor" value="#3498db" title="Choose folder color">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="createNewFolderBtn">Create Folder</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Move Document Modal -->
+<div class="modal fade" id="moveDocumentModal" tabindex="-1" aria-labelledby="moveDocumentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="moveDocumentModalLabel">Move Document</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="moveDocumentForm">
+                    <input type="hidden" id="moveDocumentId">
+                    <div class="mb-3">
+                        <label for="targetFolder" class="form-label">Select Destination Folder</label>
+                        <select class="form-select" id="targetFolder">
+                            <option value="">No Folder (Root)</option>
+                            {% if folders %}
+                                {% for folder in folders %}
+                                    <option value="{{ folder.id }}">
+                                        {{ folder.name }}
+                                    </option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="moveDocumentConfirmBtn">Move</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteConfirmModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteConfirmMessage">Are you sure you want to delete this item? This action cannot be undone.</p>
+                <input type="hidden" id="deleteItemId">
+                <input type="hidden" id="deleteItemType">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize modals
+        const folderModal = new bootstrap.Modal(document.getElementById('folderModal'));
+        const moveDocumentModal = new bootstrap.Modal(document.getElementById('moveDocumentModal'));
+        const deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        
+        // Create new folder button
+        document.getElementById('createFolderBtn').addEventListener('click', function() {
+            document.getElementById('newFolderForm').reset();
+            document.getElementById('folderModalLabel').textContent = 'Create New Folder';
+            folderModal.show();
+        });
+        
+        // Create folder form submission
+        document.getElementById('createNewFolderBtn').addEventListener('click', function() {
+            const name = document.getElementById('newFolderName').value;
+            const description = document.getElementById('newFolderDescription').value;
+            const color = document.getElementById('newFolderColor').value;
+            
+            if (!name) {
+                showToast('Folder name is required', 'warning');
+                return;
+            }
+            
+            // Submit the form via AJAX
+            fetch('/documents/folders', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    description: description,
+                    color: color
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Folder created successfully', 'success');
+                    
+                    // Redirect to the new folder
+                    window.location.href = `/documents/folders/${data.folder.id}`;
+                } else {
+                    showToast(data.message || 'Failed to create folder', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating folder:', error);
+                showToast('Failed to create folder', 'error');
+            });
+        });
+        
+        // Update folder form submission
+        const folderForm = document.getElementById('folderForm');
+        if (folderForm) {
+            folderForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const folderId = document.getElementById('folderId').value;
+                const name = document.getElementById('folderName').value;
+                const description = document.getElementById('folderDescription').value;
+                const color = document.getElementById('folderColor').value;
+                
+                if (!name) {
+                    showToast('Folder name is required', 'warning');
+                    return;
+                }
+                
+                // Submit the form via AJAX
+                fetch(`/documents/folders/${folderId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        description: description,
+                        color: color
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showToast(data.message || 'Folder updated successfully', 'success');
+                        
+                        // Reload the page to update the UI
+                        window.location.reload();
+                    } else {
+                        showToast(data.message || 'Failed to update folder', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating folder:', error);
+                    showToast('Failed to update folder', 'error');
+                });
+            });
+        }
+        
+        // Delete folder button
+        const deleteFolderBtn = document.getElementById('deleteFolderBtn');
+        if (deleteFolderBtn) {
+            deleteFolderBtn.addEventListener('click', function() {
+                const folderId = document.getElementById('folderId').value;
+                const folderName = document.getElementById('folderName').value;
+                
+                document.getElementById('deleteItemType').value = 'folder';
+                document.getElementById('deleteItemId').value = folderId;
+                document.getElementById('deleteConfirmMessage').textContent = 
+                    `Are you sure you want to delete the folder "${folderName}"? This will NOT delete the documents inside, they will be moved to the root level.`;
+                
+                deleteConfirmModal.show();
+            });
+        }
+        
+        // Move document buttons
+        document.querySelectorAll('.move-document-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const documentId = this.getAttribute('data-id');
+                document.getElementById('moveDocumentId').value = documentId;
+                
+                // Pre-select current folder if we're in one
+                const currentFolderId = document.getElementById('folderId')?.value;
+                if (currentFolderId) {
+                    const selectEl = document.getElementById('targetFolder');
+                    for (let i = 0; i < selectEl.options.length; i++) {
+                        if (selectEl.options[i].value === currentFolderId) {
+                            selectEl.options[i].disabled = true;
+                            break;
+                        }
+                    }
+                }
+                
+                moveDocumentModal.show();
+            });
+        });
+        
+        // Move document confirmation
+        document.getElementById('moveDocumentConfirmBtn').addEventListener('click', function() {
+            const documentId = document.getElementById('moveDocumentId').value;
+            const targetFolderId = document.getElementById('targetFolder').value;
+            
+            fetch(`/documents/${documentId}/move`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    folder_id: targetFolderId || null
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Document moved successfully', 'success');
+                    
+                    // Reload the page to update the UI
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Failed to move document', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error moving document:', error);
+                showToast('Failed to move document', 'error');
+            });
+        });
+        
+        // Delete document buttons
+        document.querySelectorAll('.delete-document-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const documentId = this.getAttribute('data-id');
+                const documentTitle = this.closest('tr').querySelector('a').textContent.trim();
+                
+                document.getElementById('deleteItemType').value = 'document';
+                document.getElementById('deleteItemId').value = documentId;
+                document.getElementById('deleteConfirmMessage').textContent = 
+                    `Are you sure you want to delete the document "${documentTitle}"? This action cannot be undone.`;
+                
+                deleteConfirmModal.show();
+            });
+        });
+        
+        // Confirm delete button
+        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+            const itemType = document.getElementById('deleteItemType').value;
+            const itemId = document.getElementById('deleteItemId').value;
+            
+            let url;
+            if (itemType === 'folder') {
+                url = `/documents/folders/${itemId}`;
+            } else if (itemType === 'document') {
+                url = `/documents/${itemId}`;
+            } else {
+                showToast('Invalid item type', 'error');
+                return;
+            }
+            
+            fetch(url, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Item deleted successfully', 'success');
+                    
+                    // Redirect or reload
+                    if (itemType === 'folder') {
+                        window.location.href = '/documents';
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    showToast(data.message || 'Failed to delete item', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting item:', error);
+                showToast('Failed to delete item', 'error');
+            });
+        });
+        
+        // Search functionality
+        document.getElementById('searchBtn').addEventListener('click', function() {
+            const searchTerm = document.getElementById('searchDocuments').value.trim();
+            if (!searchTerm) return;
+            
+            // Get current folder ID if any
+            const folderId = document.getElementById('folderId')?.value;
+            const searchUrl = folderId 
+                ? `/documents/folders/${folderId}?search=${encodeURIComponent(searchTerm)}`
+                : `/documents?search=${encodeURIComponent(searchTerm)}`;
+                
+            window.location.href = searchUrl;
+        });
+        
+        // Also trigger search on Enter key
+        document.getElementById('searchDocuments').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('searchBtn').click();
+            }
+        });
+        
+        // Utility function for displaying toast notifications
+        function showToast(message, type = 'info') {
+            // Use the existing toast system from base.html if available
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            } else {
+                alert(message);
+            }
+        }
+    });
+</script>
+{% endblock %}

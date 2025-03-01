@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }} - Version History{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{{ url_for('documents') }}">Documents</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('view_document', document_id=document.id) }}">{{ document.title }}</a></li>
+                    <li class="breadcrumb-item active">Version History</li>
+                </ol>
+            </nav>
+        </div>
+        <div>
+            <a href="{{ url_for('view_document', document_id=document.id) }}" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> Back to Document
+            </a>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Document Information</h5>
+                </div>
+                <div class="card-body">
+                    <h4>{{ document.title }}</h4>
+                    {% if document.description %}
+                        <p class="text-muted">{{ document.description }}</p>
+                    {% endif %}
+                    
+                    <div class="metadata mt-4">
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Current Version:</div>
+                            <div class="col-8">
+                                <span class="badge bg-info">v{{ document.version }}</span>
+                            </div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Languages:</div>
+                            <div class="col-8">
+                                <span class="badge bg-light text-dark">{{ document.source_language }}</span>
+                                <i class="bi bi-arrow-right"></i>
+                                <span class="badge bg-light text-dark">{{ document.target_language }}</span>
+                            </div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Created:</div>
+                            <div class="col-8">{{ document.created_at|datetime }}</div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Updated:</div>
+                            <div class="col-8">{{ document.updated_at|datetime }}</div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4 text-muted">Total Versions:</div>
+                            <div class="col-8">{{ versions|length }}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 mt-4">
+                        <button class="btn btn-primary" id="createVersionBtn">
+                            <i class="bi bi-plus-circle"></i> Create New Version
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Version History</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Version</th>
+                                    <th>Created</th>
+                                    <th>Word Count</th>
+                                    <th>Notes</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if versions %}
+                                    {% for version in versions %}
+                                        <tr>
+                                            <td>
+                                                <span class="badge bg-info">v{{ version.version }}</span>
+                                                {% if version.is_current %}
+                                                    <span class="badge bg-success ms-1">Current</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ version.created_at|datetime }}</td>
+                                            <td>{{ version.word_count }}</td>
+                                            <td>
+                                                {% if version.version_notes %}
+                                                    {{ version.version_notes|truncate(30) }}
+                                                {% else %}
+                                                    <span class="text-muted">No notes</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <div class="btn-group">
+                                                    <a href="{{ url_for('view_document_version', document_id=document.id, version_id=version.id) if not version.is_current else url_for('view_document', document_id=document.id) }}" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye"></i> View
+                                                    </a>
+                                                    {% if not version.is_current %}
+                                                        <button class="btn btn-sm btn-outline-secondary restore-version-btn" data-id="{{ version.id }}" data-version="{{ version.version }}">
+                                                            <i class="bi bi-arrow-clockwise"></i>
+                                                        </button>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center py-3">
+                                            <div class="text-muted">No version history available</div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Version Modal -->
+<div class="modal fade" id="createVersionModal" tabindex="-1" aria-labelledby="createVersionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createVersionModalLabel">Create New Version</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Creating a new version will save the current state as version {{ document.version }} and create a new version {{ document.version + 1 }} that you can edit.</p>
+                <p>This is useful when you want to make substantial changes while keeping a history of previous versions.</p>
+                <form id="createVersionForm">
+                    <div class="mb-3">
+                        <label for="versionNotes" class="form-label">Version Notes (Optional)</label>
+                        <textarea class="form-control" id="versionNotes" rows="3" placeholder="Describe what changes you plan to make in this new version..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="createVersionConfirmBtn">Create New Version</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Version Modal -->
+<div class="modal fade" id="restoreVersionModal" tabindex="-1" aria-labelledby="restoreVersionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="restoreVersionModalLabel">Restore Version</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to restore version <span id="restoreVersionNumber"></span> of "{{ document.title }}"?</p>
+                <p>This will create a new version based on this historical version.</p>
+                <form id="restoreVersionForm">
+                    <input type="hidden" id="restoreVersionId">
+                    <div class="mb-3">
+                        <label for="restoreNotes" class="form-label">Restoration Notes (Optional)</label>
+                        <textarea class="form-control" id="restoreNotes" rows="3" placeholder="Add notes about why you're restoring this version..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmRestoreBtn">Restore This Version</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize modals
+        const createVersionModal = new bootstrap.Modal(document.getElementById('createVersionModal'));
+        const restoreVersionModal = new bootstrap.Modal(document.getElementById('restoreVersionModal'));
+        
+        // Create version button
+        document.getElementById('createVersionBtn').addEventListener('click', function() {
+            createVersionModal.show();
+        });
+        
+        // Create version confirmation
+        document.getElementById('createVersionConfirmBtn').addEventListener('click', function() {
+            const notes = document.getElementById('versionNotes').value;
+            
+            fetch('/documents/{{ document.id }}/versions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    notes: notes
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'New version created successfully', 'success');
+                    
+                    // Reload the page to update the version list
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Failed to create new version', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating version:', error);
+                showToast('Failed to create new version', 'error');
+            });
+        });
+        
+        // Restore version buttons
+        document.querySelectorAll('.restore-version-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const versionId = this.getAttribute('data-id');
+                const versionNumber = this.getAttribute('data-version');
+                
+                document.getElementById('restoreVersionId').value = versionId;
+                document.getElementById('restoreVersionNumber').textContent = versionNumber;
+                document.getElementById('restoreVersionModalLabel').textContent = `Restore Version ${versionNumber}`;
+                
+                restoreVersionModal.show();
+            });
+        });
+        
+        // Restore version confirmation
+        document.getElementById('confirmRestoreBtn').addEventListener('click', function() {
+            const versionId = document.getElementById('restoreVersionId').value;
+            const notes = document.getElementById('restoreNotes').value;
+            
+            fetch(`/documents/{{ document.id }}/versions/${versionId}/restore`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    notes: notes
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Version restored successfully', 'success');
+                    
+                    // Reload the page to update the version list
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Failed to restore version', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error restoring version:', error);
+                showToast('Failed to restore version', 'error');
+            });
+        });
+        
+        // Utility function for displaying toast notifications
+        function showToast(message, type = 'info') {
+            // Use the existing toast system from base.html if available
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            } else {
+                alert(message);
+            }
+        }
+    });
+</script>
+{% endblock %}
