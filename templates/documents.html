@@ -310,26 +310,49 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize modals
-        const folderModal = new bootstrap.Modal(document.getElementById('folderModal'));
-        const moveDocumentModal = new bootstrap.Modal(document.getElementById('moveDocumentModal'));
-        const deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        // Initialize modals with error handling
+        let folderModal, moveDocumentModal, deleteConfirmModal;
+        try {
+            folderModal = new bootstrap.Modal(document.getElementById('folderModal'));
+            moveDocumentModal = new bootstrap.Modal(document.getElementById('moveDocumentModal'));
+            deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+            console.log("Modals initialized successfully");
+        } catch (error) {
+            console.error("Error initializing modals:", error);
+        }
         
         // Create new folder button
-        document.getElementById('createFolderBtn').addEventListener('click', function() {
-            document.getElementById('newFolderForm').reset();
-            document.getElementById('folderModalLabel').textContent = 'Create New Folder';
-            folderModal.show();
+        const createFolderBtn = document.getElementById('createFolderBtn');
+        console.log("Create folder button:", createFolderBtn);
+        
+        createFolderBtn.addEventListener('click', function() {
+            console.log("Create folder button clicked");
+            try {
+                document.getElementById('newFolderForm').reset();
+                document.getElementById('folderModalLabel').textContent = 'Create New Folder';
+                folderModal.show();
+            } catch (error) {
+                console.error("Error showing folder modal:", error);
+                alert('Failed to open folder creation dialog');
+            }
         });
         
         // Create folder form submission
-        document.getElementById('createNewFolderBtn').addEventListener('click', function() {
-            const name = document.getElementById('newFolderName').value;
+        const createNewFolderBtn = document.getElementById('createNewFolderBtn');
+        console.log("Create new folder submit button:", createNewFolderBtn);
+        
+        createNewFolderBtn.addEventListener('click', function() {
+            console.log("Create new folder submission initiated");
+            
+            const name = document.getElementById('newFolderName').value.trim();
             const description = document.getElementById('newFolderDescription').value;
             const color = document.getElementById('newFolderColor').value;
             
+            console.log("Folder data:", {name, description, color});
+            
             if (!name) {
-                showToast('Folder name is required', 'warning');
+                console.warn("Folder creation attempted without a name");
+                alert('Folder name is required');
                 return;
             }
             
@@ -337,7 +360,8 @@
             fetch('/documents/folders', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     name: name,
@@ -346,38 +370,49 @@
                 })
             })
             .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
+                console.log("Folder creation response received:", response);
+                if (!response.ok) {
+                    console.error("Response not OK:", response.status, response.statusText);
+                    throw new Error('Server responded with ' + response.status);
+                }
                 return response.json();
             })
             .then(data => {
+                console.log("Folder creation response data:", data);
                 if (data.success) {
-                    showToast(data.message || 'Folder created successfully', 'success');
+                    alert(data.message || 'Folder created successfully');
                     
                     // Redirect to the new folder
                     window.location.href = `/documents/folders/${data.folder.id}`;
                 } else {
-                    showToast(data.message || 'Failed to create folder', 'error');
+                    alert(data.message || 'Failed to create folder');
                 }
             })
             .catch(error => {
                 console.error('Error creating folder:', error);
-                showToast('Failed to create folder', 'error');
+                alert('Failed to create folder: ' + error.message);
             });
         });
         
         // Update folder form submission
         const folderForm = document.getElementById('folderForm');
         if (folderForm) {
+            console.log("Folder edit form detected:", folderForm);
+            
             folderForm.addEventListener('submit', function(e) {
+                console.log("Folder form submitted");
                 e.preventDefault();
                 
                 const folderId = document.getElementById('folderId').value;
-                const name = document.getElementById('folderName').value;
+                const name = document.getElementById('folderName').value.trim();
                 const description = document.getElementById('folderDescription').value;
                 const color = document.getElementById('folderColor').value;
                 
+                console.log("Updating folder data:", {folderId, name, description, color});
+                
                 if (!name) {
-                    showToast('Folder name is required', 'warning');
+                    console.warn("Folder update attempted without a name");
+                    alert('Folder name is required');
                     return;
                 }
                 
@@ -385,7 +420,8 @@
                 fetch(`/documents/folders/${folderId}`, {
                     method: 'PUT',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: JSON.stringify({
                         name: name,
@@ -394,163 +430,229 @@
                     })
                 })
                 .then(response => {
-                    if (!response.ok) throw new Error('Network response was not ok');
+                    console.log("Folder update response received:", response);
+                    if (!response.ok) {
+                        console.error("Response not OK:", response.status, response.statusText);
+                        throw new Error('Server responded with ' + response.status);
+                    }
                     return response.json();
                 })
                 .then(data => {
+                    console.log("Folder update response data:", data);
                     if (data.success) {
-                        showToast(data.message || 'Folder updated successfully', 'success');
+                        alert(data.message || 'Folder updated successfully');
                         
                         // Reload the page to update the UI
                         window.location.reload();
                     } else {
-                        showToast(data.message || 'Failed to update folder', 'error');
+                        alert(data.message || 'Failed to update folder');
                     }
                 })
                 .catch(error => {
                     console.error('Error updating folder:', error);
-                    showToast('Failed to update folder', 'error');
+                    alert('Failed to update folder: ' + error.message);
                 });
             });
+            
+            // Also add a direct click handler to the Save button
+            const saveFolderBtn = document.getElementById('saveFolderBtn');
+            if (saveFolderBtn) {
+                console.log("Save folder button found:", saveFolderBtn);
+                saveFolderBtn.addEventListener('click', function(e) {
+                    console.log("Save folder button clicked");
+                    // Just trigger the form submission
+                    folderForm.dispatchEvent(new Event('submit'));
+                });
+            }
         }
         
         // Delete folder button
         const deleteFolderBtn = document.getElementById('deleteFolderBtn');
         if (deleteFolderBtn) {
+            console.log("Delete folder button detected:", deleteFolderBtn);
+            
             deleteFolderBtn.addEventListener('click', function() {
-                const folderId = document.getElementById('folderId').value;
-                const folderName = document.getElementById('folderName').value;
-                
-                document.getElementById('deleteItemType').value = 'folder';
-                document.getElementById('deleteItemId').value = folderId;
-                document.getElementById('deleteConfirmMessage').textContent = 
-                    `Are you sure you want to delete the folder "${folderName}"? This will NOT delete the documents inside, they will be moved to the root level.`;
-                
-                deleteConfirmModal.show();
+                console.log("Delete folder button clicked");
+                try {
+                    const folderId = document.getElementById('folderId').value;
+                    const folderName = document.getElementById('folderName').value;
+                    
+                    if (!folderId) {
+                        console.error("No folder ID found for deletion");
+                        return;
+                    }
+                    
+                    console.log("Preparing to delete folder:", folderId, folderName);
+                    
+                    document.getElementById('deleteItemType').value = 'folder';
+                    document.getElementById('deleteItemId').value = folderId;
+                    document.getElementById('deleteConfirmMessage').textContent = 
+                        `Are you sure you want to delete the folder "${folderName}"? This will NOT delete the documents inside, they will be moved to the root level.`;
+                    
+                    deleteConfirmModal.show();
+                } catch (error) {
+                    console.error("Error preparing folder deletion:", error);
+                    
+                    // Fallback if modal fails
+                    if (confirm("Are you sure you want to delete this folder? This will NOT delete the documents inside.")) {
+                        const folderId = document.getElementById('folderId').value;
+                        deleteItem('folder', folderId);
+                    }
+                }
             });
         }
         
         // Move document buttons
+        console.log("Setting up move document buttons");
         document.querySelectorAll('.move-document-btn').forEach(btn => {
             btn.addEventListener('click', function(e) {
+                console.log("Move document button clicked");
                 e.preventDefault();
                 
-                const documentId = this.getAttribute('data-id');
-                document.getElementById('moveDocumentId').value = documentId;
-                
-                // Pre-select current folder if we're in one
-                const currentFolderId = document.getElementById('folderId')?.value;
-                if (currentFolderId) {
-                    const selectEl = document.getElementById('targetFolder');
-                    for (let i = 0; i < selectEl.options.length; i++) {
-                        if (selectEl.options[i].value === currentFolderId) {
-                            selectEl.options[i].disabled = true;
-                            break;
+                try {
+                    const documentId = this.getAttribute('data-id');
+                    console.log("Preparing to move document ID:", documentId);
+                    
+                    document.getElementById('moveDocumentId').value = documentId;
+                    
+                    // Pre-select current folder if we're in one
+                    const currentFolderId = document.getElementById('folderId')?.value;
+                    if (currentFolderId) {
+                        const selectEl = document.getElementById('targetFolder');
+                        for (let i = 0; i < selectEl.options.length; i++) {
+                            if (selectEl.options[i].value === currentFolderId) {
+                                selectEl.options[i].disabled = true;
+                                break;
+                            }
                         }
                     }
+                    
+                    moveDocumentModal.show();
+                } catch (error) {
+                    console.error("Error preparing document move:", error);
+                    alert('Failed to open move document dialog');
                 }
-                
-                moveDocumentModal.show();
             });
         });
         
         // Move document confirmation
-        document.getElementById('moveDocumentConfirmBtn').addEventListener('click', function() {
+        const moveDocumentConfirmBtn = document.getElementById('moveDocumentConfirmBtn');
+        console.log("Move document confirm button:", moveDocumentConfirmBtn);
+        
+        moveDocumentConfirmBtn.addEventListener('click', function() {
+            console.log("Move document confirmation clicked");
+            
             const documentId = document.getElementById('moveDocumentId').value;
             const targetFolderId = document.getElementById('targetFolder').value;
+            
+            if (!documentId) {
+                console.error("Move attempted without document ID");
+                alert('Invalid document');
+                return;
+            }
+            
+            console.log("Moving document:", documentId, "to folder:", targetFolderId || "root");
             
             fetch(`/documents/${documentId}/move`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     folder_id: targetFolderId || null
                 })
             })
             .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
+                console.log("Document move response received:", response);
+                if (!response.ok) {
+                    console.error("Response not OK:", response.status, response.statusText);
+                    throw new Error('Server responded with ' + response.status);
+                }
                 return response.json();
             })
             .then(data => {
+                console.log("Document move response data:", data);
                 if (data.success) {
-                    showToast(data.message || 'Document moved successfully', 'success');
+                    alert(data.message || 'Document moved successfully');
                     
                     // Reload the page to update the UI
                     window.location.reload();
                 } else {
-                    showToast(data.message || 'Failed to move document', 'error');
+                    alert(data.message || 'Failed to move document');
                 }
             })
             .catch(error => {
                 console.error('Error moving document:', error);
-                showToast('Failed to move document', 'error');
+                alert('Failed to move document: ' + error.message);
             });
         });
         
         // Delete document buttons
+        console.log("Setting up delete document buttons");
         document.querySelectorAll('.delete-document-btn').forEach(btn => {
             btn.addEventListener('click', function(e) {
+                console.log("Delete document button clicked");
                 e.preventDefault();
                 
-                const documentId = this.getAttribute('data-id');
-                const documentTitle = this.closest('tr').querySelector('a').textContent.trim();
-                
-                document.getElementById('deleteItemType').value = 'document';
-                document.getElementById('deleteItemId').value = documentId;
-                document.getElementById('deleteConfirmMessage').textContent = 
-                    `Are you sure you want to delete the document "${documentTitle}"? This action cannot be undone.`;
-                
-                deleteConfirmModal.show();
+                try {
+                    const documentId = this.getAttribute('data-id');
+                    const documentTitle = this.closest('tr').querySelector('a').textContent.trim();
+                    
+                    console.log("Preparing to delete document:", documentId, documentTitle);
+                    
+                    document.getElementById('deleteItemType').value = 'document';
+                    document.getElementById('deleteItemId').value = documentId;
+                    document.getElementById('deleteConfirmMessage').textContent = 
+                        `Are you sure you want to delete the document "${documentTitle}"? This action cannot be undone.`;
+                    
+                    deleteConfirmModal.show();
+                } catch (error) {
+                    console.error("Error preparing document deletion:", error);
+                    
+                    // Fallback if modal fails
+                    if (confirm("Are you sure you want to delete this document? This action cannot be undone.")) {
+                        const documentId = this.getAttribute('data-id');
+                        deleteItem('document', documentId);
+                    }
+                }
             });
         });
         
         // Confirm delete button
-        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        console.log("Confirm delete button:", confirmDeleteBtn);
+        
+        confirmDeleteBtn.addEventListener('click', function() {
+            console.log("Confirm delete clicked");
             const itemType = document.getElementById('deleteItemType').value;
             const itemId = document.getElementById('deleteItemId').value;
             
-            let url;
-            if (itemType === 'folder') {
-                url = `/documents/folders/${itemId}`;
-            } else if (itemType === 'document') {
-                url = `/documents/${itemId}`;
-            } else {
-                showToast('Invalid item type', 'error');
+            console.log("Delete confirmed for", itemType, itemId);
+            
+            if (!itemType || !itemId) {
+                console.error("Missing delete parameters:", itemType, itemId);
+                showToast('Invalid delete request', 'error');
                 return;
             }
             
-            fetch(url, {
-                method: 'DELETE'
-            })
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showToast(data.message || 'Item deleted successfully', 'success');
-                    
-                    // Redirect or reload
-                    if (itemType === 'folder') {
-                        window.location.href = '/documents';
-                    } else {
-                        window.location.reload();
-                    }
-                } else {
-                    showToast(data.message || 'Failed to delete item', 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error deleting item:', error);
-                showToast('Failed to delete item', 'error');
-            });
+            deleteItem(itemType, itemId);
         });
         
         // Search functionality
-        document.getElementById('searchBtn').addEventListener('click', function() {
+        const searchBtn = document.getElementById('searchBtn');
+        console.log("Search button:", searchBtn);
+        
+        searchBtn.addEventListener('click', function() {
+            console.log("Search button clicked");
+            
             const searchTerm = document.getElementById('searchDocuments').value.trim();
-            if (!searchTerm) return;
+            if (!searchTerm) {
+                console.log("Search attempted with empty term");
+                return;
+            }
+            
+            console.log("Searching for:", searchTerm);
             
             // Get current folder ID if any
             const folderId = document.getElementById('folderId')?.value;
@@ -558,6 +660,7 @@
                 ? `/documents/folders/${folderId}?search=${encodeURIComponent(searchTerm)}`
                 : `/documents?search=${encodeURIComponent(searchTerm)}`;
                 
+            console.log("Navigating to search URL:", searchUrl);
             window.location.href = searchUrl;
         });
         
@@ -570,12 +673,77 @@
         
         // Utility function for displaying toast notifications
         function showToast(message, type = 'info') {
-            // Use the existing toast system from base.html if available
-            if (typeof window.showToast === 'function') {
-                window.showToast(message, type);
-            } else {
-                alert(message);
+            console.log(`Toast: ${message} (${type})`);
+            
+            // Always use alert for now to make sure messages are displayed
+            alert(message);
+            
+            // Try to use global showToast if available (added in main.js)
+            try {
+                if (typeof window.showToast === 'function') {
+                    window.showToast(message, type);
+                }
+            } catch (error) {
+                console.error("Error using global showToast:", error);
             }
+        }
+        
+        // Function to handle all deletes
+        function deleteItem(itemType, itemId) {
+            console.log(`deleteItem function called for ${itemType} with ID: ${itemId}`);
+            
+            if (!itemType || !itemId) {
+                console.error("Delete attempted with invalid parameters:", itemType, itemId);
+                alert('Invalid delete parameters');
+                return;
+            }
+            
+            let url;
+            if (itemType === 'folder') {
+                url = `/documents/folders/${itemId}`;
+            } else if (itemType === 'document') {
+                url = `/documents/${itemId}`;
+            } else {
+                console.error("Invalid item type for deletion:", itemType);
+                alert('Invalid item type');
+                return;
+            }
+            
+            console.log("Sending delete request to:", url);
+            
+            fetch(url, {
+                method: 'DELETE',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                console.log("Delete response received:", response);
+                if (!response.ok) {
+                    console.error("Response not OK:", response.status, response.statusText);
+                    throw new Error('Server responded with ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Delete response data:", data);
+                if (data.success) {
+                    alert(data.message || 'Item deleted successfully');
+                    
+                    // Redirect or reload
+                    if (itemType === 'folder') {
+                        window.location.href = '/documents';
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    alert(data.message || 'Failed to delete item');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting item:', error);
+                alert('Failed to delete item: ' + error.message);
+            });
         }
     });
 </script>
