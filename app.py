@@ -2812,18 +2812,51 @@ def setup_database():
             try:
                 # Try to create the documents bucket directly
                 try:
-                    # The API expects a string for the name, not a dict with options
-                    supabase.storage.create_bucket("documents", {"public": True})
-                    logger.info("Created 'documents' storage bucket")
+                    # Create bucket with public access and CORS enabled
+                    supabase.storage.create_bucket(
+                        "documents", 
+                        {"public": True, 
+                         "file_size_limit": 52428800,
+                         "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
+                                               "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                        }
+                    )
+                    
+                    # Set CORS policy for the bucket
+                    try:
+                        # This is the format for setting CORS policy via the Admin API
+                        cors_config = {
+                            "origins": ["*"],
+                            "methods": ["GET", "POST", "PUT", "DELETE"],
+                            "headers": ["*"],
+                            "maxAgeSeconds": 3600
+                        }
+                        # Note: This might require a direct SQL query or Admin API access
+                        # For now, log that the proper CORS config needs to be set in dashboard
+                        logger.info("CORS policy needs to be set in Supabase dashboard for 'documents' bucket")
+                    except Exception as cors_error:
+                        logger.error(f"Error setting CORS policy: {cors_error}")
+                        
+                    logger.info("Created 'documents' storage bucket with public access")
                 except Exception as bucket_exists_error:
                     # Bucket might already exist, which is fine
                     if "already exists" in str(bucket_exists_error).lower():
                         logger.info("'documents' bucket already exists")
-                        # Make sure bucket is public
+                        # Make sure bucket is public with proper settings
                         try:
-                            # Update bucket to be public
-                            supabase.storage.update_bucket("documents", {"public": True})
-                            logger.info("Updated 'documents' bucket to be public")
+                            # Update bucket to be public with proper configs
+                            supabase.storage.update_bucket(
+                                "documents", 
+                                {"public": True,
+                                 "file_size_limit": 52428800,
+                                 "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
+                                                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                                }
+                            )
+                            logger.info("Updated 'documents' bucket to be public with proper settings")
+                            
+                            # Remind about CORS configuration
+                            logger.info("Note: CORS policy may need to be updated in Supabase dashboard for 'documents' bucket")
                         except Exception as update_error:
                             logger.error(f"Error updating 'documents' bucket: {update_error}")
                     else:

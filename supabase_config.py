@@ -902,7 +902,7 @@ def save_document_content(user_id, document_id, content, content_type='translate
                 supabase.storage.from_('documents').upload(
                     placeholder_path,
                     placeholder_content,
-                    {"content-type": "text/plain", "upsert": "true"}
+                    {"contentType": "text/plain", "upsert": "true", "cacheControl": "3600"}
                 )
                 logger.debug(f"Created directory for document {document_id}")
             except Exception as create_dir_error:
@@ -914,7 +914,7 @@ def save_document_content(user_id, document_id, content, content_type='translate
         storage_response = supabase.storage.from_('documents').upload(
             storage_path,
             content,
-            {"content-type": "text/plain", "upsert": "true"}
+            {"contentType": "text/plain", "upsert": "true", "cacheControl": "3600"}
         )
         
         logger.info(f"Content saved successfully for document {document_id}")

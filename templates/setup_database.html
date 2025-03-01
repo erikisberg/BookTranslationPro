@@ -64,6 +64,24 @@
                                 </li>
                             </ul>
                         </div>
+                        
+                        <div class="mt-4">
+                            <h5>Storage Configuration</h5>
+                            <div class="alert alert-info">
+                                <p><strong>Important:</strong> If you're experiencing storage access issues, you may need to configure CORS settings in the Supabase dashboard:</p>
+                                <ol>
+                                    <li>Go to the Supabase dashboard for your project</li>
+                                    <li>Navigate to Storage → Policies</li>
+                                    <li>For the "documents" bucket, ensure it has:</li>
+                                    <ul>
+                                        <li>Public access enabled</li>
+                                        <li>CORS configured to allow requests from your domain</li>
+                                        <li>Appropriate permissions policies</li>
+                                    </ul>
+                                </ol>
+                                <p>For quick CORS configuration, add the following origin: <code>*</code> (to allow all domains)</p>
+                            </div>
+                        </div>
                     {% endif %}
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
