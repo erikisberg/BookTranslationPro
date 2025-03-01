@@ -355,7 +355,7 @@ Var särskilt uppmärksam på:
 <div class="modal fade" id="editAssistantModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('save_assistant_route') }}">
+            <form method="POST" action="{{ url_for('save_assistant_route') }}" id="editAssistantForm">
                 <input type="hidden" id="edit_id" name="id">
                 <div class="modal-header">
                     <h5 class="modal-title">Redigera assistent</h5>
@@ -413,6 +413,22 @@ Var särskilt uppmärksam på:
         </div>
     </div>
 </div>
+
+<!-- Hidden div to store assistant data -->
+<div id="assistantData" class="d-none">
+{% if assistants %}
+    {% for assistant in assistants %}
+    <div 
+        data-id="{{ assistant.id }}" 
+        data-name="{{ assistant.name }}" 
+        data-assistant-id="{{ assistant.assistant_id }}" 
+        data-author="{{ assistant.author }}" 
+        data-genre="{{ assistant.genre }}" 
+        data-instructions="{{ assistant.instructions }}"
+    ></div>
+    {% endfor %}
+{% endif %}
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -442,20 +458,57 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Fill edit modal with assistant data
+    // Alternative implementation - use data attributes from stored divs
     const editLinks = document.querySelectorAll('.edit-assistant');
     editLinks.forEach(link => {
         link.addEventListener('click', function() {
-            const assistant = JSON.parse(this.getAttribute('data-assistant'));
-            
-            // Fill form fields
-            document.getElementById('edit_id').value = assistant.id;
-            document.getElementById('edit_name').value = assistant.name;
-            document.getElementById('edit_assistant_id').value = assistant.assistant_id;
-            document.getElementById('display_assistant_id').textContent = assistant.assistant_id;
-            document.getElementById('edit_author').value = assistant.author;
-            document.getElementById('edit_genre').value = assistant.genre;
-            document.getElementById('edit_instructions').value = assistant.instructions;
+            try {
+                // Get ID from the data attribute
+                const assistant = JSON.parse(this.getAttribute('data-assistant'));
+                const assistantId = assistant.id;
+                
+                console.log("Looking for assistant with ID:", assistantId);
+                
+                // Get data from hidden storage div
+                const dataDiv = document.querySelector(`#assistantData div[data-id="${assistantId}"]`);
+                
+                if (dataDiv) {
+                    console.log("Found assistant data div:", dataDiv);
+                    
+                    // Fill form fields from data attributes
+                    document.getElementById('edit_id').value = dataDiv.getAttribute('data-id');
+                    document.getElementById('edit_name').value = dataDiv.getAttribute('data-name');
+                    document.getElementById('edit_assistant_id').value = dataDiv.getAttribute('data-assistant-id');
+                    document.getElementById('display_assistant_id').textContent = dataDiv.getAttribute('data-assistant-id');
+                    document.getElementById('edit_author').value = dataDiv.getAttribute('data-author');
+                    document.getElementById('edit_genre').value = dataDiv.getAttribute('data-genre');
+                    document.getElementById('edit_instructions').value = dataDiv.getAttribute('data-instructions');
+                    
+                    console.log("Set form values from data attributes");
+                } else {
+                    // Fallback to JSON parsing if data div not found
+                    console.log("Using fallback JSON parsing");
+                    document.getElementById('edit_id').value = assistant.id || '';
+                    document.getElementById('edit_name').value = assistant.name || '';
+                    document.getElementById('edit_assistant_id').value = assistant.assistant_id || '';
+                    document.getElementById('display_assistant_id').textContent = assistant.assistant_id || '';
+                    document.getElementById('edit_author').value = assistant.author || '';
+                    document.getElementById('edit_genre').value = assistant.genre || '';
+                    document.getElementById('edit_instructions').value = assistant.instructions || '';
+                }
+                
+                // For debug - show data in console
+                console.log("Final set values:", {
+                    id: document.getElementById('edit_id').value,
+                    name: document.getElementById('edit_name').value,
+                    assistant_id: document.getElementById('edit_assistant_id').value,
+                    author: document.getElementById('edit_author').value,
+                    genre: document.getElementById('edit_genre').value,
+                    instructions: document.getElementById('edit_instructions').value.substring(0, 50) + "..."
+                });
+            } catch (error) {
+                console.error("Error setting assistant data:", error);
+            }
         });
     });
     
@@ -464,19 +517,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const nonFictionTemplateHeader = document.querySelectorAll('.card-header')[1];
     
     if (fictionTemplateHeader) {
-        const fictionTemplate = fictionTemplateHeader.nextElementSibling.querySelector('pre');
-        fictionTemplate.addEventListener('click', function() {
-            const instructionsField = document.getElementById('instructions');
-            instructionsField.value = this.textContent;
-        });
+        const fictionTemplate = fictionTemplateHeader.nextElementSibling?.querySelector('pre');
+        if (fictionTemplate) {
+            fictionTemplate.addEventListener('click', function() {
+                const instructionsField = document.getElementById('instructions');
+                if (instructionsField) {
+                    instructionsField.value = this.textContent;
+                }
+                
+                // Also update edit form if it's open
+                const editInstructionsField = document.getElementById('edit_instructions');
+                if (editInstructionsField) {
+                    editInstructionsField.value = this.textContent;
+                }
+            });
+        }
     }
     
     if (nonFictionTemplateHeader) {
-        const nonFictionTemplate = nonFictionTemplateHeader.nextElementSibling.querySelector('pre');
-        nonFictionTemplate.addEventListener('click', function() {
-            const instructionsField = document.getElementById('instructions');
-            instructionsField.value = this.textContent;
-        });
+        const nonFictionTemplate = nonFictionTemplateHeader.nextElementSibling?.querySelector('pre');
+        if (nonFictionTemplate) {
+            nonFictionTemplate.addEventListener('click', function() {
+                const instructionsField = document.getElementById('instructions');
+                if (instructionsField) {
+                    instructionsField.value = this.textContent;
+                }
+                
+                // Also update edit form if it's open
+                const editInstructionsField = document.getElementById('edit_instructions');
+                if (editInstructionsField) {
+                    editInstructionsField.value = this.textContent;
+                }
+            });
+        }
     }
 });
 </script>

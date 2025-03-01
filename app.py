@@ -129,6 +129,11 @@ def format_datetime(value):
         dt = value
     return dt.strftime('%Y-%m-%d %H:%M')
 
+# Custom filter for JSON serialization
+@app.template_filter('tojson')
+def to_json(value):
+    return json.dumps(value)
+
 # Directory to store translations temporarily
 TRANSLATIONS_DIR = os.path.join(tempfile.gettempdir(), 'translations')
 if not os.path.exists(TRANSLATIONS_DIR):
@@ -579,6 +584,13 @@ def assistant_config():
         if assistants:
             session['user_assistants'] = assistants
             session.modified = True
+    
+    # Debug log the assistant structure
+    if assistants:
+        for idx, assistant in enumerate(assistants):
+            logger.info(f"Assistant {idx+1}:")
+            for key, value in assistant.items():
+                logger.info(f"  {key}: {value[:30] if isinstance(value, str) and len(value) > 30 else value}")
     
     # Get current export settings from session or use defaults
     settings = session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
