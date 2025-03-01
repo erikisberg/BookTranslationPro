@@ -509,15 +509,28 @@ document.addEventListener('DOMContentLoaded', function() {
         notifContainer.appendChild(toast);
         
         // Initialize and show using Bootstrap
-        const bsToast = new bootstrap.Toast(toast, {
-            autohide: true,
-            delay: 3000
-        });
-        bsToast.show();
+        if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+            const bsToast = new bootstrap.Toast(toast, {
+                autohide: true,
+                delay: 3000
+            });
+            bsToast.show();
+        } else {
+            // Fallback if Bootstrap is not available
+            toast.style.display = 'block';
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
         
         // Remove after hiding
         toast.addEventListener('hidden.bs.toast', () => {
             toast.remove();
         });
+    }
+    
+    // Make showToast available globally
+    window.showToast = function(message, type = 'info') {
+        showNotification(message, type);
     }
 });
