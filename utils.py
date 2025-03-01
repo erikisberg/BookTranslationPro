@@ -72,16 +72,32 @@ def review_translation(text, openai_api_key, assistant_id):
 def create_pdf_with_text(text_content):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    
+
+    # Use the built-in Arial Unicode MS font which has good Unicode support
+    pdf.add_font('Arial', '', '', uni=True)
+    pdf.set_font('Arial', '', size=12)
+
+    # Handle text encoding properly
     # Split text into lines to fit page width
-    lines = text_content.split('\n')
-    for line in lines:
-        pdf.multi_cell(0, 10, line)
-    
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Write text handling encoding
+    try:
+        # Split text into paragraphs
+        paragraphs = text_content.split('\n')
+        for paragraph in paragraphs:
+            # Write each paragraph, letting FPDF handle line breaks
+            # Using write_html to better handle special characters
+            pdf.write_html(f"<p>{paragraph}</p>")
+            # Add some space between paragraphs
+            pdf.ln(5)
+    except Exception as e:
+        logger.error(f"Error writing text to PDF: {str(e)}")
+        raise Exception(f"Failed to create PDF: {str(e)}")
+
     # Save to temporary file
     temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
-    pdf.output(temp_output.name)
+    pdf.output(temp_output.name, 'F')
     return temp_output.name
 
 def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id):
