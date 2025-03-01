@@ -73,22 +73,21 @@ def create_pdf_with_text(text_content):
     pdf = FPDF()
     pdf.add_page()
 
-    # Use the built-in Arial Unicode MS font which has good Unicode support
-    pdf.add_font('Arial', '', '', uni=True)
-    pdf.set_font('Arial', '', size=12)
+    # Set basic font configuration
+    pdf.set_font('helvetica', size=12)
 
     # Handle text encoding properly
     # Split text into lines to fit page width
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # Write text handling encoding
     try:
         # Split text into paragraphs
         paragraphs = text_content.split('\n')
         for paragraph in paragraphs:
-            # Write each paragraph, letting FPDF handle line breaks
-            # Using write_html to better handle special characters
-            pdf.write_html(f"<p>{paragraph}</p>")
+            # Write each paragraph
+            # Encode as UTF-8 to handle special characters
+            cleaned_text = paragraph.encode('latin-1', errors='replace').decode('latin-1')
+            pdf.multi_cell(0, 10, cleaned_text)
             # Add some space between paragraphs
             pdf.ln(5)
     except Exception as e:
@@ -97,7 +96,7 @@ def create_pdf_with_text(text_content):
 
     # Save to temporary file
     temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
-    pdf.output(temp_output.name, 'F')
+    pdf.output(temp_output.name)
     return temp_output.name
 
 def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id):
