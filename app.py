@@ -206,6 +206,14 @@ def login():
             'name': response.user.user_metadata.get('name', 'Användare')
         }
         
+        # Ensure user exists in the users table (needed for foreign key constraints)
+        user_data = {
+            'email': response.user.email,
+            'name': response.user.user_metadata.get('name', 'Användare'),
+            'last_login': 'now()'
+        }
+        save_user_data(response.user.id, user_data)
+        
         # Load user settings
         user_settings = get_user_settings(response.user.id)
         if user_settings:
@@ -279,6 +287,16 @@ def signup():
                 )
             return render_template('signup.html')
             
+        # Create user record in the users table (needed for foreign key constraints)
+        if response.user and response.user.id:
+            user_data = {
+                'email': email,
+                'name': name,
+                'created_at': 'now()',
+                'last_login': 'now()'
+            }
+            save_user_data(response.user.id, user_data)
+        
         # Track successful signup
         if posthog:
             if response.user and response.user.id:
