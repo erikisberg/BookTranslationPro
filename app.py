@@ -801,6 +801,14 @@ def download_final():
         # Save to user's history
         user_id = get_user_id()
         if user_id:
+            # Ensure user exists in the users table before saving translation
+            user_data = {
+                'email': session['user'].get('email', ''),
+                'name': session['user'].get('name', ''),
+                'last_login': 'now()'
+            }
+            save_user_data(user_id, user_data)
+            
             original_filename = session.get('original_filename', 'translation.pdf')
             save_translation(user_id, original_filename, final_text, settings)
             
