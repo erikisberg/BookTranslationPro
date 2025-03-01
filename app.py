@@ -1349,7 +1349,6 @@ def save_reviews():
                     for entry in cache_entries:
                         if entry.get('source_text') and entry.get('source_hash') and entry.get('target_language'):
                             try:
-                                from supabase_config import save_translation
                                 # Just save to cache without creating another translation entry
                                 save_translation(
                                     user_id,
