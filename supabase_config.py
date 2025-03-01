@@ -990,52 +990,47 @@ def get_document_content(user_id, document_id, content_type='translated', versio
         # Get content from storage
         storage_path = f"documents/{user_id}/{document_id}/{content_type}"
         
-        # First check if the file exists
-        try:
-            # List files to check if the content file exists
-            try:
-                list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
-                logger.debug(f"Files in document {document_id} directory: {list_files}")
-                
-                # Check if our content file is in the list
-                content_file_exists = False
-                
-                # Make sure list_files is not None and is iterable
-                if list_files and isinstance(list_files, list):
-                    for file_info in list_files:
-                        if file_info and isinstance(file_info, dict) and file_info.get('name') == content_type:
-                            content_file_exists = True
-                            break
-                
-                if not content_file_exists:
-                    logger.warning(f"Content file '{content_type}' not found for document {document_id}")
-                    return None
-                    
-            except Exception as list_error:
-                logger.warning(f"Error listing files for document {document_id}: {list_error}")
-                # Continue anyway, the download might still work
+        # First check if the document exists
+        document = get_document(user_id, document_id)
+        if not document:
+            logger.warning(f"Document {document_id} not found. Cannot retrieve content.")
+            return None
             
-            # Now try to download
+        # Try to download content
+        try:
             logger.debug(f"Downloading content from path {storage_path}")
             response = supabase.storage.from_('documents').download(storage_path)
             if response:
-                return response.decode('utf-8')
-            else:
-                logger.warning(f"Empty response when downloading document content from {storage_path}")
-                return None
-                
+                content = response.decode('utf-8')
+                logger.info(f"Successfully retrieved content for document {document_id}")
+                return content
         except Exception as storage_error:
-            logger.error(f"Error downloading document content from {storage_path}: {storage_error}")
+            logger.warning(f"Error downloading content: {storage_error}")
+            # Continue to fallback logic
             
-            # Create a placeholder content if the document exists but content does not
-            document = get_document(user_id, document_id)
-            if document:
-                logger.info(f"Document exists but content is missing. Creating placeholder content.")
-                placeholder_content = f"This document has no {content_type} content yet. Please edit the document to add content."
-                save_document_content(user_id, document_id, placeholder_content, content_type)
-                return placeholder_content
+        # If we're still here, content wasn't successfully retrieved
+        # Check if the document directory exists
+        try:
+            list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
+            logger.debug(f"Files in document directory: {list_files}")
+        except Exception as list_error:
+            logger.warning(f"Document directory may not exist: {list_error}")
+            list_files = []
             
-            return None
+        # Create placeholder content since the content file is missing
+        logger.info(f"Creating placeholder content for document {document_id} ({content_type})")
+        placeholder_content = f"This document has no {content_type} content yet. Please edit the document to add content."
+        
+        # Try to save the placeholder content
+        success = save_document_content(user_id, document_id, placeholder_content, content_type)
+        if success:
+            logger.info(f"Successfully created placeholder content for document {document_id}")
+        else:
+            logger.warning(f"Failed to create placeholder content for document {document_id}")
+            
+        return placeholder_content
+            
     except Exception as e:
         logger.error(f"Error getting document content: {e}")
-        return None
+        # Even in case of errors, return something the user can see
+        return "Error retrieving document content. Please try the 'Fix Document Content' option."

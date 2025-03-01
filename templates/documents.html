@@ -361,7 +361,8 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     name: name,
@@ -373,7 +374,10 @@
                 console.log("Folder creation response received:", response);
                 if (!response.ok) {
                     console.error("Response not OK:", response.status, response.statusText);
-                    throw new Error('Server responded with ' + response.status);
+                    return response.text().then(text => {
+                        console.error("Response body:", text);
+                        throw new Error('Server responded with ' + response.status);
+                    });
                 }
                 return response.json();
             })
@@ -714,7 +718,9 @@
             fetch(url, {
                 method: 'DELETE',
                 headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 }
             })
             .then(response => {
