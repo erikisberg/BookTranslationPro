@@ -884,8 +884,33 @@ def save_document_content(user_id, document_id, content, content_type='translate
         if isinstance(content, str):
             content = content.encode('utf-8')
         
+        # First check if the document_id directory exists, create it if not
+        document_dir = f"documents/{user_id}/{document_id}"
+        
+        try:
+            # List files to see if directory exists
+            list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
+            logger.debug(f"Directory exists for document {document_id}")
+        except Exception as dir_error:
+            # Directory doesn't exist, create it by uploading a placeholder file
+            try:
+                logger.debug(f"Creating directory for document {document_id}")
+                placeholder_path = f"{user_id}/{document_id}/.placeholder"
+                placeholder_content = b"placeholder"
+                
+                # Upload placeholder file to create directory structure
+                supabase.storage.from_('documents').upload(
+                    placeholder_path,
+                    placeholder_content,
+                    file_options={"content-type": "text/plain", "upsert": True}
+                )
+                logger.debug(f"Created directory for document {document_id}")
+            except Exception as create_dir_error:
+                logger.error(f"Error creating directory for document {document_id}: {create_dir_error}")
+                # Continue anyway, the upload might still work
+        
         # Upload to storage
-        logger.debug(f"Saving {content_type} content for document {document_id}")
+        logger.debug(f"Saving {content_type} content for document {document_id} to path {storage_path}")
         storage_response = supabase.storage.from_('documents').upload(
             storage_path,
             content,
@@ -913,11 +938,48 @@ def get_document_content(user_id, document_id, content_type='translated', versio
         # Get content from storage
         storage_path = f"documents/{user_id}/{document_id}/{content_type}"
         
+        # First check if the file exists
         try:
+            # List files to check if the content file exists
+            try:
+                list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
+                logger.debug(f"Files in document {document_id} directory: {list_files}")
+                
+                # Check if our content file is in the list
+                content_file_exists = False
+                for file_info in list_files:
+                    if file_info.get('name') == content_type:
+                        content_file_exists = True
+                        break
+                
+                if not content_file_exists:
+                    logger.warning(f"Content file '{content_type}' not found for document {document_id}")
+                    return None
+                    
+            except Exception as list_error:
+                logger.warning(f"Error listing files for document {document_id}: {list_error}")
+                # Continue anyway, the download might still work
+            
+            # Now try to download
+            logger.debug(f"Downloading content from path {storage_path}")
             response = supabase.storage.from_('documents').download(storage_path)
-            return response.decode('utf-8')
+            if response:
+                return response.decode('utf-8')
+            else:
+                logger.warning(f"Empty response when downloading document content from {storage_path}")
+                return None
+                
         except Exception as storage_error:
-            logger.error(f"Error downloading document content: {storage_error}")
+            logger.error(f"Error downloading document content from {storage_path}: {storage_error}")
+            
+            # Create a placeholder content if the document exists but content does not
+            document = get_document(user_id, document_id)
+            if document:
+                logger.info(f"Document exists but content is missing. Creating placeholder content.")
+                placeholder_content = f"This document has no {content_type} content yet. Please edit the document to add content."
+                save_document_content(user_id, document_id, placeholder_content, content_type)
+                return placeholder_content
+            
             return None
     except Exception as e:
         logger.error(f"Error getting document content: {e}")

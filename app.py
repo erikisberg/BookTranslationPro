@@ -2810,15 +2810,21 @@ def setup_database():
             # Create storage bucket if it doesn't exist
             try:
                 # Try to create the documents bucket directly
-                # This will fail if the bucket already exists, but that's fine
                 try:
                     # The API expects a string for the name, not a dict with options
-                    supabase.storage.create_bucket("documents")
+                    supabase.storage.create_bucket("documents", {"public": True})
                     logger.info("Created 'documents' storage bucket")
                 except Exception as bucket_exists_error:
                     # Bucket might already exist, which is fine
                     if "already exists" in str(bucket_exists_error).lower():
                         logger.info("'documents' bucket already exists")
+                        # Make sure bucket is public
+                        try:
+                            # Update bucket to be public
+                            supabase.storage.update_bucket("documents", {"public": True})
+                            logger.info("Updated 'documents' bucket to be public")
+                        except Exception as update_error:
+                            logger.error(f"Error updating 'documents' bucket: {update_error}")
                     else:
                         # Some other error occurred
                         raise bucket_exists_error
