@@ -275,8 +275,15 @@
         
         // Form submission handlers
         function initFormHandlers() {
+            // Log for debugging
+            console.log("Initializing form handlers");
+
             // New glossary button
-            document.getElementById('createGlossaryBtn').addEventListener('click', function() {
+            const createGlossaryBtn = document.getElementById('createGlossaryBtn');
+            console.log("Create glossary button:", createGlossaryBtn);
+            
+            createGlossaryBtn.addEventListener('click', function() {
+                console.log("Create glossary button clicked");
                 // Clear form
                 document.getElementById('glossaryForm').reset();
                 document.getElementById('glossaryId').value = '';
@@ -300,13 +307,31 @@
             });
             
             // Glossary form
-            document.getElementById('glossaryForm').addEventListener('submit', function(e) {
+            const glossaryForm = document.getElementById('glossaryForm');
+            console.log("Glossary form:", glossaryForm);
+            
+            glossaryForm.addEventListener('submit', function(e) {
+                console.log("Glossary form submitted");
+                e.preventDefault();
+                saveGlossary();
+            });
+            
+            // Add direct click handler to Save button
+            const saveGlossaryBtn = document.getElementById('saveGlossaryBtn');
+            console.log("Save glossary button:", saveGlossaryBtn);
+            
+            saveGlossaryBtn.addEventListener('click', function(e) {
+                console.log("Save glossary button clicked");
                 e.preventDefault();
                 saveGlossary();
             });
             
             // Delete glossary button
-            document.getElementById('deleteGlossaryBtn').addEventListener('click', function() {
+            const deleteGlossaryBtn = document.getElementById('deleteGlossaryBtn');
+            console.log("Delete glossary button:", deleteGlossaryBtn);
+            
+            deleteGlossaryBtn.addEventListener('click', function() {
+                console.log("Delete glossary button clicked");
                 const glossaryId = document.getElementById('glossaryId').value;
                 if (!glossaryId) return;
                 
@@ -317,8 +342,16 @@
                 document.getElementById('deleteConfirmMessage').textContent = 
                     `Är du säker på att du vill ta bort ordlistan "${glossaryName}"? Detta kommer permanent ta bort alla termer i denna ordlista.`;
                 
-                const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-                deleteModal.show();
+                try {
+                    const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+                    deleteModal.show();
+                } catch (error) {
+                    console.error("Error showing modal:", error);
+                    // Fallback if Bootstrap modal fails
+                    if (confirm(`Är du säker på att du vill ta bort ordlistan "${glossaryName}"?`)) {
+                        deleteGlossary(deleteItemId);
+                    }
+                }
             });
             
             // Add entry button
@@ -382,11 +415,25 @@
         
         // AJAX functions
         function saveGlossary() {
+            console.log("saveGlossary function called");
             const glossaryId = document.getElementById('glossaryId').value;
             const name = document.getElementById('glossaryName').value;
             const description = document.getElementById('glossaryDescription').value;
             const sourceLang = document.getElementById('sourceLanguage').value;
             const targetLang = document.getElementById('targetLanguage').value;
+            
+            console.log("Glossary data:", {
+                id: glossaryId,
+                name: name,
+                description: description,
+                source_language: sourceLang,
+                target_language: targetLang
+            });
+            
+            if (!name) {
+                alert('Glossary name is required');
+                return;
+            }
             
             const data = {
                 name: name,
@@ -398,54 +445,72 @@
             const url = glossaryId ? `/glossary/${glossaryId}` : '/glossary';
             const method = glossaryId ? 'PUT' : 'POST';
             
+            console.log("Sending request to:", url, "Method:", method);
+            
             fetch(url, {
                 method: method,
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify(data)
             })
             .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
+                console.log("Response received:", response);
+                if (!response.ok) {
+                    console.error("Response not OK:", response.status, response.statusText);
+                    throw new Error('Network response was not ok: ' + response.status);
+                }
                 return response.json();
             })
             .then(data => {
+                console.log("Response data:", data);
                 if (data.success) {
-                    showToast(data.message || 'Glossary saved successfully', 'success');
+                    alert(data.message || 'Glossary saved successfully');
                     
                     // Reload page to refresh list
                     window.location.reload();
                 } else {
-                    showToast(data.message || 'Failed to save glossary', 'error');
+                    alert(data.message || 'Failed to save glossary');
                 }
             })
             .catch(error => {
                 console.error('Error saving glossary:', error);
-                showToast('Failed to save glossary', 'error');
+                alert('Failed to save glossary: ' + error.message);
             });
         }
         
         function deleteGlossary(glossaryId) {
+            console.log("deleteGlossary function called with ID:", glossaryId);
+            
             fetch(`/glossary/${glossaryId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             })
             .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
+                console.log("Delete response received:", response);
+                if (!response.ok) {
+                    console.error("Delete response not OK:", response.status, response.statusText);
+                    throw new Error('Network response was not ok: ' + response.status);
+                }
                 return response.json();
             })
             .then(data => {
+                console.log("Delete response data:", data);
                 if (data.success) {
-                    showToast(data.message || 'Glossary deleted successfully', 'success');
+                    alert(data.message || 'Glossary deleted successfully');
                     
                     // Reload page to refresh list
                     window.location.reload();
                 } else {
-                    showToast(data.message || 'Failed to delete glossary', 'error');
+                    alert(data.message || 'Failed to delete glossary');
                 }
             })
             .catch(error => {
                 console.error('Error deleting glossary:', error);
-                showToast('Failed to delete glossary', 'error');
+                alert('Failed to delete glossary: ' + error.message);
             });
         }
         
@@ -687,11 +752,18 @@
         
         // Utility function for displaying toast notifications
         function showToast(message, type = 'info') {
-            // Use the existing toast system from base.html if available
-            if (typeof window.showToast === 'function') {
-                window.showToast(message, type);
-            } else {
-                alert(message);
+            console.log(`Toast: ${message} (${type})`);
+            
+            // Always use alert for now to make sure messages are displayed
+            alert(message);
+            
+            // Try to use global showToast if available (added in main.js)
+            try {
+                if (typeof window.showToast === 'function') {
+                    window.showToast(message, type);
+                }
+            } catch (error) {
+                console.error("Error using global showToast:", error);
             }
         }
     });

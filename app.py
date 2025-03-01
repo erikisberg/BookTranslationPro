@@ -252,6 +252,7 @@ DEFAULT_API_KEYS = {
 
 def json_response(data, status=200):
     """Helper function to ensure consistent JSON responses"""
+    logger.debug(f"Sending JSON response (status {status}): {data}")
     return jsonify(data), status, {'Content-Type': 'application/json'}
 
 def json_error(message, status=400):
