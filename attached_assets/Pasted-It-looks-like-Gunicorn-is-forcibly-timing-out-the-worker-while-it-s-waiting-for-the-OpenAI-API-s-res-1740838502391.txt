@@ -1,0 +1,49 @@
+It looks like Gunicorn is forcibly timing out the worker while it’s waiting for the OpenAI API’s response. Notice this line:
+
+less
+Kopiera
+Redigera
+[2025-03-01 14:12:13 +0000] [1044] [CRITICAL] WORKER TIMEOUT (pid:1058)
+...
+SystemExit: 1
+Gunicorn’s default worker timeout is usually 30 seconds. If your OpenAI API call (in review_translation) takes too long, Gunicorn kills the worker, resulting in a 500 error, and you see SystemExit in the logs when the worker is terminated.
+
+Why it Happens
+Long OpenAI Requests
+The calls to client.beta.threads.messages.create() and then client.beta.threads.runs.create() can take substantial time, especially for large input text or multiple pages.
+
+Gunicorn’s Default Timeout
+By default, Gunicorn workers will be killed if they don’t respond within timeout seconds (30s if not overridden). When that happens, your Flask code never finishes, so the request ends in a 500.
+
+How to Fix
+Increase Gunicorn’s Worker Timeout
+
+If you’re running Gunicorn directly, you can set --timeout to a higher value (e.g., 120). For example:
+bash
+Kopiera
+Redigera
+gunicorn --timeout 120 app:app
+In Replit or similar environments, see if you can configure the start command or a Procfile to pass a higher timeout.
+This ensures large or slow requests can complete before Gunicorn kills the worker.
+Break Up Large Translations
+If each page is especially large, you may want to:
+
+Split the text into smaller segments before sending them to OpenAI.
+Stream the responses instead of waiting for one large result.
+Run the OpenAI Call Asynchronously
+
+Offload the long-running job to a background queue (e.g., Celery, RQ, etc.) or an async worker.
+The Flask endpoint could immediately respond with a job ID, and the front-end can poll for status. This avoids blocking Gunicorn’s worker for the entire translation process.
+Check Your OpenAI Model/Endpoint
+
+The code references client.beta.threads from a specialized or older OpenAI library. Double-check whether you’re using the recommended endpoints for ChatGPT / GPT-3.5 / GPT-4.
+Make sure you’re not inadvertently using a slow or high-latency endpoint.
+Quick Summary
+Gunicorn kills the worker after a 30-second (default) timeout because your translation/review step takes longer. The simplest fix is to raise the Gunicorn timeout. For best scalability, consider asynchronous processing or splitting the large requests into smaller pieces.
+
+
+
+
+
+
+

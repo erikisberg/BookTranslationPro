@@ -1,12 +1,12 @@
 import os
 import logging
 import traceback
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, Response, stream_with_context
 from werkzeug.utils import secure_filename
 import tempfile
-from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
+from utils import process_pdf_stream, is_allowed_file, update_assistant_config, create_pdf_with_text
 
-# Configure logging with more detail
+# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -84,11 +84,10 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload with detailed error logging"""
+    """Handle file upload with streaming response"""
     logger.info("Processing file upload")
 
     try:
-        # Validate request
         if 'file' not in request.files:
             raise APIError('No file provided')
 
@@ -99,7 +98,6 @@ def upload_file():
         if not is_allowed_file(file.filename):
             raise APIError('Invalid file type. Please upload a PDF.')
 
-        # Save and process file
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
@@ -107,39 +105,29 @@ def upload_file():
             logger.info(f"Saving file: {filepath}")
             file.save(filepath)
 
-            # Process the file
             instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
             target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
             review_style = os.environ.get('REVIEW_STYLE', 'balanced')
 
             logger.info("Starting PDF processing")
-            translations = process_pdf(
+            response = process_pdf_stream(
                 filepath,
                 DEEPL_API_KEY,
                 OPENAI_API_KEY,
                 OPENAI_ASSISTANT_ID,
                 instructions,
                 target_language,
-                review_style,
-                return_segments=True
+                review_style
             )
-
-            session['translations'] = translations
-            logger.info("PDF processing completed successfully")
-
-            if wants_json():
-                return jsonify({
-                    'success': True,
-                    'redirect': url_for('review')
-                })
-            return redirect(url_for('review'))
+            response.headers['Cache-Control'] = 'no-cache'
+            response.headers['X-Accel-Buffering'] = 'no'
+            return response
 
         except Exception as e:
             logger.error(f"Error processing file: {str(e)}")
             raise APIError(str(e))
 
         finally:
-            # Cleanup temporary file
             if os.path.exists(filepath):
                 try:
                     os.remove(filepath)
@@ -147,53 +135,23 @@ def upload_file():
                 except Exception as cleanup_error:
                     logger.error(f"Failed to clean up file: {cleanup_error}")
 
-    except APIError as e:
-        logger.error(f"API error: {str(e)}")
-        raise
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise APIError("An unexpected error occurred while processing your request", status_code=500)
+        logger.error(f"Upload error: {str(e)}")
+        raise APIError(str(e))
 
-@app.route('/assistant-config', methods=['GET'])
-def assistant_config():
-    current_instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
-    target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
-    review_style = os.environ.get('REVIEW_STYLE', 'balanced')
-
-    return render_template('config.html',
-                         current_instructions=current_instructions,
-                         target_language=target_language,
-                         review_style=review_style)
-
-@app.route('/save-assistant-config', methods=['POST'])
-def save_assistant_config():
+@app.route('/save-translations', methods=['POST'])
+def save_translations():
+    """Save translations after streaming is complete"""
     try:
-        instructions = request.form.get('instructions')
-        target_language = request.form.get('target_language')
-        review_style = request.form.get('review_style')
+        data = request.get_json()
+        if not data or 'translations' not in data:
+            raise APIError('No translations provided')
 
-        if not all([instructions, target_language, review_style]):
-            raise APIError('Missing required configuration fields')
-
-        update_assistant_config(
-            OPENAI_API_KEY,
-            OPENAI_ASSISTANT_ID,
-            instructions,
-            target_language,
-            review_style
-        )
-
-        os.environ['ASSISTANT_INSTRUCTIONS'] = instructions
-        os.environ['TARGET_LANGUAGE'] = target_language
-        os.environ['REVIEW_STYLE'] = review_style
-
-        if wants_json():
-            return jsonify({'success': True, 'redirect': url_for('assistant_config')})
-        return redirect(url_for('assistant_config'))
+        session['translations'] = data['translations']
+        return jsonify({'success': True})
 
     except Exception as e:
-        logger.error(f"Error saving configuration: {str(e)}")
+        logger.error(f"Error saving translations: {str(e)}")
         raise APIError(str(e))
 
 @app.route('/review')
@@ -249,6 +207,47 @@ def download_final():
                 os.remove(output_path)
             except:
                 pass
+
+@app.route('/assistant-config', methods=['GET'])
+def assistant_config():
+    current_instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
+    target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
+    review_style = os.environ.get('REVIEW_STYLE', 'balanced')
+
+    return render_template('config.html',
+                         current_instructions=current_instructions,
+                         target_language=target_language,
+                         review_style=review_style)
+
+@app.route('/save-assistant-config', methods=['POST'])
+def save_assistant_config():
+    try:
+        instructions = request.form.get('instructions')
+        target_language = request.form.get('target_language')
+        review_style = request.form.get('review_style')
+
+        if not all([instructions, target_language, review_style]):
+            raise APIError('Missing required configuration fields')
+
+        update_assistant_config(
+            OPENAI_API_KEY,
+            OPENAI_ASSISTANT_ID,
+            instructions,
+            target_language,
+            review_style
+        )
+
+        os.environ['ASSISTANT_INSTRUCTIONS'] = instructions
+        os.environ['TARGET_LANGUAGE'] = target_language
+        os.environ['REVIEW_STYLE'] = review_style
+
+        if wants_json():
+            return jsonify({'success': True, 'redirect': url_for('assistant_config')})
+        return redirect(url_for('assistant_config'))
+
+    except Exception as e:
+        logger.error(f"Error saving configuration: {str(e)}")
+        raise APIError(str(e))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -14,38 +14,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const buttonText = uploadButton ? uploadButton.querySelector('.button-text') : null;
     const spinner = uploadButton ? uploadButton.querySelector('.spinner-border') : null;
 
-    async function handleResponse(response) {
-        console.log('Response status:', response.status);
-        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-        console.log('Response content type:', response.headers.get('content-type'));
-
-        if (!response.ok) {
-            // Try to get error details from response
-            try {
-                if (response.headers.get('content-type')?.includes('application/json')) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Operation failed');
-                } else {
-                    const errorText = await response.text();
-                    console.error('Non-JSON error response:', errorText);
-                    throw new Error('Server error occurred');
-                }
-            } catch (parseError) {
-                console.error('Error parsing error response:', parseError);
-                throw new Error('Server error occurred');
-            }
-        }
-
-        try {
-            const data = await response.json();
-            console.log('Response data:', data);
-            return data;
-        } catch (error) {
-            console.error('Error parsing JSON response:', error);
-            throw new Error('Invalid server response');
-        }
-    }
-
     uploadForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         console.log('Starting file upload process');
@@ -72,45 +40,78 @@ document.addEventListener('DOMContentLoaded', function() {
             errorContainer.classList.add('d-none');
             progressContainer.classList.remove('d-none');
             progressBar.style.width = '0%';
-            statusText.textContent = 'Uploading file...';
+            statusText.textContent = 'Starting upload...';
 
-            // Simulate progress for better UX
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += 5;
-                if (progress <= 90) {
-                    progressBar.style.width = `${progress}%`;
-                    if (progress < 30) {
-                        statusText.textContent = 'Uploading file...';
-                    } else if (progress < 60) {
-                        statusText.textContent = 'Extracting text...';
-                    } else {
-                        statusText.textContent = 'Processing translation...';
-                    }
-                }
-            }, 1000);
-
-            console.log('Sending upload request...');
             const response = await fetch('/upload', {
                 method: 'POST',
                 body: formData,
                 headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
             });
-            console.log('Received response from server');
 
-            clearInterval(progressInterval);
-            const data = await handleResponse(response);
+            if (!response.ok || !response.headers.get('content-type').includes('text/event-stream')) {
+                // Handle non-streaming error responses
+                const errorText = await response.text();
+                console.error('Upload error response:', errorText);
+                throw new Error('Failed to process file');
+            }
 
-            console.log('Upload successful, processing response');
-            progressBar.style.width = '100%';
-            statusText.textContent = 'Translation complete! Redirecting to review...';
+            const reader = response.body.getReader();
+            let translations = [];
 
-            if (data.redirect) {
-                console.log('Redirecting to:', data.redirect);
-                window.location.href = data.redirect;
+            while (true) {
+                const {value, done} = await reader.read();
+                if (done) break;
+
+                const chunk = new TextDecoder().decode(value);
+                const events = chunk.split('\n\n').filter(Boolean);
+
+                for (const event of events) {
+                    if (!event.startsWith('data: ')) continue;
+                    const jsonStr = event.slice(6);
+                    try {
+                        const data = JSON.parse(jsonStr);
+                        console.log('Stream data:', data);
+
+                        if (data.status === 'error') {
+                            throw new Error(data.message);
+                        }
+
+                        // Update progress based on status
+                        if (data.status === 'started') {
+                            statusText.textContent = 'Processing PDF...';
+                        } else if (data.status === 'extracting') {
+                            progressBar.style.width = `${(data.page / data.total_pages * 30)}%`;
+                            statusText.textContent = `Extracting text from page ${data.page}...`;
+                        } else if (data.status === 'translating') {
+                            progressBar.style.width = `${(data.page / data.total_pages * 60)}%`;
+                            statusText.textContent = `Translating page ${data.page}...`;
+                        } else if (data.status === 'reviewing') {
+                            progressBar.style.width = `${(data.page / data.total_pages * 90)}%`;
+                            statusText.textContent = `Reviewing translation of page ${data.page}...`;
+                        } else if (data.status === 'completed') {
+                            translations = data.translations;
+                            progressBar.style.width = '100%';
+                            statusText.textContent = 'Processing complete!';
+                            // Store translations in session and redirect
+                            const saveResponse = await fetch('/save-translations', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Requested-With': 'XMLHttpRequest'
+                                },
+                                body: JSON.stringify({translations})
+                            });
+                            if (saveResponse.ok) {
+                                window.location.href = '/review';
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error processing stream data:', error);
+                        throw error;
+                    }
+                }
             }
 
         } catch (error) {
@@ -140,36 +141,5 @@ document.addEventListener('DOMContentLoaded', function() {
         progressBar.style.width = '0%';
         statusText.textContent = '';
         uploadForm.reset();
-    }
-
-    // Handle review form submission
-    const reviewForm = document.querySelector('form[action="/save-reviews"]');
-    if (reviewForm) {
-        reviewForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            console.log('Starting review form submission');
-
-            try {
-                const response = await fetch('/save-reviews', {
-                    method: 'POST',
-                    body: new FormData(this),
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    }
-                });
-                console.log('Received review form response');
-
-                const data = await handleResponse(response);
-                if (data.redirect) {
-                    console.log('Redirecting to:', data.redirect);
-                    window.location.href = data.redirect;
-                }
-
-            } catch (error) {
-                console.error('Review submission error:', error);
-                alert('Error saving reviews: ' + error.message);
-            }
-        });
     }
 });

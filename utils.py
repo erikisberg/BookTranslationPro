@@ -1,10 +1,13 @@
 import os
+import json
 import PyPDF2
 from fpdf import FPDF
 import deepl
 from openai import OpenAI
 import tempfile
 import logging
+import time
+from flask import stream_with_context, Response
 
 logger = logging.getLogger(__name__)
 
@@ -40,22 +43,29 @@ def extract_text_from_page(pdf_reader, page_num):
         raise
 
 def translate_text(text, deepl_api_key, target_language='SV'):
-    """First step: Translate text using DeepL"""
+    """First step: Translate text using DeepL with retry logic"""
     logger.info(f"Translating text to {target_language}")
     translator = deepl.Translator(deepl_api_key)
-    try:
-        result = translator.translate_text(text, target_lang=target_language)
-        logger.info("Text successfully translated with DeepL")
-        return result.text
-    except Exception as e:
-        logger.error(f"DeepL translation error: {str(e)}")
-        raise Exception(f"Translation failed: {str(e)}")
+    max_retries = 3
+    retry_delay = 1
+
+    for attempt in range(max_retries):
+        try:
+            result = translator.translate_text(text, target_lang=target_language)
+            logger.info("Text successfully translated with DeepL")
+            return result.text
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(f"DeepL translation error after {max_retries} attempts: {str(e)}")
+                raise Exception(f"Translation failed: {str(e)}")
+            logger.warning(f"Translation attempt {attempt + 1} failed, retrying...")
+            time.sleep(retry_delay)
+            retry_delay *= 2
 
 def review_translation(text, openai_api_key, assistant_id):
-    """Second step: Review the Swedish translation using OpenAI Assistant"""
+    """Second step: Review the Swedish translation using OpenAI Assistant with timeout handling"""
     logger.info("Starting OpenAI translation review")
-    # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
-    client = OpenAI(api_key=openai_api_key)
+    client = OpenAI(api_key=openai_api_key, timeout=30)  # Set explicit timeout
 
     try:
         thread = client.beta.threads.create()
@@ -74,7 +84,14 @@ def review_translation(text, openai_api_key, assistant_id):
         )
         logger.debug("Started assistant run")
 
+        max_wait_time = 25  # Max wait time in seconds
+        start_time = time.time()
+
         while True:
+            if time.time() - start_time > max_wait_time:
+                logger.warning("OpenAI review approaching timeout")
+                break
+
             run_status = client.beta.threads.runs.retrieve(
                 thread_id=thread.id,
                 run_id=run.id
@@ -82,11 +99,13 @@ def review_translation(text, openai_api_key, assistant_id):
             if run_status.status == 'completed':
                 break
             logger.debug(f"Run status: {run_status.status}")
+            time.sleep(1)
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
         text_content = next(
             content.text.value
-            for content in messages.data[0].content
+            for message in messages.data
+            for content in message.content
             if hasattr(content, 'text')
         )
         logger.info("Translation successfully reviewed by OpenAI Assistant")
@@ -96,57 +115,48 @@ def review_translation(text, openai_api_key, assistant_id):
         logger.error(f"OpenAI review error: {str(e)}")
         raise Exception(f"Review failed: {str(e)}")
 
-def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id, 
-                instructions=None, target_language='SV', review_style='balanced',
-                return_segments=False):
-    """Process PDF with detailed logging"""
-    logger.info(f"Starting PDF processing: {input_path}")
-
-    try:
-        # First verify all API keys are present
-        check_api_keys()
-
-        with open(input_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            logger.info(f"PDF loaded successfully. Pages: {len(pdf_reader.pages)}")
+def process_pdf_stream(input_path, deepl_api_key, openai_api_key, assistant_id, 
+                      instructions=None, target_language='SV', review_style='balanced'):
+    """Process PDF with streaming to avoid timeouts"""
+    def generate():
+        try:
+            check_api_keys()
             translations = []
 
-            for page_num in range(len(pdf_reader.pages)):
-                logger.info(f"Processing page {page_num + 1} of {len(pdf_reader.pages)}")
+            with open(input_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                total_pages = len(pdf_reader.pages)
 
-                # Extract text from page
-                original_text = extract_text_from_page(pdf_reader, page_num)
-                logger.debug(f"Extracted text from page {page_num + 1}")
+                yield f'data: {json.dumps({"status": "started", "total_pages": total_pages})}\n\n'
 
-                # Translate text
-                translated_text = translate_text(original_text, deepl_api_key, target_language)
-                logger.debug(f"Translated text from page {page_num + 1}")
+                for page_num in range(total_pages):
+                    logger.info(f"Processing page {page_num + 1} of {total_pages}")
 
-                # Review translation
-                reviewed_text = review_translation(
-                    translated_text,
-                    openai_api_key,
-                    assistant_id
-                )
-                logger.debug(f"Reviewed translation for page {page_num + 1}")
+                    # Extract text
+                    original_text = extract_text_from_page(pdf_reader, page_num)
+                    yield f'data: {json.dumps({"status": "extracting", "page": page_num + 1, "total_pages": total_pages})}\n\n'
 
-                # Store both original and translated text
-                translations.append({
-                    'id': page_num,
-                    'original_text': original_text,
-                    'translated_text': reviewed_text
-                })
+                    # Translate
+                    translated_text = translate_text(original_text, deepl_api_key, target_language)
+                    yield f'data: {json.dumps({"status": "translating", "page": page_num + 1, "total_pages": total_pages})}\n\n'
 
-            logger.info("PDF processing completed successfully")
-            if return_segments:
-                return translations
-            else:
-                combined_text = '\n\n'.join(t['translated_text'] for t in translations)
-                return create_pdf_with_text(combined_text)
+                    # Review
+                    reviewed_text = review_translation(translated_text, openai_api_key, assistant_id)
+                    yield f'data: {json.dumps({"status": "reviewing", "page": page_num + 1, "total_pages": total_pages})}\n\n'
 
-    except Exception as e:
-        logger.error(f"PDF processing error: {str(e)}")
-        raise Exception(f"PDF processing failed: {str(e)}")
+                    translations.append({
+                        'id': page_num,
+                        'original_text': original_text,
+                        'translated_text': reviewed_text
+                    })
+
+                yield f'data: {json.dumps({"status": "completed", "translations": translations})}\n\n'
+
+        except Exception as e:
+            logger.error(f"PDF processing error: {str(e)}")
+            yield f'data: {json.dumps({"status": "error", "message": str(e)})}\n\n'
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 def create_pdf_with_text(text_content):
     logger.info("Creating output PDF")
