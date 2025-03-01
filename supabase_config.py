@@ -870,6 +870,51 @@ def get_document_versions(user_id, document_id, limit=20, offset=0):
         logger.error(f"Error fetching document versions: {e}")
         return []
 
+def fix_document_content(user_id, document_id):
+    """Fix missing document content by creating placeholder content files"""
+    try:
+        # First check if document exists
+        document = get_document(user_id, document_id)
+        if not document:
+            logger.error(f"Document {document_id} not found for user {user_id}")
+            return False
+            
+        # Try to get existing content
+        source_content = get_document_content(user_id, document_id, 'source')
+        translated_content = get_document_content(user_id, document_id, 'translated')
+        
+        fixed = False
+        
+        # Create placeholder for source if missing
+        if not source_content:
+            logger.info(f"Creating placeholder source content for document {document_id}")
+            placeholder = f"This is placeholder source content for document '{document['title']}'. The original content was missing."
+            success = save_document_content(user_id, document_id, placeholder, 'source')
+            logger.info(f"Source content for document {document_id} {'created successfully' if success else 'failed to create'}")
+            fixed = fixed or success
+            
+        # Create placeholder for translated if missing
+        if not translated_content:
+            logger.info(f"Creating placeholder translated content for document {document_id}")
+            placeholder = f"This is placeholder translated content for document '{document['title']}'. The original content was missing."
+            success = save_document_content(user_id, document_id, placeholder, 'translated')
+            logger.info(f"Translated content for document {document_id} {'created successfully' if success else 'failed to create'}")
+            fixed = fixed or success
+            
+        # If we've applied fixes, update document metadata
+        if fixed:
+            logger.info(f"Updating document {document_id} metadata after content fix")
+            update_data = {
+                'status': 'fixed',
+                'updated_at': 'now()'
+            }
+            supabase.table('documents').update(update_data).eq('id', document_id).eq('user_id', user_id).execute()
+            
+        return fixed
+    except Exception as e:
+        logger.error(f"Error fixing document content: {e}")
+        return False
+
 def save_document_content(user_id, document_id, content, content_type='translated'):
     """Save document content to storage"""
     try:
@@ -889,11 +934,18 @@ def save_document_content(user_id, document_id, content, content_type='translate
         
         try:
             # List files to see if directory exists
-            list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
-            logger.debug(f"Directory exists for document {document_id}")
-        except Exception as dir_error:
-            # Directory doesn't exist, create it by uploading a placeholder file
+            dir_exists = False
             try:
+                list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
+                # Check if list_files is valid (not None and is a list)
+                if list_files and isinstance(list_files, list):
+                    dir_exists = True
+                    logger.debug(f"Directory exists for document {document_id}")
+            except:
+                dir_exists = False
+                
+            # If directory doesn't exist, create it
+            if not dir_exists:
                 logger.debug(f"Creating directory for document {document_id}")
                 placeholder_path = f"{user_id}/{document_id}/.placeholder"
                 placeholder_content = b"placeholder"
@@ -905,9 +957,9 @@ def save_document_content(user_id, document_id, content, content_type='translate
                     {"contentType": "text/plain", "upsert": "true", "cacheControl": "3600"}
                 )
                 logger.debug(f"Created directory for document {document_id}")
-            except Exception as create_dir_error:
-                logger.error(f"Error creating directory for document {document_id}: {create_dir_error}")
-                # Continue anyway, the upload might still work
+        except Exception as dir_error:
+            logger.error(f"Error checking/creating directory for document {document_id}: {dir_error}")
+            # Continue anyway, the upload might still work
         
         # Upload to storage
         logger.debug(f"Saving {content_type} content for document {document_id} to path {storage_path}")
@@ -947,10 +999,13 @@ def get_document_content(user_id, document_id, content_type='translated', versio
                 
                 # Check if our content file is in the list
                 content_file_exists = False
-                for file_info in list_files:
-                    if file_info.get('name') == content_type:
-                        content_file_exists = True
-                        break
+                
+                # Make sure list_files is not None and is iterable
+                if list_files and isinstance(list_files, list):
+                    for file_info in list_files:
+                        if file_info and isinstance(file_info, dict) and file_info.get('name') == content_type:
+                            content_file_exists = True
+                            break
                 
                 if not content_file_exists:
                     logger.warning(f"Content file '{content_type}' not found for document {document_id}")

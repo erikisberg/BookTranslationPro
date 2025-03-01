@@ -22,7 +22,7 @@ from supabase_config import (
     get_glossary_entries, create_glossary_entry, update_glossary_entry, delete_glossary_entry,
     get_user_folders, get_folder, create_folder, update_folder, delete_folder,
     get_user_documents, get_document, create_document, update_document, delete_document,
-    get_document_versions, get_document_content, save_document_content
+    get_document_versions, get_document_content, save_document_content, fix_document_content
 )
 
 # Load environment variables from .env file
@@ -2322,6 +2322,29 @@ def delete_folder_route(folder_id):
         'success': True,
         'message': 'Folder deleted successfully'
     })
+
+@app.route('/documents/<document_id>/fix', methods=['POST'])
+@login_required
+def fix_document(document_id):
+    """Fix a document with missing content files"""
+    user_id = get_user_id()
+    
+    # Get the document to verify ownership
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found.', 'error')
+        return redirect(url_for('documents'))
+    
+    # Try to fix the document content
+    success = fix_document_content(user_id, document_id)
+    
+    if success:
+        flash('Document content has been fixed successfully.', 'success')
+    else:
+        flash('Failed to fix document content. Please try again later.', 'error')
+        
+    # Redirect back to the document
+    return redirect(url_for('view_document', document_id=document_id))
 
 @app.route('/documents/<document_id>')
 @login_required

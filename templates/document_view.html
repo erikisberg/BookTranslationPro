@@ -33,6 +33,7 @@
                     <li><a class="dropdown-item" href="{{ url_for('document_versions', document_id=document.id) }}"><i class="bi bi-clock-history"></i> View Versions</a></li>
                     <li><a class="dropdown-item" href="#" id="moveDocumentBtn"><i class="bi bi-folder-symlink"></i> Move to Folder</a></li>
                     <li><a class="dropdown-item" href="#" id="createVersionBtn"><i class="bi bi-plus-circle"></i> Create New Version</a></li>
+                    <li><a class="dropdown-item" href="#" id="fixDocumentBtn"><i class="bi bi-tools"></i> Fix Document Content</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item text-danger" href="#" id="deleteDocumentBtn"><i class="bi bi-trash"></i> Delete Document</a></li>
                 </ul>
@@ -286,6 +287,27 @@
         </div>
     </div>
 </div>
+
+<!-- Fix Document Modal -->
+<div class="modal fade" id="fixDocumentModal" tabindex="-1" aria-labelledby="fixDocumentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="fixDocumentModalLabel">Fix Document Content</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will attempt to fix document content files that are missing in storage.</p>
+                <p>If your document is showing errors or missing content, this may help restore it.</p>
+                <p><strong>Note:</strong> This will create placeholder content if the original files are missing.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmFixBtn">Fix Content</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -295,6 +317,7 @@
         const moveDocumentModal = new bootstrap.Modal(document.getElementById('moveDocumentModal'));
         const createVersionModal = new bootstrap.Modal(document.getElementById('createVersionModal'));
         const deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        const fixDocumentModal = new bootstrap.Modal(document.getElementById('fixDocumentModal'));
         
         // View mode toggle
         document.getElementById('viewSource').addEventListener('change', function() {
@@ -405,6 +428,12 @@
             deleteConfirmModal.show();
         });
         
+        // Fix document button
+        document.getElementById('fixDocumentBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            fixDocumentModal.show();
+        });
+        
         // Confirm delete button
         document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
             fetch('/documents/{{ document.id }}', {
@@ -427,6 +456,28 @@
             .catch(error => {
                 console.error('Error deleting document:', error);
                 showToast('Failed to delete document', 'error');
+            });
+        });
+        
+        // Confirm fix button
+        document.getElementById('confirmFixBtn').addEventListener('click', function() {
+            // Display loading state
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Fixing...';
+            this.disabled = true;
+            
+            fetch('/documents/{{ document.id }}/fix', {
+                method: 'POST'
+            })
+            .then(response => {
+                // We expect a redirect, so we'll just reload the page
+                window.location.reload();
+            })
+            .catch(error => {
+                console.error('Error fixing document:', error);
+                showToast('Failed to fix document content', 'error');
+                // Reset button
+                this.innerHTML = 'Fix Content';
+                this.disabled = false;
             });
         });
         
