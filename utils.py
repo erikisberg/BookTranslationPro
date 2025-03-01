@@ -11,6 +11,7 @@ import io
 from pathlib import Path
 import subprocess
 import shutil
+import json
 
 # Try to import optional document processing libraries
 try:
@@ -475,6 +476,89 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
     except Exception as e:
         logger.error(f"DeepL translation error: {str(e)}")
         raise Exception(f"Translation failed: {str(e)}")
+
+def create_openai_assistant(openai_api_key, name, instructions, model="gpt-4o"):
+    """Create a new OpenAI assistant with the given name and instructions"""
+    try:
+        logger.info(f"Creating new OpenAI assistant: {name}")
+        client = OpenAI(api_key=openai_api_key)
+        
+        # Create the assistant
+        assistant = client.beta.assistants.create(
+            name=name,
+            instructions=instructions,
+            model=model,
+            tools=[]  # No tools needed for translation review
+        )
+        
+        logger.info(f"Successfully created assistant with ID: {assistant.id}")
+        return {
+            "id": assistant.id,
+            "name": assistant.name,
+            "instructions": assistant.instructions,
+            "model": assistant.model
+        }
+    except Exception as e:
+        logger.error(f"Error creating OpenAI assistant: {str(e)}")
+        raise Exception(f"Failed to create OpenAI assistant: {str(e)}")
+
+def update_openai_assistant(openai_api_key, assistant_id, name=None, instructions=None, model="gpt-4o"):
+    """Update an existing OpenAI assistant with new name, instructions, or model"""
+    try:
+        logger.info(f"Updating OpenAI assistant: {assistant_id}")
+        client = OpenAI(api_key=openai_api_key)
+        
+        # Get current assistant data to update only what's provided
+        current = client.beta.assistants.retrieve(assistant_id)
+        
+        # Prepare update parameters
+        update_params = {}
+        if name is not None:
+            update_params["name"] = name
+        if instructions is not None:
+            update_params["instructions"] = instructions
+        if model is not None:
+            update_params["model"] = model
+        
+        # Only update if there are changes
+        if update_params:
+            assistant = client.beta.assistants.update(
+                assistant_id=assistant_id,
+                **update_params
+            )
+            
+            logger.info(f"Successfully updated assistant: {assistant.id}")
+            return {
+                "id": assistant.id,
+                "name": assistant.name,
+                "instructions": assistant.instructions,
+                "model": assistant.model
+            }
+        else:
+            logger.info(f"No changes to update for assistant: {assistant_id}")
+            return {
+                "id": current.id,
+                "name": current.name,
+                "instructions": current.instructions,
+                "model": current.model
+            }
+    except Exception as e:
+        logger.error(f"Error updating OpenAI assistant: {str(e)}")
+        raise Exception(f"Failed to update OpenAI assistant: {str(e)}")
+
+def delete_openai_assistant(openai_api_key, assistant_id):
+    """Delete an OpenAI assistant"""
+    try:
+        logger.info(f"Deleting OpenAI assistant: {assistant_id}")
+        client = OpenAI(api_key=openai_api_key)
+        
+        deletion = client.beta.assistants.delete(assistant_id)
+        logger.info(f"Assistant deletion response: {deletion}")
+        
+        return deletion.deleted
+    except Exception as e:
+        logger.error(f"Error deleting OpenAI assistant: {str(e)}")
+        raise Exception(f"Failed to delete OpenAI assistant: {str(e)}")
 
 def review_translation(text, openai_api_key, assistant_id, instructions=None):
     """Second step: Review the Swedish translation using OpenAI Assistant"""

@@ -598,17 +598,92 @@ def assistant_config():
 @app.route('/save-assistant', methods=['POST'])
 @login_required
 def save_assistant_route():
-    """Save or update an assistant configuration"""
+    """Save or update an assistant configuration with optional OpenAI integration"""
     try:
         user_id = get_user_id()
+        user = get_current_user()
+        
+        # Get form data
+        assistant_name = request.form.get('name')
+        assistant_instructions = request.form.get('instructions')
+        assistant_author = request.form.get('author')
+        assistant_genre = request.form.get('genre')
+        assistant_id_param = request.form.get('id')  # Local ID, will be None for new assistants
+        
+        # Get user's OpenAI key, falling back to app default
+        openai_api_key = user.get('openai_api_key') or OPENAI_API_KEY
+        if not openai_api_key:
+            flash('OpenAI API nyckel saknas. Lägg till en i din profil eller kontakta administratören.', 'danger')
+            return redirect(url_for('assistant_config'))
+        
+        # Create/update in OpenAI if requested
         assistant_data = {
-            'id': request.form.get('id'),  # Will be None for new assistants
-            'name': request.form.get('name'),
-            'assistant_id': request.form.get('assistant_id'),
-            'author': request.form.get('author'),
-            'genre': request.form.get('genre'),
-            'instructions': request.form.get('instructions')
+            'id': assistant_id_param,
+            'name': assistant_name,
+            'author': assistant_author,
+            'genre': assistant_genre,
+            'instructions': assistant_instructions
         }
+        
+        # For a new assistant
+        if not assistant_id_param:
+            # Check if we should create in OpenAI
+            create_in_openai = request.form.get('create_in_openai') == 'yes'
+            
+            if create_in_openai:
+                try:
+                    # Create in OpenAI
+                    from utils import create_openai_assistant
+                    openai_result = create_openai_assistant(
+                        openai_api_key,
+                        assistant_name,
+                        assistant_instructions
+                    )
+                    # Use the returned assistant ID
+                    assistant_data['assistant_id'] = openai_result.get('id')
+                    logger.info(f"Created assistant in OpenAI with ID: {assistant_data['assistant_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to create assistant in OpenAI: {str(e)}")
+                    flash(f"Kunde inte skapa assistent i OpenAI: {str(e)}", 'danger')
+                    return redirect(url_for('assistant_config'))
+            else:
+                # Use manually entered ID
+                assistant_data['assistant_id'] = request.form.get('assistant_id')
+                if not assistant_data['assistant_id'] and request.form.get('manual_assistant_id'):
+                    assistant_data['assistant_id'] = request.form.get('manual_assistant_id')
+                    
+                if not assistant_data['assistant_id']:
+                    flash('Du måste ange ett OpenAI Assistant ID eller välja att skapa automatiskt', 'danger')
+                    return redirect(url_for('assistant_config'))
+        
+        # For updating an existing assistant
+        else:
+            # Get the existing assistant to get the OpenAI ID
+            existing_assistant = get_assistant(user_id, assistant_id_param)
+            if not existing_assistant:
+                flash('Kunde inte hitta assistenten för uppdatering', 'danger')
+                return redirect(url_for('assistant_config'))
+                
+            assistant_data['assistant_id'] = existing_assistant.get('assistant_id')
+            
+            # Check if we should update in OpenAI
+            sync_with_openai = request.form.get('sync_with_openai') == 'yes'
+            
+            if sync_with_openai and assistant_data['assistant_id']:
+                try:
+                    # Update in OpenAI
+                    from utils import update_openai_assistant
+                    update_openai_assistant(
+                        openai_api_key,
+                        assistant_data['assistant_id'],
+                        name=assistant_name,
+                        instructions=assistant_instructions
+                    )
+                    logger.info(f"Updated assistant in OpenAI with ID: {assistant_data['assistant_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to update assistant in OpenAI: {str(e)}")
+                    flash(f"Kunde inte uppdatera assistent i OpenAI: {str(e)}", 'warning')
+                    # Continue with the local update even if OpenAI update fails
         
         # Save to database
         saved_assistant = save_assistant(user_id, assistant_data)
@@ -630,13 +705,42 @@ def save_assistant_route():
 @app.route('/delete-assistant/<assistant_id>')
 @login_required
 def delete_assistant_route(assistant_id):
-    """Delete an assistant"""
+    """Delete an assistant locally and optionally from OpenAI"""
     try:
         user_id = get_user_id()
+        user = get_current_user()
+        
+        # Get the assistant to get the OpenAI ID before deleting
+        assistant = get_assistant(user_id, assistant_id)
+        openai_assistant_id = None
+        
+        if assistant:
+            openai_assistant_id = assistant.get('assistant_id')
+            
+        # Delete from database
         success = delete_assistant(user_id, assistant_id)
         
+        # Try to delete from OpenAI if we have an ID
+        if success and openai_assistant_id:
+            try:
+                # Get user's OpenAI key, falling back to app default
+                openai_api_key = user.get('openai_api_key') or OPENAI_API_KEY
+                
+                if openai_api_key:
+                    from utils import delete_openai_assistant
+                    openai_delete_success = delete_openai_assistant(openai_api_key, openai_assistant_id)
+                    
+                    if openai_delete_success:
+                        logger.info(f"Deleted assistant from OpenAI: {openai_assistant_id}")
+                    else:
+                        logger.warning(f"OpenAI assistant deletion response indicated failure: {openai_assistant_id}")
+            except Exception as e:
+                # Just log the error but don't prevent local deletion
+                logger.error(f"Error deleting assistant from OpenAI: {str(e)}")
+                flash(f"Assistenten togs bort lokalt, men kunde inte tas bort från OpenAI: {str(e)}", 'warning')
+        
+        # Update session
         if success:
-            # Update session after deletion
             user_settings = get_user_settings(user_id)
             if user_settings and 'assistants' in user_settings:
                 session['user_assistants'] = user_settings['assistants']

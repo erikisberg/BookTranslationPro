@@ -303,9 +303,19 @@ Var särskilt uppmärksam på:
                             <input type="text" class="form-control" id="name" name="name" required>
                         </div>
                         <div class="col-md-6">
-                            <label for="assistant_id" class="form-label">OpenAI Assistant ID</label>
-                            <input type="text" class="form-control" id="assistant_id" name="assistant_id" required>
-                            <div class="form-text">Från <a href="https://platform.openai.com/assistants" target="_blank">OpenAI Assistants dashboard</a></div>
+                            <input type="hidden" id="assistant_id" name="assistant_id" value="">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="create_in_openai" name="create_in_openai" value="yes" checked>
+                                <label class="form-check-label" for="create_in_openai">
+                                    Skapa automatiskt i OpenAI
+                                </label>
+                                <div class="form-text">När detta är aktiverat skapas assistenten automatiskt i OpenAI med dina instruktioner</div>
+                            </div>
+                            <div class="manual-id-container d-none">
+                                <label for="manual_assistant_id" class="form-label">OpenAI Assistant ID</label>
+                                <input type="text" class="form-control" id="manual_assistant_id" name="manual_assistant_id">
+                                <div class="form-text">Från <a href="https://platform.openai.com/assistants" target="_blank">OpenAI Assistants dashboard</a></div>
+                            </div>
                         </div>
                     </div>
                     <div class="row mb-3">
@@ -358,8 +368,18 @@ Var särskilt uppmärksam på:
                             <input type="text" class="form-control" id="edit_name" name="name" required>
                         </div>
                         <div class="col-md-6">
-                            <label for="edit_assistant_id" class="form-label">OpenAI Assistant ID</label>
-                            <input type="text" class="form-control" id="edit_assistant_id" name="assistant_id" required>
+                            <input type="hidden" id="edit_assistant_id" name="assistant_id">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="edit_sync_with_openai" name="sync_with_openai" value="yes" checked>
+                                <label class="form-check-label" for="edit_sync_with_openai">
+                                    Uppdatera i OpenAI
+                                </label>
+                                <div class="form-text">När detta är aktiverat uppdateras assistenten automatiskt i OpenAI</div>
+                            </div>
+                            <div class="assistant-id-display">
+                                <label class="form-label">OpenAI Assistant ID:</label>
+                                <div class="form-control-plaintext" id="display_assistant_id"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="row mb-3">
@@ -398,6 +418,30 @@ Var särskilt uppmärksam på:
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Toggle manual assistant ID input based on checkbox
+    const createInOpenAI = document.getElementById('create_in_openai');
+    const manualIdContainer = document.querySelector('.manual-id-container');
+    const assistantIdField = document.getElementById('assistant_id');
+    const manualAssistantIdField = document.getElementById('manual_assistant_id');
+    
+    if (createInOpenAI && manualIdContainer) {
+        createInOpenAI.addEventListener('change', function() {
+            if (this.checked) {
+                manualIdContainer.classList.add('d-none');
+                assistantIdField.value = '';
+            } else {
+                manualIdContainer.classList.remove('d-none');
+            }
+        });
+        
+        // Update the hidden assistant_id field when manual ID is entered
+        if (manualAssistantIdField) {
+            manualAssistantIdField.addEventListener('input', function() {
+                assistantIdField.value = this.value;
+            });
+        }
+    }
+    
     // Fill edit modal with assistant data
     const editLinks = document.querySelectorAll('.edit-assistant');
     editLinks.forEach(link => {
@@ -408,6 +452,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('edit_id').value = assistant.id;
             document.getElementById('edit_name').value = assistant.name;
             document.getElementById('edit_assistant_id').value = assistant.assistant_id;
+            document.getElementById('display_assistant_id').textContent = assistant.assistant_id;
             document.getElementById('edit_author').value = assistant.author;
             document.getElementById('edit_genre').value = assistant.genre;
             document.getElementById('edit_instructions').value = assistant.instructions;
