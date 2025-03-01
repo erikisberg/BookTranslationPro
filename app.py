@@ -2813,7 +2813,8 @@ def setup_database():
                 # Try to create the documents bucket directly
                 # This will fail if the bucket already exists, but that's fine
                 try:
-                    supabase.storage.create_bucket('documents', {'public': False})
+                    # The API expects a string for the name, not a dict with options
+                    supabase.storage.create_bucket("documents")
                     logger.info("Created 'documents' storage bucket")
                 except Exception as bucket_exists_error:
                     # Bucket might already exist, which is fine
