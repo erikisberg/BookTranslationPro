@@ -125,35 +125,71 @@ def create_pdf_with_text(text_content):
     pdf.output(temp_output.name)
     return temp_output.name
 
-def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id, 
-                instructions=None, target_language='SV', review_style='balanced',
-                return_segments=False):
+def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, return_segments=False):
+    """Process each page of the PDF independently with separate API calls."""
     try:
-        with open(input_path, 'rb') as file:
+        with open(filepath, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
             translations = []
+            total_pages = len(pdf_reader.pages)
 
-            for page_num in range(len(pdf_reader.pages)):
-                logger.info(f"Processing page {page_num + 1}")
-                original_text = extract_text_from_page(pdf_reader, page_num)
-                translated_text = translate_text(original_text, deepl_api_key, target_language)
-                reviewed_text = review_translation(
-                    translated_text,
-                    openai_api_key,
-                    assistant_id
-                )
+            logger.info(f"Starting to process PDF with {total_pages} pages")
 
-                translations.append({
-                    'id': page_num,
-                    'original_text': original_text,
-                    'translated_text': reviewed_text
-                })
-                logger.info(f"Completed processing page {page_num + 1}")
+            for page_num in range(total_pages):
+                try:
+                    logger.info(f"Processing page {page_num + 1} of {total_pages}")
+
+                    # Step 1: Extract text from the current page
+                    logger.info(f"Extracting text from page {page_num + 1}")
+                    original_text = extract_text_from_page(pdf_reader, page_num)
+
+                    # Step 2: Translate text using DeepL (separate call for each page)
+                    logger.info(f"Translating page {page_num + 1} with DeepL")
+                    translated_text = translate_text(original_text, deepl_api_key)
+
+                    # Step 3: Review translation using OpenAI (separate call for each page)
+                    logger.info(f"Reviewing translation for page {page_num + 1} with OpenAI")
+                    reviewed_text = review_translation(
+                        translated_text,
+                        openai_api_key,
+                        assistant_id
+                    )
+
+                    translations.append({
+                        'id': page_num,
+                        'original_text': original_text,
+                        'translated_text': reviewed_text,
+                        'status': 'success'
+                    })
+                    logger.info(f"Successfully completed processing page {page_num + 1}")
+
+                except Exception as e:
+                    logger.error(f"Error processing page {page_num + 1}: {str(e)}")
+                    # Add failed page to translations with error status
+                    translations.append({
+                        'id': page_num,
+                        'original_text': original_text if 'original_text' in locals() else '',
+                        'translated_text': translated_text if 'translated_text' in locals() else original_text if 'original_text' in locals() else '',
+                        'status': 'error',
+                        'error': str(e)
+                    })
+                    continue  # Continue with next page even if current page fails
+
+            # Log summary of processing
+            successful_pages = sum(1 for t in translations if t['status'] == 'success')
+            logger.info(f"PDF processing complete. Successfully processed {successful_pages} out of {total_pages} pages")
+
+            if not translations:
+                raise Exception("No pages could be processed")
 
             if return_segments:
                 return translations
             else:
-                combined_text = '\n\n'.join(t['translated_text'] for t in translations)
+                # Only combine successfully translated pages
+                successful_translations = [t['translated_text'] for t in translations if t['status'] == 'success']
+                if not successful_translations:
+                    raise Exception("No pages were successfully translated")
+                combined_text = '\n\n'.join(successful_translations)
                 return create_pdf_with_text(combined_text)
 
     except Exception as e:
