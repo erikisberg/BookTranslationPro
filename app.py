@@ -31,8 +31,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key-for-dev")
 
 # Make PostHog configuration available to templates if API key exists
-app.config['POSTHOG_API_KEY'] = os.environ.get('POSTHOG_API_KEY')
-app.config['POSTHOG_HOST'] = os.environ.get('POSTHOG_HOST', 'https://app.posthog.com')
+app.config['POSTHOG_API_KEY'] = POSTHOG_API_KEY
+app.config['POSTHOG_HOST'] = POSTHOG_HOST
 
 # Context processor to make current user available in templates
 @app.context_processor
@@ -118,17 +118,34 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 DEEPL_API_KEY = os.environ.get('DEEPL_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID')
-POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY', None)  # Default to None if not provided
-POSTHOG_HOST = os.environ.get('POSTHOG_HOST', 'https://app.posthog.com')
+
+# PostHog configuration - check both standard and Next.js naming conventions
+POSTHOG_API_KEY = os.environ.get('POSTHOG_API_KEY') or os.environ.get('NEXT_PUBLIC_POSTHOG_KEY')
+POSTHOG_HOST = os.environ.get('POSTHOG_HOST') or os.environ.get('NEXT_PUBLIC_POSTHOG_HOST', 'https://app.posthog.com')
 
 # Initialize PostHog if API key is available
 posthog = None
 if POSTHOG_API_KEY:
-    posthog = Posthog(
-        project_api_key=POSTHOG_API_KEY,
-        host=POSTHOG_HOST
-    )
-    logger.info("PostHog initialized successfully")
+    try:
+        posthog = Posthog(
+            project_api_key=POSTHOG_API_KEY,
+            host=POSTHOG_HOST
+        )
+        logger.info(f"PostHog initialized successfully with key: {POSTHOG_API_KEY[:5]}...")
+        logger.info(f"PostHog host: {POSTHOG_HOST}")
+        
+        # Test event to verify connection
+        posthog.capture(
+            distinct_id='system',
+            event='posthog_initialized',
+            properties={
+                'success': True,
+                'timestamp': datetime.now().isoformat()
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize PostHog: {str(e)}")
+        posthog = None
 else:
     logger.info("PostHog API key not provided, analytics disabled")
 
