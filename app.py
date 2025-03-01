@@ -1019,6 +1019,9 @@ def save_reviews():
 @app.route('/download-final')
 @login_required
 def download_final():
+    # Check if a specific format was requested
+    requested_format = request.args.get('format', 'pdf')
+    
     translation_id = session.get('translation_id')
     if not translation_id:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -1043,6 +1046,12 @@ def download_final():
         
         # Get export settings with debug logging
         settings = session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+        
+        # Override format if specified in the request
+        if requested_format in ['pdf', 'docx', 'txt', 'html']:
+            settings = settings.copy()  # Create a copy to avoid modifying the session
+            settings['export_format'] = requested_format
+            
         logger.info(f"Using export settings: {settings}")
         
         # Prepare the content based on settings

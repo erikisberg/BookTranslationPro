@@ -61,14 +61,22 @@
                             <i class="bi bi-cloud-upload"></i> Spara översättning
                         </button>
                     </div>
-                    <a href="{{ url_for('download_final') }}" class="btn btn-outline-success">
-                        <i class="bi bi-file-earmark-arrow-down"></i> Ladda ner PDF
-                    </a>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-success dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-file-earmark-arrow-down"></i> Ladda ner
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('download_final') }}"><i class="bi bi-file-pdf"></i> PDF</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('download_final') }}?format=docx"><i class="bi bi-file-word"></i> Word (DOCX)</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('download_final') }}?format=txt"><i class="bi bi-file-text"></i> Text (TXT)</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('download_final') }}?format=html"><i class="bi bi-file-code"></i> HTML</a></li>
+                        </ul>
+                    </div>
                 </div>
             </form>
             {% else %}
             <div class="alert alert-info">
-                Inga översättningar tillgängliga för granskning. Vänligen ladda upp en PDF-fil först.
+                Inga översättningar tillgängliga för granskning. Vänligen ladda upp en fil först.
             </div>
             {% endif %}
         </div>

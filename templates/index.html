@@ -5,14 +5,15 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title text-center">PDF-översättningsverktyg</h2>
+                <h2 class="card-title text-center">Dokumentöversättningsverktyg</h2>
             </div>
             <div class="card-body">
                 <div class="upload-container text-center">
                     <form id="uploadForm" class="mb-4">
                         <div class="mb-3">
-                            <label for="pdfFile" class="form-label">Välj PDF-fil att översätta</label>
-                            <input type="file" class="form-control" id="pdfFile" accept=".pdf" required>
+                            <label for="pdfFile" class="form-label">Välj dokument att översätta</label>
+                            <input type="file" class="form-control" id="pdfFile" accept=".pdf,.docx,.doc,.txt,.rtf,.odt" required>
+                            <div class="form-text">Stödda format: PDF, Word (DOCX/DOC), textfiler (TXT), RTF och OpenDocument (ODT)</div>
                         </div>
                         <div class="mb-3">
                             <label for="sourceLanguage" class="form-label">Källspråk</label>
@@ -110,7 +111,7 @@
                         </div>
                         <div class="d-grid gap-2 col-md-6 mx-auto">
                             <button type="submit" class="btn btn-primary" id="uploadButton">
-                                <span class="button-text">Översätt PDF</span>
+                                <span class="button-text">Översätt dokument</span>
                                 <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                             </button>
                         </div>

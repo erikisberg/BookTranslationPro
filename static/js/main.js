@@ -105,12 +105,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const file = fileInput.files[0];
 
         if (!file) {
-            showError('Please select a PDF file.');
+            showError('Välj en fil att översätta.');
             return;
         }
-
-        if (!file.name.toLowerCase().endsWith('.pdf')) {
-            showError('Please upload a PDF file.');
+        
+        // Check if file extension is supported
+        const allowedExtensions = ['.pdf', '.docx', '.doc', '.txt', '.rtf', '.odt'];
+        const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        
+        if (!allowedExtensions.includes(fileExtension)) {
+            showError('Filformatet stöds inte. Använd PDF, Word (DOCX/DOC), text (TXT), RTF eller ODT.');
             return;
         }
 
@@ -143,11 +147,23 @@ document.addEventListener('DOMContentLoaded', function() {
             let progress = 0;
             let progressSteps;
             
+            // Get the file extension
+            const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+            const isWord = ['.docx', '.doc'].includes(fileExtension);
+            const isText = ['.txt', '.rtf', '.odt'].includes(fileExtension);
+            const isPdf = fileExtension === '.pdf';
+            
+            // Create a file type message based on the extension
+            let extractMessage = "Extraherar text från dokument...";
+            if (isPdf) extractMessage = "Extraherar text från PDF...";
+            if (isWord) extractMessage = "Extraherar text från Word-dokument...";
+            if (isText) extractMessage = "Bearbetar textfil...";
+            
             if (skipOpenAI) {
                 // Shorter progress sequence when skipping OpenAI
                 progressSteps = [
-                    {progress: 15, message: "Extraherar text från PDF..."},
-                    {progress: 35, message: "Förbereder sidor för översättning..."},
+                    {progress: 15, message: extractMessage},
+                    {progress: 35, message: "Förbereder innehåll för översättning..."},
                     {progress: 55, message: "Översätter med DeepL..."},
                     {progress: 80, message: "Slutför översättning..."},
                     {progress: 90, message: "Nästan klar..."}
@@ -155,8 +171,8 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 // Full progress sequence with OpenAI review
                 progressSteps = [
-                    {progress: 10, message: "Extraherar text från PDF..."},
-                    {progress: 25, message: "Förbereder sidor för översättning..."},
+                    {progress: 10, message: extractMessage},
+                    {progress: 25, message: "Förbereder innehåll för översättning..."},
                     {progress: 40, message: "Översätter med DeepL..."},
                     {progress: 60, message: "Granskar översättning med OpenAI..."},
                     {progress: 80, message: "Slutför översättning..."},
