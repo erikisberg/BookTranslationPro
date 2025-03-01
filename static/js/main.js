@@ -120,6 +120,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add the skipOpenAI checkbox value
         const skipOpenAI = document.getElementById('skipOpenAI').checked;
         formData.append('skipOpenAI', skipOpenAI);
+        
+        // Add language options
+        const sourceLanguage = document.getElementById('sourceLanguage').value;
+        const targetLanguage = document.getElementById('targetLanguage').value;
+        formData.append('sourceLanguage', sourceLanguage);
+        formData.append('targetLanguage', targetLanguage);
 
         try {
             // Show loading state

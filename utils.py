@@ -33,19 +33,24 @@ def extract_text_from_page(pdf_reader, page_num):
         logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
         raise Exception(f"Failed to extract text from page {page_num + 1}: {str(e)}")
 
-def translate_text(text, deepl_api_key, target_language='SV'):
+def translate_text(text, deepl_api_key, target_language='SV', source_language='auto'):
     """First step: Translate text using DeepL"""
     if not text or text.isspace():
         raise ValueError("Cannot translate empty text")
 
     logger.info(f"DeepL API Key starting with: {deepl_api_key[:5]}...")
-    logger.info(f"Target language: {target_language}")
+    logger.info(f"Source language: {source_language}, Target language: {target_language}")
     
     translator = deepl.Translator(deepl_api_key)
     try:
         logger.info(f"Sending {len(text)} characters to DeepL for translation")
         logger.info(f"Text sample: {text[:100]}...")
-        result = translator.translate_text(text, target_lang=target_language)
+        
+        # Use source_language only if it's not auto-detect
+        if source_language.lower() == 'auto':
+            result = translator.translate_text(text, target_lang=target_language)
+        else:
+            result = translator.translate_text(text, source_lang=source_language, target_lang=target_language)
 
         if not result.text or result.text.isspace():
             raise ValueError("DeepL returned empty translation")
@@ -447,7 +452,7 @@ def create_html_with_text(text_content, font_family='helvetica', font_size=12,
         logger.error(f"Error creating HTML: {str(e)}")
         raise Exception(f"Failed to create HTML document: {str(e)}")
 
-def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, return_segments=False):
+def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', return_segments=False):
     """Process each page of the PDF independently with separate API calls."""
     try:
         with open(filepath, 'rb') as file:
@@ -456,6 +461,7 @@ def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, return_se
             total_pages = len(pdf_reader.pages)
 
             logger.info(f"Starting to process PDF with {total_pages} pages")
+            logger.info(f"Translation settings - Source: {source_language}, Target: {target_language}")
 
             for page_num in range(total_pages):
                 try:
@@ -469,7 +475,7 @@ def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, return_se
                     # Step 2: Translate text using DeepL
                     logger.info(f"Translating page {page_num + 1} with DeepL")
                     try:
-                        translated_text = translate_text(original_text, deepl_api_key)
+                        translated_text = translate_text(original_text, deepl_api_key, target_language, source_language)
                         if not translated_text:
                             logger.error("Translation returned empty result")
                             translated_text = original_text

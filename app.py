@@ -642,6 +642,11 @@ def upload_file():
         skip_openai = request.form.get('skipOpenAI') == 'true'
         logger.info(f"Skip OpenAI review: {skip_openai}")
         
+        # Get language options
+        source_language = request.form.get('sourceLanguage', 'auto')
+        target_language = request.form.get('targetLanguage', 'SV')
+        logger.info(f"Language options - Source: {source_language}, Target: {target_language}")
+        
         # If skipping OpenAI, pass None for the OpenAI parameters
         openai_api_key = None if skip_openai else OPENAI_API_KEY
         openai_assistant_id = None if skip_openai else OPENAI_ASSISTANT_ID
@@ -652,6 +657,8 @@ def upload_file():
             DEEPL_API_KEY,
             openai_api_key,
             openai_assistant_id,
+            source_language=source_language,
+            target_language=target_language,
             return_segments=True
         )
 
