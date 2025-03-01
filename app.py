@@ -541,7 +541,23 @@ def assistant_config():
     user_id = get_user_id()
     assistants = get_user_assistants(user_id)
     
-    return render_template('assistant_config.html', assistants=assistants)
+    # Get current export settings from session or use defaults
+    settings = session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+    
+    return render_template('assistant_config.html', 
+                         assistants=assistants,
+                         export_format=settings['export_format'],
+                         page_size=settings['page_size'],
+                         orientation=settings['orientation'],
+                         font_family=settings['font_family'],
+                         font_size=settings['font_size'],
+                         line_spacing=settings['line_spacing'],
+                         alignment=settings['alignment'],
+                         margin_size=settings['margin_size'],
+                         include_page_numbers=settings['include_page_numbers'],
+                         header_text=settings['header_text'],
+                         footer_text=settings['footer_text'],
+                         include_both_languages=settings['include_both_languages'])
 
 @app.route('/save-assistant', methods=['POST'])
 @login_required
@@ -589,22 +605,8 @@ def delete_assistant_route(assistant_id):
 @app.route('/export_settings', methods=['GET'])
 @login_required
 def export_settings():
-    # Get current export settings from session or use defaults
-    settings = session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
-    
-    return render_template('export_settings.html',
-                         export_format=settings['export_format'],
-                         page_size=settings['page_size'],
-                         orientation=settings['orientation'],
-                         font_family=settings['font_family'],
-                         font_size=settings['font_size'],
-                         line_spacing=settings['line_spacing'],
-                         alignment=settings['alignment'],
-                         margin_size=settings['margin_size'],
-                         include_page_numbers=settings['include_page_numbers'],
-                         header_text=settings['header_text'],
-                         footer_text=settings['footer_text'],
-                         include_both_languages=settings['include_both_languages'])
+    # Redirect to the combined settings page
+    return redirect(url_for('assistant_config'))
 
 @app.route('/api_keys_settings', methods=['GET', 'POST'])
 @login_required

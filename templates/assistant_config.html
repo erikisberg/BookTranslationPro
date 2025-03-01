@@ -3,100 +3,283 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-10">
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h2 class="card-title">Författar-assistenter</h2>
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createAssistantModal">
-                    <i class="bi bi-plus-circle"></i> Skapa ny assistent
+        <!-- Tabs nav -->
+        <ul class="nav nav-tabs mb-4" id="settingsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="assistants-tab" data-bs-toggle="tab" data-bs-target="#assistants" type="button" role="tab" aria-controls="assistants" aria-selected="true">
+                    <i class="bi bi-robot"></i> Assistenter
                 </button>
-            </div>
-            <div class="card-body">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }}">{{ message }}</div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-                
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> Konfigurera assistenter för olika författare och genrer för att optimera översättningar.
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="export-tab" data-bs-toggle="tab" data-bs-target="#export" type="button" role="tab" aria-controls="export" aria-selected="false">
+                    <i class="bi bi-file-earmark-arrow-down"></i> Exportinställningar
+                </button>
+            </li>
+        </ul>
+        
+        <!-- Tab content -->
+        <div class="tab-content" id="settingsTabsContent">
+            <!-- Assistants Tab -->
+            <div class="tab-pane fade show active" id="assistants" role="tabpanel" aria-labelledby="assistants-tab">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h2 class="card-title">Författar-assistenter</h2>
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createAssistantModal">
+                            <i class="bi bi-plus-circle"></i> Skapa ny assistent
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Konfigurera assistenter för olika författare och genrer för att optimera översättningar.
+                        </div>
+                        
+                        {% if assistants %}
+                            <div class="row row-cols-1 row-cols-md-2 g-4">
+                                {% for assistant in assistants %}
+                                    <div class="col">
+                                        <div class="card h-100">
+                                            <div class="card-header d-flex justify-content-between">
+                                                <h5 class="card-title mb-0">{{ assistant.name }}</h5>
+                                                <div class="dropdown">
+                                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                    <ul class="dropdown-menu dropdown-menu-end">
+                                                        <li><a class="dropdown-item edit-assistant" href="#" data-assistant='{{ assistant|tojson }}' data-bs-toggle="modal" data-bs-target="#editAssistantModal"><i class="bi bi-pencil"></i> Redigera</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('delete_assistant_route', assistant_id=assistant.id) }}" onclick="return confirm('Är du säker på att du vill ta bort denna assistent?');"><i class="bi bi-trash"></i> Ta bort</a></li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-2">
+                                                    <span class="badge bg-primary">{{ assistant.author }}</span>
+                                                    <span class="badge bg-secondary">{{ assistant.genre }}</span>
+                                                </div>
+                                                <p class="card-text"><strong>Assistant ID:</strong> <span class="text-muted">{{ assistant.assistant_id|truncate(10) }}...</span></p>
+                                                <h6>Instruktioner:</h6>
+                                                <div class="border rounded p-2 bg-light">
+                                                    <pre class="mb-0">{{ assistant.instructions|truncate(150) }}</pre>
+                                                </div>
+                                            </div>
+                                            <div class="card-footer">
+                                                <small class="text-muted">Senast uppdaterad: {{ assistant.updated_at|datetime }}</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i> Du har inga sparade assistenter än. Klicka på "Skapa ny assistent" för att komma igång.
+                            </div>
+                        {% endif %}
+                    </div>
                 </div>
                 
-                {% if assistants %}
-                    <div class="row row-cols-1 row-cols-md-2 g-4">
-                        {% for assistant in assistants %}
-                            <div class="col">
-                                <div class="card h-100">
-                                    <div class="card-header d-flex justify-content-between">
-                                        <h5 class="card-title mb-0">{{ assistant.name }}</h5>
-                                        <div class="dropdown">
-                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                                <i class="bi bi-three-dots-vertical"></i>
-                                            </button>
-                                            <ul class="dropdown-menu dropdown-menu-end">
-                                                <li><a class="dropdown-item edit-assistant" href="#" data-assistant='{{ assistant|tojson }}' data-bs-toggle="modal" data-bs-target="#editAssistantModal"><i class="bi bi-pencil"></i> Redigera</a></li>
-                                                <li><a class="dropdown-item" href="{{ url_for('delete_assistant_route', assistant_id=assistant.id) }}" onclick="return confirm('Är du säker på att du vill ta bort denna assistent?');"><i class="bi bi-trash"></i> Ta bort</a></li>
-                                            </ul>
-                                        </div>
-                                    </div>
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h3 class="card-title">Vanliga instruktioner</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card mb-3">
+                                    <div class="card-header">Skönlitterärt</div>
                                     <div class="card-body">
-                                        <div class="mb-2">
-                                            <span class="badge bg-primary">{{ assistant.author }}</span>
-                                            <span class="badge bg-secondary">{{ assistant.genre }}</span>
-                                        </div>
-                                        <p class="card-text"><strong>Assistant ID:</strong> <span class="text-muted">{{ assistant.assistant_id|truncate(10) }}...</span></p>
-                                        <h6>Instruktioner:</h6>
-                                        <div class="border rounded p-2 bg-light">
-                                            <pre class="mb-0">{{ assistant.instructions|truncate(150) }}</pre>
-                                        </div>
-                                    </div>
-                                    <div class="card-footer">
-                                        <small class="text-muted">Senast uppdaterad: {{ assistant.updated_at|datetime }}</small>
-                                    </div>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i> Du har inga sparade assistenter än. Klicka på "Skapa ny assistent" för att komma igång.
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-        
-        <div class="card mb-4">
-            <div class="card-header">
-                <h3 class="card-title">Vanliga instruktioner</h3>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-header">Skönlitterärt</div>
-                            <div class="card-body">
-                                <pre class="mb-0">Översätt med bevarande av författarens unika stil och ton. 
+                                        <pre class="mb-0">Översätt med bevarande av författarens unika stil och ton. 
 Var särskilt uppmärksam på:
 1. Bevarande av metaforer och liknelser 
 2. Känslan och flytet i dialogen
 3. Stilistiska element som är karakteristiska för författaren
 4. Anpassning av kulturella referenser när det behövs</pre>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-header">Facklitterärt</div>
-                            <div class="card-body">
-                                <pre class="mb-0">Översätt med fokus på precision och tydlighet. 
+                            <div class="col-md-6">
+                                <div class="card mb-3">
+                                    <div class="card-header">Facklitterärt</div>
+                                    <div class="card-body">
+                                        <pre class="mb-0">Översätt med fokus på precision och tydlighet. 
 Var särskilt uppmärksam på:
 1. Korrekt fackterminologi
 2. Konsekvent användning av termer
 3. Tydlig och pedagogisk meningsbyggnad
 4. Bevarande av originalets informationsstruktur</pre>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Export Settings Tab -->
+            <div class="tab-pane fade" id="export" role="tabpanel" aria-labelledby="export-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title text-center">Exportinställningar</h2>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('save_export_settings') }}">
+                            <div class="mb-4">
+                                <h4>Filformat</h4>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="radio" name="file_format" id="formatPDF" 
+                                                   value="pdf" {% if export_format == 'pdf' %}checked{% endif %}>
+                                            <label class="form-check-label" for="formatPDF">
+                                                PDF
+                                            </label>
+                                        </div>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="radio" name="file_format" id="formatDOCX" 
+                                                   value="docx" {% if export_format == 'docx' %}checked{% endif %}>
+                                            <label class="form-check-label" for="formatDOCX">
+                                                Word (DOCX)
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="radio" name="file_format" id="formatTXT" 
+                                                   value="txt" {% if export_format == 'txt' %}checked{% endif %}>
+                                            <label class="form-check-label" for="formatTXT">
+                                                Textfil (TXT)
+                                            </label>
+                                        </div>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="radio" name="file_format" id="formatHTML" 
+                                                   value="html" {% if export_format == 'html' %}checked{% endif %}>
+                                            <label class="form-check-label" for="formatHTML">
+                                                HTML
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <h4>Sidformatering</h4>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="pageSize" class="form-label">Sidstorlek</label>
+                                            <select class="form-select" id="pageSize" name="page_size">
+                                                <option value="A4" {% if page_size == 'A4' %}selected{% endif %}>A4</option>
+                                                <option value="Letter" {% if page_size == 'Letter' %}selected{% endif %}>Letter</option>
+                                                <option value="Legal" {% if page_size == 'Legal' %}selected{% endif %}>Legal</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="orientation" class="form-label">Orientering</label>
+                                            <select class="form-select" id="orientation" name="orientation">
+                                                <option value="portrait" {% if orientation == 'portrait' %}selected{% endif %}>Stående</option>
+                                                <option value="landscape" {% if orientation == 'landscape' %}selected{% endif %}>Liggande</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <h4>Textformatering</h4>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="fontFamily" class="form-label">Typsnitt</label>
+                                            <select class="form-select" id="fontFamily" name="font_family">
+                                                <option value="helvetica" {% if font_family == 'helvetica' %}selected{% endif %}>Helvetica</option>
+                                                <option value="times" {% if font_family == 'times' %}selected{% endif %}>Times New Roman</option>
+                                                <option value="courier" {% if font_family == 'courier' %}selected{% endif %}>Courier</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="fontSize" class="form-label">Teckenstorlek</label>
+                                            <select class="form-select" id="fontSize" name="font_size">
+                                                {% for size in range(8, 17) %}
+                                                <option value="{{size}}" {% if font_size == size %}selected{% endif %}>{{size}} pt</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="lineSpacing" class="form-label">Radavstånd</label>
+                                            <select class="form-select" id="lineSpacing" name="line_spacing">
+                                                <option value="1.0" {% if line_spacing == '1.0' %}selected{% endif %}>Enkel (1.0)</option>
+                                                <option value="1.15" {% if line_spacing == '1.15' %}selected{% endif %}>1.15</option>
+                                                <option value="1.5" {% if line_spacing == '1.5' %}selected{% endif %}>1.5</option>
+                                                <option value="2.0" {% if line_spacing == '2.0' %}selected{% endif %}>Dubbel (2.0)</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="alignment" class="form-label">Textjustering</label>
+                                            <select class="form-select" id="alignment" name="alignment">
+                                                <option value="left" {% if alignment == 'left' %}selected{% endif %}>Vänsterjusterad</option>
+                                                <option value="center" {% if alignment == 'center' %}selected{% endif %}>Centrerad</option>
+                                                <option value="right" {% if alignment == 'right' %}selected{% endif %}>Högerjusterad</option>
+                                                <option value="justified" {% if alignment == 'justified' %}selected{% endif %}>Marginaljustering</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <h4>Utseende</h4>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="marginSize" class="form-label">Marginaler (mm)</label>
+                                            <input type="number" class="form-control" id="marginSize" name="margin_size" 
+                                                   value="{{ margin_size }}" min="5" max="50">
+                                        </div>
+                                        <div class="form-check mb-3">
+                                            <input class="form-check-input" type="checkbox" id="includePageNumbers" name="include_page_numbers" 
+                                                   {% if include_page_numbers %}checked{% endif %}>
+                                            <label class="form-check-label" for="includePageNumbers">
+                                                Inkludera sidnummer
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="headerText" class="form-label">Sidhuvud (valfritt)</label>
+                                            <input type="text" class="form-control" id="headerText" name="header_text" 
+                                                   value="{{ header_text }}">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="footerText" class="form-label">Sidfot (valfritt)</label>
+                                            <input type="text" class="form-control" id="footerText" name="footer_text" 
+                                                   value="{{ footer_text }}">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3 form-check">
+                                <input class="form-check-input" type="checkbox" id="includeBothLanguages" name="include_both_languages" 
+                                       {% if include_both_languages %}checked{% endif %}>
+                                <label class="form-check-label" for="includeBothLanguages">
+                                    Inkludera originaltext tillsammans med översättningen
+                                </label>
+                            </div>
+
+                            <div class="d-grid gap-2 col-md-6 mx-auto">
+                                <button type="submit" class="btn btn-primary">Spara inställningar</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
