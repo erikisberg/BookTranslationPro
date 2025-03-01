@@ -15,31 +15,34 @@ document.addEventListener('DOMContentLoaded', function() {
     const spinner = uploadButton ? uploadButton.querySelector('.spinner-border') : null;
 
     async function handleResponse(response) {
-        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
         console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
         console.log('Response content type:', response.headers.get('content-type'));
 
-        try {
-            const responseText = await response.text();
-            console.log('Raw response text:', responseText);
-
-            let data;
+        if (!response.ok) {
+            // Try to get error details from response
             try {
-                data = JSON.parse(responseText);
-                console.log('Parsed response data:', data);
+                if (response.headers.get('content-type')?.includes('application/json')) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Operation failed');
+                } else {
+                    const errorText = await response.text();
+                    console.error('Non-JSON error response:', errorText);
+                    throw new Error('Server error occurred');
+                }
             } catch (parseError) {
-                console.error('JSON parsing error:', parseError);
-                console.error('Failed to parse response text:', responseText);
-                throw new Error('Server returned invalid JSON response');
+                console.error('Error parsing error response:', parseError);
+                throw new Error('Server error occurred');
             }
+        }
 
-            if (!response.ok) {
-                throw new Error(data.error || 'Operation failed');
-            }
+        try {
+            const data = await response.json();
+            console.log('Response data:', data);
             return data;
         } catch (error) {
-            console.error('Error handling response:', error);
-            throw error;
+            console.error('Error parsing JSON response:', error);
+            throw new Error('Invalid server response');
         }
     }
 
@@ -65,12 +68,11 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Form data created with file:', file.name);
 
         try {
-            // Show loading state
-            if (buttonText) buttonText.textContent = 'Processing...';
-            if (spinner) spinner.classList.remove('d-none');
-            if (uploadButton) uploadButton.disabled = true;
-            progressContainer.classList.remove('d-none');
+            setLoading(true);
             errorContainer.classList.add('d-none');
+            progressContainer.classList.remove('d-none');
+            progressBar.style.width = '0%';
+            statusText.textContent = 'Uploading file...';
 
             // Simulate progress for better UX
             let progress = 0;
@@ -78,7 +80,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 progress += 5;
                 if (progress <= 90) {
                     progressBar.style.width = `${progress}%`;
-                    statusText.textContent = `Processing page...`;
+                    if (progress < 30) {
+                        statusText.textContent = 'Uploading file...';
+                    } else if (progress < 60) {
+                        statusText.textContent = 'Extracting text...';
+                    } else {
+                        statusText.textContent = 'Processing translation...';
+                    }
                 }
             }, 1000);
 
@@ -96,12 +104,10 @@ document.addEventListener('DOMContentLoaded', function() {
             clearInterval(progressInterval);
             const data = await handleResponse(response);
 
-            // Handle successful response
             console.log('Upload successful, processing response');
             progressBar.style.width = '100%';
             statusText.textContent = 'Translation complete! Redirecting to review...';
 
-            // Redirect to review page
             if (data.redirect) {
                 console.log('Redirecting to:', data.redirect);
                 window.location.href = data.redirect;
@@ -109,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Upload process error:', error);
-            showError(error.message);
+            showError(error.message || 'Failed to process file');
             resetForm();
         }
     });
@@ -118,14 +124,18 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('Showing error:', message);
         errorContainer.textContent = message;
         errorContainer.classList.remove('d-none');
-        if (progressContainer) progressContainer.classList.add('d-none');
+        progressContainer.classList.add('d-none');
+    }
+
+    function setLoading(isLoading) {
+        if (buttonText) buttonText.textContent = isLoading ? 'Processing...' : 'Translate PDF';
+        if (spinner) spinner.classList.toggle('d-none', !isLoading);
+        if (uploadButton) uploadButton.disabled = isLoading;
     }
 
     function resetForm() {
         console.log('Resetting form');
-        if (buttonText) buttonText.textContent = 'Translate PDF';
-        if (spinner) spinner.classList.add('d-none');
-        if (uploadButton) uploadButton.disabled = false;
+        setLoading(false);
         progressContainer.classList.add('d-none');
         progressBar.style.width = '0%';
         statusText.textContent = '';

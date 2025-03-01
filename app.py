@@ -1,7 +1,7 @@
 import os
 import logging
 import traceback
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, g, make_response
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, make_response
 from werkzeug.utils import secure_filename
 import tempfile
 from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
@@ -88,6 +88,7 @@ def handle_exception(e):
             'status': 'error'
         })
         response.status_code = status_code
+        response.headers['Content-Type'] = 'application/json'
         return response
 
     return render_template('500.html'), status_code
@@ -193,10 +194,7 @@ def save_assistant_config():
         os.environ['REVIEW_STYLE'] = review_style
 
         if wants_json():
-            return jsonify({
-                'success': True,
-                'redirect': url_for('assistant_config')
-            })
+            return jsonify({'success': True, 'redirect': url_for('assistant_config')})
         return redirect(url_for('assistant_config'))
 
     except Exception as e:
