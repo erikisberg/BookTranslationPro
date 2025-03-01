@@ -208,8 +208,8 @@ def login():
         
         # Ensure user exists in the users table (needed for foreign key constraints)
         user_data = {
-            'email': response.user.email or 'user@example.com',  # Ensure email is never null
-            'name': response.user.user_metadata.get('name', 'Användare')
+            'email': response.user.email or 'user@example.com'  # Ensure email is never null
+            # Note: 'name' column doesn't exist in users table according to error message
         }
         save_user_data(response.user.id, user_data)
         
@@ -289,8 +289,8 @@ def signup():
         # Create user record in the users table (needed for foreign key constraints)
         if response.user and response.user.id:
             user_data = {
-                'email': email or 'user@example.com',  # Ensure email is never null
-                'name': name or 'User'  # Ensure name is never empty
+                'email': email or 'user@example.com'  # Ensure email is never null
+                # Note: 'name' column doesn't exist in users table according to error message
             }
             save_user_data(response.user.id, user_data)
         
@@ -588,6 +588,11 @@ def save_export_settings():
         # Store in user settings in Supabase if logged in
         user_id = get_user_id()
         if user_id:
+            # Ensure user exists before saving settings
+            user_data = {
+                'email': session.get('user', {}).get('email') or 'user@example.com'  # Ensure email is never null
+            }
+            save_user_data(user_id, user_data)
             save_user_settings(user_id, {'export_settings': settings})
         
         # Display success message and redirect
@@ -800,8 +805,8 @@ def download_final():
         if user_id:
             # Ensure user exists in the users table before saving translation
             user_data = {
-                'email': session.get('user', {}).get('email') or 'user@example.com',  # Ensure email is never null
-                'name': session.get('user', {}).get('name') or 'User'  # Ensure name is never empty
+                'email': session.get('user', {}).get('email') or 'user@example.com'  # Ensure email is never null
+                # Note: 'name' column doesn't exist in users table according to error message
             }
             save_user_data(user_id, user_data)
             
