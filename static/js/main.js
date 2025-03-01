@@ -1,24 +1,30 @@
 document.addEventListener('DOMContentLoaded', function() {
     const uploadForm = document.getElementById('uploadForm');
-    const uploadButton = document.getElementById('uploadButton');
-    const buttonText = uploadButton.querySelector('.button-text');
-    const spinner = uploadButton.querySelector('.spinner-border');
     const progressContainer = document.getElementById('progressContainer');
     const progressBar = document.querySelector('.progress-bar');
     const statusText = document.getElementById('statusText');
     const errorContainer = document.getElementById('errorContainer');
 
+    if (!uploadForm) {
+        console.warn('Upload form not found on this page');
+        return;
+    }
+
+    const uploadButton = uploadForm.querySelector('button[type="submit"]');
+    const buttonText = uploadButton ? uploadButton.querySelector('.button-text') : null;
+    const spinner = uploadButton ? uploadButton.querySelector('.spinner-border') : null;
+
     uploadForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-        
+
         const fileInput = document.getElementById('pdfFile');
         const file = fileInput.files[0];
-        
+
         if (!file) {
             showError('Please select a PDF file.');
             return;
         }
-        
+
         if (!file.name.toLowerCase().endsWith('.pdf')) {
             showError('Please upload a PDF file.');
             return;
@@ -29,12 +35,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             // Show loading state
-            buttonText.textContent = 'Processing...';
-            spinner.classList.remove('d-none');
-            uploadButton.disabled = true;
+            if (buttonText) buttonText.textContent = 'Processing...';
+            if (spinner) spinner.classList.remove('d-none');
+            if (uploadButton) uploadButton.disabled = true;
             progressContainer.classList.remove('d-none');
             errorContainer.classList.add('d-none');
-            
+
             // Simulate progress for better UX
             let progress = 0;
             const progressInterval = setInterval(() => {
@@ -87,9 +93,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function resetForm() {
-        buttonText.textContent = 'Translate PDF';
-        spinner.classList.add('d-none');
-        uploadButton.disabled = false;
+        if (buttonText) buttonText.textContent = 'Translate PDF';
+        if (spinner) spinner.classList.add('d-none');
+        if (uploadButton) uploadButton.disabled = false;
         progressContainer.classList.add('d-none');
         progressBar.style.width = '0%';
         statusText.textContent = '';
