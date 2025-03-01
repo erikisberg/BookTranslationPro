@@ -1,7 +1,9 @@
 import os
+import uuid
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import logging
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -161,3 +163,76 @@ def get_user_settings(user_id):
 def save_user_settings(user_id, settings):
     """Save user settings"""
     return save_user_data(user_id, {'settings': settings})
+    
+def get_user_assistants(user_id):
+    """Get list of user's OpenAI assistants"""
+    try:
+        user_data = get_user_data(user_id)
+        if user_data and 'assistants' in user_data:
+            return user_data['assistants']
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching user assistants: {e}")
+        return []
+
+def get_assistant(user_id, assistant_id):
+    """Get a specific assistant by ID"""
+    try:
+        assistants = get_user_assistants(user_id)
+        for assistant in assistants:
+            if assistant.get('id') == assistant_id:
+                return assistant
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching assistant: {e}")
+        return None
+
+def save_assistant(user_id, assistant_data):
+    """Save or update an assistant configuration"""
+    try:
+        # Generate ID if not provided
+        if not assistant_data.get('id'):
+            assistant_data['id'] = str(uuid.uuid4())
+            
+        # Set timestamps
+        current_time = datetime.now().isoformat()
+        if not assistant_data.get('created_at'):
+            assistant_data['created_at'] = current_time
+        assistant_data['updated_at'] = current_time
+        
+        # Get current assistants
+        user_data = get_user_data(user_id) or {}
+        assistants = user_data.get('assistants', [])
+        
+        # Update existing or add new
+        assistant_id = assistant_data.get('id')
+        for i, assistant in enumerate(assistants):
+            if assistant.get('id') == assistant_id:
+                assistants[i] = assistant_data
+                break
+        else:
+            assistants.append(assistant_data)
+        
+        # Save updated assistants list
+        user_data['assistants'] = assistants
+        save_user_data(user_id, user_data)
+        
+        return assistant_data
+    except Exception as e:
+        logger.error(f"Error saving assistant: {e}")
+        return None
+
+def delete_assistant(user_id, assistant_id):
+    """Delete an assistant"""
+    try:
+        user_data = get_user_data(user_id) or {}
+        assistants = user_data.get('assistants', [])
+        
+        # Filter out the assistant to delete
+        user_data['assistants'] = [a for a in assistants if a.get('id') != assistant_id]
+        save_user_data(user_id, user_data)
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting assistant: {e}")
+        return False

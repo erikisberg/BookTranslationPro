@@ -63,7 +63,7 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
         logger.error(f"DeepL translation error: {str(e)}")
         raise Exception(f"Translation failed: {str(e)}")
 
-def review_translation(text, openai_api_key, assistant_id):
+def review_translation(text, openai_api_key, assistant_id, instructions=None):
     """Second step: Review the Swedish translation using OpenAI Assistant"""
     if not text or text.isspace():
         raise ValueError("Cannot review empty translation")
@@ -79,9 +79,13 @@ def review_translation(text, openai_api_key, assistant_id):
         thread = client.beta.threads.create()
         logger.info(f"Created thread with ID: {thread.id}")
 
+        # Use custom instructions if provided, otherwise use default
+        if not instructions:
+            instructions = """Granska och förbättra denna svenska översättning. 
+            Texten ska vara tydlig, naturlig och bevara den ursprungliga betydelsen."""
+            
         logger.info("Adding message to thread")
-        message_content = f"""Granska och förbättra denna svenska översättning. 
-            Texten ska vara tydlig, naturlig och bevara den ursprungliga betydelsen:
+        message_content = f"""{instructions}
 
             {text}
 
@@ -452,7 +456,7 @@ def create_html_with_text(text_content, font_family='helvetica', font_size=12,
         logger.error(f"Error creating HTML: {str(e)}")
         raise Exception(f"Failed to create HTML document: {str(e)}")
 
-def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', return_segments=False):
+def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False):
     """Process each page of the PDF independently with separate API calls."""
     try:
         with open(filepath, 'rb') as file:
@@ -494,7 +498,8 @@ def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, source_la
                             reviewed_text = review_translation(
                                 translated_text,
                                 openai_api_key,
-                                assistant_id
+                                assistant_id,
+                                instructions=custom_instructions
                             )
                         except Exception as e:
                             logger.error(f"OpenAI review error for page {page_num + 1}: {str(e)}")

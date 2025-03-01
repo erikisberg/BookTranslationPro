@@ -126,6 +126,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const targetLanguage = document.getElementById('targetLanguage').value;
         formData.append('sourceLanguage', sourceLanguage);
         formData.append('targetLanguage', targetLanguage);
+        
+        // Add selected assistant
+        const assistantId = document.getElementById('assistantSelect').value;
+        formData.append('assistantId', assistantId);
 
         try {
             // Show loading state

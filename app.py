@@ -526,20 +526,62 @@ def delete_translation_route():
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    # Get user's assistants for the dropdown
+    user_id = get_user_id()
+    assistants = get_user_assistants(user_id)
+    return render_template('index.html', assistants=assistants)
 
 @app.route('/assistant-config', methods=['GET'])
 @login_required
 def assistant_config():
-    # Get current configuration from environment or use defaults
-    current_instructions = os.environ.get('ASSISTANT_INSTRUCTIONS', DEFAULT_INSTRUCTIONS)
-    target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
-    review_style = os.environ.get('REVIEW_STYLE', 'balanced')
+    # Get user's assistants
+    user_id = get_user_id()
+    assistants = get_user_assistants(user_id)
+    
+    return render_template('assistant_config.html', assistants=assistants)
 
-    return render_template('config.html',
-                         current_instructions=current_instructions,
-                         target_language=target_language,
-                         review_style=review_style)
+@app.route('/save-assistant', methods=['POST'])
+@login_required
+def save_assistant():
+    """Save or update an assistant configuration"""
+    try:
+        user_id = get_user_id()
+        assistant_data = {
+            'id': request.form.get('id'),  # Will be None for new assistants
+            'name': request.form.get('name'),
+            'assistant_id': request.form.get('assistant_id'),
+            'author': request.form.get('author'),
+            'genre': request.form.get('genre'),
+            'instructions': request.form.get('instructions')
+        }
+        
+        # Save to database
+        save_assistant(user_id, assistant_data)
+        
+        flash('Assistent sparad!', 'success')
+        return redirect(url_for('assistant_config'))
+    except Exception as e:
+        logger.error(f"Error saving assistant: {str(e)}")
+        flash(f"Ett fel uppstod: {str(e)}", 'danger')
+        return redirect(url_for('assistant_config'))
+        
+@app.route('/delete-assistant/<assistant_id>')
+@login_required
+def delete_assistant_route(assistant_id):
+    """Delete an assistant"""
+    try:
+        user_id = get_user_id()
+        success = delete_assistant(user_id, assistant_id)
+        
+        if success:
+            flash('Assistent borttagen!', 'success')
+        else:
+            flash('Kunde inte ta bort assistent.', 'danger')
+    except Exception as e:
+        logger.error(f"Error deleting assistant: {str(e)}")
+        flash(f"Ett fel uppstod: {str(e)}", 'danger')
+        
+    return redirect(url_for('assistant_config'))
                          
 @app.route('/export_settings', methods=['GET'])
 @login_required
@@ -698,15 +740,30 @@ def upload_file():
         target_language = request.form.get('targetLanguage', 'SV')
         logger.info(f"Language options - Source: {source_language}, Target: {target_language}")
         
+        # Get selected assistant ID
+        assistant_id_selected = request.form.get('assistantId')
+        
         # Get user's API keys if available
         user_id = get_user_id()
         user_api_keys = get_user_settings(user_id).get('api_keys', DEFAULT_API_KEYS) if user_id else DEFAULT_API_KEYS
         
         # Use user's API keys if provided, otherwise fallback to system keys
         deepl_api_key = user_api_keys.get('deepl_api_key') or DEEPL_API_KEY
+        
+        # Handle assistant selection and OpenAI settings
         if not skip_openai:
             openai_api_key = user_api_keys.get('openai_api_key') or OPENAI_API_KEY
-            openai_assistant_id = user_api_keys.get('openai_assistant_id') or OPENAI_ASSISTANT_ID
+            
+            # If user selected a specific assistant, use that
+            if assistant_id_selected:
+                assistant_data = get_assistant(user_id, assistant_id_selected)
+                if assistant_data and assistant_data.get('assistant_id'):
+                    openai_assistant_id = assistant_data.get('assistant_id')
+                    logger.info(f"Using selected assistant: {assistant_data.get('name')} ({openai_assistant_id})")
+                else:
+                    openai_assistant_id = user_api_keys.get('openai_assistant_id') or OPENAI_ASSISTANT_ID
+            else:
+                openai_assistant_id = user_api_keys.get('openai_assistant_id') or OPENAI_ASSISTANT_ID
         else:
             openai_api_key = None
             openai_assistant_id = None
@@ -716,6 +773,14 @@ def upload_file():
             logger.info(f"Using {'user' if user_api_keys.get('openai_api_key') else 'system'} OpenAI API key")
             logger.info(f"Using {'user' if user_api_keys.get('openai_assistant_id') else 'system'} OpenAI Assistant ID")
 
+        # Get custom instructions if using a specific assistant
+        custom_instructions = None
+        if assistant_id_selected and not skip_openai:
+            assistant_data = get_assistant(user_id, assistant_id_selected)
+            if assistant_data:
+                custom_instructions = assistant_data.get('instructions')
+                logger.info(f"Using custom instructions for assistant: {assistant_data.get('name')}")
+        
         # Process the PDF and get translations
         translations = process_pdf(
             filepath,
@@ -724,6 +789,7 @@ def upload_file():
             openai_assistant_id,
             source_language=source_language,
             target_language=target_language,
+            custom_instructions=custom_instructions,
             return_segments=True
         )
 

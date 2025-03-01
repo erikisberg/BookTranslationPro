@@ -85,6 +85,17 @@
                                 <option value="ZH">Chinese (simplified)</option>
                             </select>
                         </div>
+                        <div class="mb-3">
+                            <label for="assistantSelect" class="form-label">Författar-assistent</label>
+                            <select class="form-select" id="assistantSelect" name="assistantId">
+                                <option value="">Använd standard-assistent</option>
+                                {% for assistant in assistants %}
+                                <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Välj en assistent som är anpassad för författaren</div>
+                        </div>
+                        
                         <div class="mb-3 form-check">
                             <input type="checkbox" class="form-check-input" id="skipOpenAI" name="skipOpenAI">
                             <label class="form-check-label" for="skipOpenAI">Hoppa över OpenAI-granskning (snabbare, använder endast DeepL-översättning)</label>
