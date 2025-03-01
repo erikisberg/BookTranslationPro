@@ -185,10 +185,20 @@ def get_user_assistants(user_id):
 def get_assistant(user_id, assistant_id):
     """Get a specific assistant by ID"""
     try:
+        # First check if assistants are in the session (most reliable)
+        from flask import session
+        if 'user_assistants' in session:
+            assistants = session['user_assistants']
+            for assistant in assistants:
+                if assistant.get('id') == assistant_id:
+                    return assistant
+        
+        # If not found in session, try to get from database
         assistants = get_user_assistants(user_id)
         for assistant in assistants:
             if assistant.get('id') == assistant_id:
                 return assistant
+                
         return None
     except Exception as e:
         logger.error(f"Error fetching assistant: {e}")

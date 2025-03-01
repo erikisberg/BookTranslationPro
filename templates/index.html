@@ -89,9 +89,17 @@
                             <label for="assistantSelect" class="form-label">Författar-assistent</label>
                             <select class="form-select" id="assistantSelect" name="assistantId">
                                 <option value="">Använd standard-assistent</option>
-                                {% for assistant in assistants %}
-                                <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
-                                {% endfor %}
+                                {% if user_assistants %}
+                                    {% for assistant in user_assistants %}
+                                    <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
+                                    {% endfor %}
+                                {% elif assistants %}
+                                    {% for assistant in assistants %}
+                                    <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
+                                    {% endfor %}
+                                {% else %}
+                                    <option value="" disabled>Inga assistenter konfigurerade</option>
+                                {% endif %}
                             </select>
                             <div class="form-text">Välj en assistent som är anpassad för författaren</div>
                         </div>

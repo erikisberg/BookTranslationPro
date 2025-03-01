@@ -44,10 +44,20 @@ POSTHOG_HOST = os.environ.get('POSTHOG_HOST') or os.environ.get('NEXT_PUBLIC_POS
 app.config['POSTHOG_API_KEY'] = POSTHOG_API_KEY
 app.config['POSTHOG_HOST'] = POSTHOG_HOST
 
-# Context processor to make current user available in templates
+# Context processor to make current user and assistants available in templates
 @app.context_processor
 def inject_user():
-    return {'current_user': get_current_user()}
+    user = get_current_user()
+    context = {'current_user': user}
+    
+    # Also make assistants available globally if the user is logged in
+    if user:
+        user_id = get_user_id()
+        if user_id:
+            assistants = get_user_assistants(user_id)
+            context['user_assistants'] = assistants
+            
+    return context
 
 # Middleware to capture request data for PostHog and enforce login for main pages
 @app.before_request
@@ -247,6 +257,10 @@ def login():
             # Store export settings in session
             if 'export_settings' in user_settings:
                 session['export_settings'] = user_settings['export_settings']
+                
+            # Store assistants in session if available
+            if 'assistants' in user_settings:
+                session['user_assistants'] = user_settings['assistants']
         
         # Track successful login
         if posthog:
@@ -532,7 +546,18 @@ def delete_translation_route():
 def index():
     # Get user's assistants for the dropdown
     user_id = get_user_id()
-    assistants = get_user_assistants(user_id)
+    
+    # First try to get from session
+    assistants = session.get('user_assistants', None)
+    
+    # If not in session, get from database
+    if assistants is None:
+        assistants = get_user_assistants(user_id)
+        # Save to session for future use
+        if assistants:
+            session['user_assistants'] = assistants
+            session.modified = True
+            
     return render_template('index.html', assistants=assistants)
 
 @app.route('/assistant-config', methods=['GET'])
@@ -540,7 +565,17 @@ def index():
 def assistant_config():
     # Get user's assistants
     user_id = get_user_id()
-    assistants = get_user_assistants(user_id)
+    
+    # First try to get from session
+    assistants = session.get('user_assistants', None)
+    
+    # If not in session, get from database
+    if assistants is None:
+        assistants = get_user_assistants(user_id)
+        # Save to session for future use
+        if assistants:
+            session['user_assistants'] = assistants
+            session.modified = True
     
     # Get current export settings from session or use defaults
     settings = session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
@@ -576,7 +611,14 @@ def save_assistant_route():
         }
         
         # Save to database
-        save_assistant(user_id, assistant_data)
+        saved_assistant = save_assistant(user_id, assistant_data)
+        
+        # Update the session with the latest assistants
+        if saved_assistant:
+            user_settings = get_user_settings(user_id)
+            if user_settings and 'assistants' in user_settings:
+                session['user_assistants'] = user_settings['assistants']
+                session.modified = True
         
         flash('Assistent sparad!', 'success')
         return redirect(url_for('assistant_config'))
@@ -594,6 +636,12 @@ def delete_assistant_route(assistant_id):
         success = delete_assistant(user_id, assistant_id)
         
         if success:
+            # Update session after deletion
+            user_settings = get_user_settings(user_id)
+            if user_settings and 'assistants' in user_settings:
+                session['user_assistants'] = user_settings['assistants']
+                session.modified = True
+            
             flash('Assistent borttagen!', 'success')
         else:
             flash('Kunde inte ta bort assistent.', 'danger')
@@ -755,7 +803,13 @@ def upload_file():
         
         # Get user's API keys if available
         user_id = get_user_id()
-        user_api_keys = get_user_settings(user_id).get('api_keys', DEFAULT_API_KEYS) if user_id else DEFAULT_API_KEYS
+        user_settings = get_user_settings(user_id) or {}
+        user_api_keys = user_settings.get('api_keys', DEFAULT_API_KEYS)
+        
+        # Update session with assistants if they're not there but exist in settings
+        if 'user_assistants' not in session and 'assistants' in user_settings:
+            session['user_assistants'] = user_settings['assistants']
+            session.modified = True
         
         # Use user's API keys if provided, otherwise fallback to system keys
         deepl_api_key = user_api_keys.get('deepl_api_key') or DEEPL_API_KEY
@@ -786,10 +840,24 @@ def upload_file():
         # Get custom instructions if using a specific assistant
         custom_instructions = None
         if assistant_id_selected and not skip_openai:
-            assistant_data = get_assistant(user_id, assistant_id_selected)
-            if assistant_data:
-                custom_instructions = assistant_data.get('instructions')
-                logger.info(f"Using custom instructions for assistant: {assistant_data.get('name')}")
+            # Try to get from the already fetched assistant (avoid redundant DB calls)
+            assistant_found = False
+            
+            # Check if we have assistants in session
+            if 'user_assistants' in session:
+                for assistant in session['user_assistants']:
+                    if assistant.get('id') == assistant_id_selected:
+                        custom_instructions = assistant.get('instructions')
+                        logger.info(f"Using custom instructions for assistant from session: {assistant.get('name')}")
+                        assistant_found = True
+                        break
+            
+            # If not found in session, try database
+            if not assistant_found:
+                assistant_data = get_assistant(user_id, assistant_id_selected)
+                if assistant_data:
+                    custom_instructions = assistant_data.get('instructions')
+                    logger.info(f"Using custom instructions for assistant from DB: {assistant_data.get('name')}")
         
         # Process the document and get translations
         translations = process_document(
