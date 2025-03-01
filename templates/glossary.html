@@ -447,6 +447,33 @@
             
             console.log("Sending request to:", url, "Method:", method);
             
+            console.log("Sending fetch request to", url, "with data", data);
+            
+            // Simple HTML form submission as an alternative (will cause page reload)
+            if (method === 'POST') {
+                // Try traditional form submission
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = url;
+                
+                // Add fields
+                for (const key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = data[key];
+                        form.appendChild(input);
+                    }
+                }
+                
+                // Add to document and submit
+                document.body.appendChild(form);
+                form.submit();
+                return; // Exit since we're doing a form submit
+            }
+            
+            // Original fetch approach (AJAX)
             fetch(url, {
                 method: method,
                 headers: {

@@ -1617,38 +1617,76 @@ def create_new_glossary():
     user_id = get_user_id()
     if not user_id:
         return json_error('Unauthorized', 401)
+    
+    # Add more detailed logging    
+    logger.info(f"Creating new glossary for user {user_id}")
+    logger.debug(f"Request content type: {request.content_type}")
+    logger.debug(f"Request headers: {request.headers}")
         
-    # Get glossary data from request
-    data = request.json
+    # Get glossary data from request - with fallback methods for parsing
+    try:
+        if request.is_json:
+            data = request.json
+            logger.debug(f"Received JSON data: {data}")
+        elif request.form:
+            # Try to get data from form
+            data = {
+                'name': request.form.get('name', ''),
+                'description': request.form.get('description', ''),
+                'source_language': request.form.get('source_language', ''),
+                'target_language': request.form.get('target_language', '')
+            }
+            logger.debug(f"Received form data: {data}")
+        else:
+            # Last resort - try to parse body as JSON
+            try:
+                data = json.loads(request.data.decode('utf-8'))
+                logger.debug(f"Parsed raw data as JSON: {data}")
+            except:
+                logger.error("Failed to parse request data as JSON")
+                data = {}
+    except Exception as e:
+        logger.error(f"Error parsing request data: {str(e)}")
+        return json_error(f'Error parsing request: {str(e)}', 400)
+    
     if not data or not data.get('name'):
+        logger.error("Glossary name is required but was not provided")
         return json_error('Glossary name is required', 400)
         
     # Create glossary
-    result = create_glossary(user_id, data)
-    if not result:
-        return json_error('Failed to create glossary', 500)
+    try:
+        result = create_glossary(user_id, data)
+        if not result:
+            logger.error("create_glossary returned None/False result")
+            return json_error('Failed to create glossary', 500)
         
-    # Track in analytics
-    if posthog:
-        try:
-            posthog.capture(
-                distinct_id=user_id,
-                event='glossary_created',
-                properties={
-                    'glossary_id': result['id'],
-                    'glossary_name': result['name'],
-                    'source_language': result.get('source_language', 'not_set'),
-                    'target_language': result.get('target_language', 'not_set')
-                }
-            )
-        except Exception as e:
-            logger.error(f"Error tracking glossary creation: {str(e)}")
+        logger.info(f"Glossary created successfully with ID: {result['id']}")
+        
+        # Track in analytics
+        if posthog:
+            try:
+                posthog.capture(
+                    distinct_id=user_id,
+                    event='glossary_created',
+                    properties={
+                        'glossary_id': result['id'],
+                        'glossary_name': result['name'],
+                        'source_language': result.get('source_language', 'not_set'),
+                        'target_language': result.get('target_language', 'not_set')
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error tracking glossary creation: {str(e)}")
+        
+        return json_response({
+            'success': True,
+            'message': 'Glossary created successfully',
+            'glossary': result
+        })
+    except Exception as e:
+        logger.error(f"Exception creating glossary: {str(e)}")
+        return json_error(f'Error creating glossary: {str(e)}', 500)
     
-    return json_response({
-        'success': True,
-        'message': 'Glossary created successfully',
-        'glossary': result
-    })
 
 @app.route('/glossary/<glossary_id>', methods=['GET'])
 @login_required
