@@ -2,178 +2,269 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title text-center">Översätt verktyg</h2>
+    <div class="col-md-10">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h2 class="card-title text-center mb-0">BookTranslation Pro</h2>
             </div>
             <div class="card-body">
-                <div class="upload-container text-center">
-                    {% if not user_settings or not user_settings.get('api_keys') or not user_settings.get('api_keys').get('openai_api_key') or not user_settings.get('api_keys').get('deepl_api_key') %}
-                    <div class="alert alert-warning mb-3">
-                        <i class="bi bi-exclamation-triangle-fill"></i> 
-                        <strong>Du behöver konfigurera API-nycklar innan du kan översätta dokument.</strong>
-                        <div class="mt-2">
-                            <a href="{{ url_for('api_keys_settings') }}" class="btn btn-outline-primary">
-                                <i class="bi bi-key"></i> Lägg till dina API-nycklar
+                <div class="row mb-4">
+                    <div class="col-12 text-center">
+                        <p class="lead">Översätt din text med AI-förbättrad precision och bevarande av författarstil</p>
+                    </div>
+                </div>
+                
+                {% if not user_settings or not user_settings.get('api_keys') or not user_settings.get('api_keys').get('deepl_api_key') %}
+                <div class="alert alert-warning mb-4">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle-fill fs-4 me-2"></i>
+                        <div>
+                            <strong>Konfigurera API-nycklar</strong>
+                            <p class="mb-2">Du behöver lägga till dina API-nycklar innan du kan börja översätta dokument.</p>
+                            <a href="{{ url_for('api_keys_settings') }}" class="btn btn-sm btn-warning">
+                                <i class="bi bi-key"></i> Konfigurera API-nycklar
                             </a>
                         </div>
                     </div>
-                    {% endif %}
-                    <form id="uploadForm" class="mb-4">
-                        <div class="mb-3">
-                            <label for="pdfFile" class="form-label">Välj dokument att översätta</label>
-                            <input type="file" class="form-control" id="pdfFile" accept=".pdf,.docx,.doc,.txt,.rtf,.odt" multiple required>
-                            <div class="form-text">Stödda format: PDF, Word (DOCX/DOC), textfiler (TXT), RTF och OpenDocument (ODT)</div>
-                            <div class="form-text text-primary"><i class="bi bi-info-circle"></i> Du kan välja flera dokument för att översätta dem samtidigt</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="sourceLanguage" class="form-label">Källspråk</label>
-                            <select class="form-select" id="sourceLanguage" name="sourceLanguage">
-                                <option value="auto">Auto-detect</option>
-                                <option value="BG">Bulgarian</option>
-                                <option value="CS">Czech</option>
-                                <option value="DA">Danish</option>
-                                <option value="DE">German</option>
-                                <option value="EL">Greek</option>
-                                <option value="EN">English</option>
-                                <option value="ES">Spanish</option>
-                                <option value="ET">Estonian</option>
-                                <option value="FI">Finnish</option>
-                                <option value="FR">French</option>
-                                <option value="HU">Hungarian</option>
-                                <option value="ID">Indonesian</option>
-                                <option value="IT">Italian</option>
-                                <option value="JA">Japanese</option>
-                                <option value="KO">Korean</option>
-                                <option value="LT">Lithuanian</option>
-                                <option value="LV">Latvian</option>
-                                <option value="NB">Norwegian</option>
-                                <option value="NL">Dutch</option>
-                                <option value="PL">Polish</option>
-                                <option value="PT">Portuguese</option>
-                                <option value="RO">Romanian</option>
-                                <option value="RU">Russian</option>
-                                <option value="SK">Slovak</option>
-                                <option value="SL">Slovenian</option>
-                                <option value="SV">Swedish</option>
-                                <option value="TR">Turkish</option>
-                                <option value="UK">Ukrainian</option>
-                                <option value="ZH">Chinese</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="targetLanguage" class="form-label">Målspråk</label>
-                            <select class="form-select" id="targetLanguage" name="targetLanguage">
-                                <option value="BG">Bulgarian</option>
-                                <option value="CS">Czech</option>
-                                <option value="DA">Danish</option>
-                                <option value="DE">German</option>
-                                <option value="EL">Greek</option>
-                                <option value="EN-GB">English (British)</option>
-                                <option value="EN-US">English (American)</option>
-                                <option value="ES">Spanish</option>
-                                <option value="ET">Estonian</option>
-                                <option value="FI">Finnish</option>
-                                <option value="FR">French</option>
-                                <option value="HU">Hungarian</option>
-                                <option value="ID">Indonesian</option>
-                                <option value="IT">Italian</option>
-                                <option value="JA">Japanese</option>
-                                <option value="KO">Korean</option>
-                                <option value="LT">Lithuanian</option>
-                                <option value="LV">Latvian</option>
-                                <option value="NB">Norwegian</option>
-                                <option value="NL">Dutch</option>
-                                <option value="PL">Polish</option>
-                                <option value="PT-BR">Portuguese (Brazilian)</option>
-                                <option value="PT-PT">Portuguese (European)</option>
-                                <option value="RO">Romanian</option>
-                                <option value="RU">Russian</option>
-                                <option value="SK">Slovak</option>
-                                <option value="SL">Slovenian</option>
-                                <option value="SV" selected>Swedish</option>
-                                <option value="TR">Turkish</option>
-                                <option value="UK">Ukrainian</option>
-                                <option value="ZH">Chinese (simplified)</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="assistantSelect" class="form-label">Författar-assistent</label>
-                            <select class="form-select" id="assistantSelect" name="assistantId">
-                                <option value="">Använd standard-assistent</option>
-                                {% if user_assistants %}
-                                    {% for assistant in user_assistants %}
-                                    <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
-                                    {% endfor %}
-                                {% elif assistants %}
-                                    {% for assistant in assistants %}
-                                    <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
-                                    {% endfor %}
-                                {% else %}
-                                    <option value="" disabled>Inga assistenter konfigurerade</option>
-                                {% endif %}
-                            </select>
-                            <div class="form-text">Välj en assistent som är anpassad för författaren</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="glossarySelect" class="form-label">Ordlista</label>
-                            <select class="form-select" id="glossarySelect" name="glossaryId">
-                                <option value="">Ingen ordlista</option>
-                                {% if glossaries %}
-                                    {% for glossary in glossaries %}
-                                    <option value="{{ glossary.id }}">{{ glossary.name }} ({{ glossary.source_language }} → {{ glossary.target_language }})</option>
-                                    {% endfor %}
-                                {% else %}
-                                    <option value="" disabled>Inga ordlistor konfigurerade</option>
-                                {% endif %}
-                            </select>
-                            <div class="form-text">Tillämpa ordlista för att säkerställa konsekvent terminologi</div>
-                            <div class="form-text text-primary">
-                                <a href="{{ url_for('glossary_list') }}"><i class="bi bi-plus-circle"></i> Hantera ordlistor</a>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <div class="form-check mb-2">
-                                <input type="checkbox" class="form-check-input" id="skipOpenAI" name="skipOpenAI">
-                                <label class="form-check-label" for="skipOpenAI">Hoppa över OpenAI-granskning (snabbare, använder endast DeepL-översättning)</label>
-                            </div>
-                            
-                            <div class="form-check mb-2">
-                                <input type="checkbox" class="form-check-input" id="smartReview" name="smartReview" checked>
-                                <label class="form-check-label" for="smartReview">Smart granskning (skickar endast komplexa avsnitt till OpenAI)</label>
-                                <div class="form-text text-primary"><i class="bi bi-magic"></i> Analyserar textkomplexitet och prioriterar AI-granskning där det behövs mest</div>
-                            </div>
-                            
-                            <div class="form-check">
-                                <input type="checkbox" class="form-check-input" id="useCache" name="useCache" checked>
-                                <label class="form-check-label" for="useCache">Använd översättningscache (snabbare för återkommande texter)</label>
-                                <div class="form-text text-primary"><i class="bi bi-info-circle"></i> Sparar och återanvänder tidigare översättningar för att minska API-anrop</div>
-                            </div>
-                        </div>
-                        <div class="d-grid gap-2 col-md-6 mx-auto">
-                            <button type="submit" class="btn btn-primary" id="uploadButton" 
-                                {% if not user_settings or not user_settings.get('api_keys') or not user_settings.get('api_keys').get('deepl_api_key') %}
-                                disabled title="Du behöver konfigurera API-nycklar innan du kan översätta"
-                                {% endif %}>
-                                <span class="button-text">Översätt dokument</span>
-                                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                            </button>
-                        </div>
-                    </form>
                 </div>
-
-                <div id="progressContainer" class="d-none">
-                    <div class="progress mb-3">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                             role="progressbar" style="width: 0%"></div>
+                {% endif %}
+                
+                <form id="uploadForm" class="mb-4">
+                    <div class="row">
+                        <!-- Left Column -->
+                        <div class="col-md-6">
+                            <div class="card mb-3 border-primary">
+                                <div class="card-header bg-primary bg-opacity-10">
+                                    <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Dokument</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="pdfFile" class="form-label fw-bold">Välj dokument</label>
+                                        <input type="file" class="form-control form-control-lg" id="pdfFile" accept=".pdf,.docx,.doc,.txt,.rtf,.odt" multiple required>
+                                        <div class="form-text">
+                                            <i class="bi bi-info-circle me-1"></i> Stödda format: PDF, Word, Text, RTF, ODT
+                                        </div>
+                                        <div class="text-primary small mt-1">
+                                            <i class="bi bi-files me-1"></i> Du kan välja flera dokument för batch-översättning
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="sourceLanguage" class="form-label fw-bold">Källspråk</label>
+                                                <select class="form-select" id="sourceLanguage" name="sourceLanguage">
+                                                    <option value="auto">Auto-detect</option>
+                                                    <option value="EN">English</option>
+                                                    <option value="DE">German</option>
+                                                    <option value="FR">French</option>
+                                                    <option value="ES">Spanish</option>
+                                                    <option value="IT">Italian</option>
+                                                    <option value="NL">Dutch</option>
+                                                    <option value="PL">Polish</option>
+                                                    <option value="RU">Russian</option>
+                                                    <option value="JA">Japanese</option>
+                                                    <option value="ZH">Chinese</option>
+                                                    <option value="PT">Portuguese</option>
+                                                    <option value="SV">Swedish</option>
+                                                    <option value="DA">Danish</option>
+                                                    <option value="FI">Finnish</option>
+                                                    <option value="NB">Norwegian</option>
+                                                    <option value="TR">Turkish</option>
+                                                    <option value="CS">Czech</option>
+                                                    <option value="HU">Hungarian</option>
+                                                    <option value="RO">Romanian</option>
+                                                    <option value="BG">Bulgarian</option>
+                                                    <option value="EL">Greek</option>
+                                                    <option value="SK">Slovak</option>
+                                                    <option value="SL">Slovenian</option>
+                                                    <option value="LT">Lithuanian</option>
+                                                    <option value="LV">Latvian</option>
+                                                    <option value="ET">Estonian</option>
+                                                    <option value="ID">Indonesian</option>
+                                                    <option value="UK">Ukrainian</option>
+                                                    <option value="KO">Korean</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="targetLanguage" class="form-label fw-bold">Målspråk</label>
+                                                <select class="form-select" id="targetLanguage" name="targetLanguage">
+                                                    <option value="SV" selected>Swedish</option>
+                                                    <option value="EN-GB">English (British)</option>
+                                                    <option value="EN-US">English (American)</option>
+                                                    <option value="DE">German</option>
+                                                    <option value="FR">French</option>
+                                                    <option value="ES">Spanish</option>
+                                                    <option value="IT">Italian</option>
+                                                    <option value="NL">Dutch</option>
+                                                    <option value="PL">Polish</option>
+                                                    <option value="RU">Russian</option>
+                                                    <option value="JA">Japanese</option>
+                                                    <option value="ZH">Chinese (simplified)</option>
+                                                    <option value="PT-BR">Portuguese (Brazilian)</option>
+                                                    <option value="PT-PT">Portuguese (European)</option>
+                                                    <option value="DA">Danish</option>
+                                                    <option value="FI">Finnish</option>
+                                                    <option value="NB">Norwegian</option>
+                                                    <option value="TR">Turkish</option>
+                                                    <option value="CS">Czech</option>
+                                                    <option value="HU">Hungarian</option>
+                                                    <option value="RO">Romanian</option>
+                                                    <option value="BG">Bulgarian</option>
+                                                    <option value="EL">Greek</option>
+                                                    <option value="SK">Slovak</option>
+                                                    <option value="SL">Slovenian</option>
+                                                    <option value="LT">Lithuanian</option>
+                                                    <option value="LV">Latvian</option>
+                                                    <option value="ET">Estonian</option>
+                                                    <option value="ID">Indonesian</option>
+                                                    <option value="UK">Ukrainian</option>
+                                                    <option value="KO">Korean</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Right Column -->
+                        <div class="col-md-6">
+                            <div class="card mb-3 border-primary">
+                                <div class="card-header bg-primary bg-opacity-10">
+                                    <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Översättningsalternativ</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="assistantSelect" class="form-label fw-bold">Författar-assistent</label>
+                                        <select class="form-select" id="assistantSelect" name="assistantId">
+                                            <option value="">Standard-assistent</option>
+                                            {% if user_assistants %}
+                                                {% for assistant in user_assistants %}
+                                                <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
+                                                {% endfor %}
+                                            {% elif assistants %}
+                                                {% for assistant in assistants %}
+                                                <option value="{{ assistant.id }}">{{ assistant.name }} ({{ assistant.author }} - {{ assistant.genre }})</option>
+                                                {% endfor %}
+                                            {% else %}
+                                                <option value="" disabled>Inga assistenter konfigurerade</option>
+                                            {% endif %}
+                                        </select>
+                                        <div class="form-text">
+                                            <i class="bi bi-person-gear me-1"></i> Välj en assistentprofil anpassad för författaren
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="glossarySelect" class="form-label fw-bold">Ordlista</label>
+                                        <select class="form-select" id="glossarySelect" name="glossaryId">
+                                            <option value="">Ingen ordlista</option>
+                                            {% if glossaries %}
+                                                {% for glossary in glossaries %}
+                                                <option value="{{ glossary.id }}">{{ glossary.name }} ({{ glossary.source_language }} → {{ glossary.target_language }})</option>
+                                                {% endfor %}
+                                            {% else %}
+                                                <option value="" disabled>Inga ordlistor konfigurerade</option>
+                                            {% endif %}
+                                        </select>
+                                        <div class="form-text">
+                                            <i class="bi bi-journal-text me-1"></i> Säkerställer konsekvent terminologi i översättningen
+                                        </div>
+                                        <div class="text-primary small mt-1">
+                                            <a href="{{ url_for('glossary_list') }}"><i class="bi bi-plus-circle me-1"></i>Hantera ordlistor</a>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Optimeringsalternativ</label>
+                                        <div class="card">
+                                            <div class="card-body py-2 px-3">
+                                                <div class="form-check mb-2">
+                                                    <input type="checkbox" class="form-check-input" id="skipOpenAI" name="skipOpenAI">
+                                                    <label class="form-check-label" for="skipOpenAI">
+                                                        <i class="bi bi-lightning-charge me-1"></i> Snabb översättning
+                                                    </label>
+                                                    <div class="form-text ms-4">Använder endast DeepL utan AI-förbättring</div>
+                                                </div>
+                                                
+                                                <div class="form-check mb-2">
+                                                    <input type="checkbox" class="form-check-input" id="smartReview" name="smartReview" checked>
+                                                    <label class="form-check-label" for="smartReview">
+                                                        <i class="bi bi-magic me-1"></i> Smart granskning
+                                                    </label>
+                                                    <div class="form-text ms-4">Analyserar och prioriterar AI-granskning för komplexa avsnitt</div>
+                                                </div>
+                                                
+                                                <div class="form-check">
+                                                    <input type="checkbox" class="form-check-input" id="useCache" name="useCache" checked>
+                                                    <label class="form-check-label" for="useCache">
+                                                        <i class="bi bi-speedometer2 me-1"></i> Översättningscache
+                                                    </label>
+                                                    <div class="form-text ms-4">Återanvänder tidigare översättningar för att spara API-anrop</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <p id="statusText" class="text-center"></p>
+                    
+                    <div class="text-center mt-2">
+                        <button type="submit" class="btn btn-primary btn-lg px-5" id="uploadButton" 
+                            {% if not user_settings or not user_settings.get('api_keys') or not user_settings.get('api_keys').get('deepl_api_key') %}
+                            disabled title="Du behöver konfigurera API-nycklar innan du kan översätta"
+                            {% endif %}>
+                            <i class="bi bi-translate me-2"></i>
+                            <span class="button-text">Starta översättning</span>
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                        
+                        <div class="mt-2 small text-muted">
+                            Dokument sparas automatiskt till din dokumentsamling
+                        </div>
+                    </div>
+                </form>
+                
+                <div id="progressContainer" class="d-none">
+                    <div class="card border-primary">
+                        <div class="card-body">
+                            <h5 class="card-title text-center mb-3">
+                                <i class="bi bi-arrow-clockwise me-2"></i>Översätter dokument...
+                            </h5>
+                            <div class="progress mb-3" style="height: 20px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <p id="statusText" class="text-center fw-bold"></p>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="errorContainer" class="alert alert-danger d-none" role="alert"></div>
+            </div>
+        </div>
+        
+        <div class="card mt-4 shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-file-text me-2"></i>Senaste översättningar</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <a href="{{ url_for('history') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-clock-history me-1"></i>Visa historik
+                        </a>
+                    </div>
+                    <div>
+                        <a href="{{ url_for('documents') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-folder me-1"></i>Mina dokument
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
