@@ -1622,6 +1622,8 @@ def create_new_glossary():
     logger.info(f"Creating new glossary for user {user_id}")
     logger.debug(f"Request content type: {request.content_type}")
     logger.debug(f"Request headers: {request.headers}")
+    logger.debug(f"Request form data: {request.form}")
+    logger.debug(f"Request JSON: {request.get_json(silent=True)}")
         
     # Get glossary data from request - with fallback methods for parsing
     try:
@@ -1678,14 +1680,25 @@ def create_new_glossary():
             except Exception as e:
                 logger.error(f"Error tracking glossary creation: {str(e)}")
         
-        return json_response({
-            'success': True,
-            'message': 'Glossary created successfully',
-            'glossary': result
-        })
+        # Handle form submissions differently than AJAX
+        if request.form:
+            # For form submissions, redirect back to glossary page
+            flash("Ordlista har skapats!", "success")
+            return redirect(url_for('glossary_list'))
+        else:
+            # For AJAX requests, return JSON
+            return json_response({
+                'success': True,
+                'message': 'Glossary created successfully',
+                'glossary': result
+            })
     except Exception as e:
         logger.error(f"Exception creating glossary: {str(e)}")
-        return json_error(f'Error creating glossary: {str(e)}', 500)
+        if request.form:
+            flash(f"Fel vid skapande av ordlista: {str(e)}", "error")
+            return redirect(url_for('glossary_list'))
+        else:
+            return json_error(f'Error creating glossary: {str(e)}', 500)
     
 
 @app.route('/glossary/<glossary_id>', methods=['GET'])

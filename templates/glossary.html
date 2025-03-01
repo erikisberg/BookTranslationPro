@@ -42,6 +42,15 @@
                     <h5 class="mb-0">Ordlista detaljer</h5>
                 </div>
                 <div class="card-body">
+                    <!-- Hidden direct form for new glossary creation -->
+                    <form id="directGlossaryForm" action="/glossary" method="POST" style="display: none;">
+                        <input type="hidden" name="name" id="directName">
+                        <input type="hidden" name="description" id="directDescription">
+                        <input type="hidden" name="source_language" id="directSourceLanguage">
+                        <input type="hidden" name="target_language" id="directTargetLanguage">
+                    </form>
+                    
+                    <!-- JavaScript-based form (will use the direct form for submission) -->
                     <form id="glossaryForm">
                         <input type="hidden" id="glossaryId">
                         <div class="mb-3">
@@ -79,6 +88,16 @@
                         <div class="d-flex justify-content-between">
                             <button type="submit" class="btn btn-primary" id="saveGlossaryBtn">Spara</button>
                             <button type="button" class="btn btn-outline-danger" id="deleteGlossaryBtn">Ta bort</button>
+                        </div>
+                        
+                        <!-- Additional direct submit button for creating new glossaries -->
+                        <div class="mt-3" id="alternateSubmitContainer" style="display: none;">
+                            <div class="alert alert-warning">
+                                <p>Om spara-knappen inte fungerar, prova det här alternativet:</p>
+                                <button type="button" class="btn btn-success" id="alternateSubmitBtn">
+                                    Skapa ordlista (alternativ metod)
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -303,6 +322,9 @@
                 document.getElementById('importBtn').disabled = true;
                 document.getElementById('exportBtn').disabled = true;
                 
+                // Show alternate submit option
+                document.getElementById('alternateSubmitContainer').style.display = 'block';
+                
                 currentGlossaryId = null;
             });
             
@@ -324,6 +346,34 @@
                 console.log("Save glossary button clicked");
                 e.preventDefault();
                 saveGlossary();
+            });
+            
+            // Set up alternate submit button
+            const alternateSubmitBtn = document.getElementById('alternateSubmitBtn');
+            console.log("Alternate submit button:", alternateSubmitBtn);
+            
+            alternateSubmitBtn.addEventListener('click', function() {
+                console.log("Alternate submit button clicked");
+                
+                // Get form values
+                const name = document.getElementById('glossaryName').value;
+                const description = document.getElementById('glossaryDescription').value;
+                const sourceLang = document.getElementById('sourceLanguage').value;
+                const targetLang = document.getElementById('targetLanguage').value;
+                
+                if (!name) {
+                    alert('Glossary name is required');
+                    return;
+                }
+                
+                // Populate hidden form
+                document.getElementById('directName').value = name;
+                document.getElementById('directDescription').value = description;
+                document.getElementById('directSourceLanguage').value = sourceLang;
+                document.getElementById('directTargetLanguage').value = targetLang;
+                
+                // Submit the direct form
+                document.getElementById('directGlossaryForm').submit();
             });
             
             // Delete glossary button
