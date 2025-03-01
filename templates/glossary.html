@@ -1,0 +1,696 @@
+{% extends "base.html" %}
+
+{% block title %}Glossary Management{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">My Glossaries</h5>
+                    <button class="btn btn-sm btn-primary" id="createGlossaryBtn">
+                        <i class="fas fa-plus"></i> New
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="list-group" id="glossaryList">
+                        {% if glossaries %}
+                            {% for glossary in glossaries %}
+                                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                                  data-id="{{ glossary.id }}" 
+                                  data-name="{{ glossary.name }}"
+                                  data-description="{{ glossary.description }}"
+                                  data-source-lang="{{ glossary.source_language }}"
+                                  data-target-lang="{{ glossary.target_language }}">
+                                    {{ glossary.name }}
+                                    <span class="badge bg-primary rounded-pill">{{ glossary.entries_count|default('0') }}</span>
+                                </button>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-center text-muted">No glossaries found. Create one to get started!</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Glossary Details</h5>
+                </div>
+                <div class="card-body">
+                    <form id="glossaryForm">
+                        <input type="hidden" id="glossaryId">
+                        <div class="mb-3">
+                            <label for="glossaryName" class="form-label">Name</label>
+                            <input type="text" class="form-control" id="glossaryName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="glossaryDescription" class="form-label">Description</label>
+                            <textarea class="form-control" id="glossaryDescription" rows="2"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="sourceLanguage" class="form-label">Source Language</label>
+                                    <select class="form-select" id="sourceLanguage">
+                                        <option value="">Select language</option>
+                                        {% for code, name in languages.items() %}
+                                            <option value="{{ code }}">{{ name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="targetLanguage" class="form-label">Target Language</label>
+                                    <select class="form-select" id="targetLanguage">
+                                        <option value="">Select language</option>
+                                        {% for code, name in languages.items() %}
+                                            <option value="{{ code }}">{{ name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <button type="submit" class="btn btn-primary" id="saveGlossaryBtn">Save</button>
+                            <button type="button" class="btn btn-outline-danger" id="deleteGlossaryBtn">Delete</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Glossary Entries: <span id="currentGlossaryName">Select a glossary</span></h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="importBtn" disabled>
+                            <i class="fas fa-file-import"></i> Import
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="exportBtn" disabled>
+                            <i class="fas fa-file-export"></i> Export
+                        </button>
+                        <button class="btn btn-sm btn-primary" id="addEntryBtn" disabled>
+                            <i class="fas fa-plus"></i> Add Term
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="entriesPlaceholder" class="text-center py-5">
+                        <i class="fas fa-book fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">Select a glossary to view and manage terms</p>
+                    </div>
+                    
+                    <div id="entriesContainer" class="d-none">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="entriesTable">
+                                <thead>
+                                    <tr>
+                                        <th width="40%">Source Term</th>
+                                        <th width="40%">Target Term</th>
+                                        <th width="20%">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="entriesTableBody">
+                                    <!-- Entries will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="noEntriesMessage" class="text-center py-4 d-none">
+                            <p class="text-muted">No terms in this glossary yet. Add some terms to get started!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Entry Modal -->
+<div class="modal fade" id="entryModal" tabindex="-1" aria-labelledby="entryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="entryModalLabel">Add New Term</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="entryForm">
+                    <input type="hidden" id="entryId">
+                    <div class="mb-3">
+                        <label for="sourceTerm" class="form-label">Source Term</label>
+                        <input type="text" class="form-control" id="sourceTerm" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="targetTerm" class="form-label">Target Term</label>
+                        <input type="text" class="form-control" id="targetTerm" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="context" class="form-label">Context (Optional)</label>
+                        <textarea class="form-control" id="context" rows="2"></textarea>
+                        <div class="form-text">When and how this term should be used</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="notes" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveEntryBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importModalLabel">Import Terms</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="importForm">
+                    <div class="mb-3">
+                        <label for="importFile" class="form-label">CSV File</label>
+                        <input type="file" class="form-control" id="importFile" accept=".csv,.txt" required>
+                        <div class="form-text">Upload a CSV file with columns: source_term,target_term,context,notes</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="hasHeader" checked>
+                            <label class="form-check-label" for="hasHeader">
+                                File has header row
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submitImportBtn">Import</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteConfirmModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteConfirmMessage">Are you sure you want to delete this item? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        let currentGlossaryId = null;
+        let deleteItemType = null;
+        let deleteItemId = null;
+        
+        // Initialize the page
+        initGlossaryList();
+        initFormHandlers();
+        
+        // Glossary list functionality
+        function initGlossaryList() {
+            document.querySelectorAll('#glossaryList .list-group-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    // Update selected state
+                    document.querySelectorAll('#glossaryList .list-group-item').forEach(el => {
+                        el.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    // Get glossary details
+                    const glossaryId = this.dataset.id;
+                    const name = this.dataset.name;
+                    const description = this.dataset.description;
+                    const sourceLang = this.dataset.sourceLang;
+                    const targetLang = this.dataset.targetLang;
+                    
+                    // Populate form
+                    document.getElementById('glossaryId').value = glossaryId;
+                    document.getElementById('glossaryName').value = name;
+                    document.getElementById('glossaryDescription').value = description;
+                    document.getElementById('sourceLanguage').value = sourceLang;
+                    document.getElementById('targetLanguage').value = targetLang;
+                    
+                    // Update current glossary context
+                    currentGlossaryId = glossaryId;
+                    document.getElementById('currentGlossaryName').textContent = name;
+                    
+                    // Enable entry buttons
+                    document.getElementById('addEntryBtn').disabled = false;
+                    document.getElementById('importBtn').disabled = false;
+                    document.getElementById('exportBtn').disabled = false;
+                    
+                    // Show entries
+                    loadGlossaryEntries(glossaryId);
+                });
+            });
+        }
+        
+        // Form submission handlers
+        function initFormHandlers() {
+            // New glossary button
+            document.getElementById('createGlossaryBtn').addEventListener('click', function() {
+                // Clear form
+                document.getElementById('glossaryForm').reset();
+                document.getElementById('glossaryId').value = '';
+                
+                // Remove selection
+                document.querySelectorAll('#glossaryList .list-group-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                // Hide entries
+                document.getElementById('entriesContainer').classList.add('d-none');
+                document.getElementById('entriesPlaceholder').classList.remove('d-none');
+                document.getElementById('currentGlossaryName').textContent = 'Select a glossary';
+                
+                // Disable entry buttons
+                document.getElementById('addEntryBtn').disabled = true;
+                document.getElementById('importBtn').disabled = true;
+                document.getElementById('exportBtn').disabled = true;
+                
+                currentGlossaryId = null;
+            });
+            
+            // Glossary form
+            document.getElementById('glossaryForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveGlossary();
+            });
+            
+            // Delete glossary button
+            document.getElementById('deleteGlossaryBtn').addEventListener('click', function() {
+                const glossaryId = document.getElementById('glossaryId').value;
+                if (!glossaryId) return;
+                
+                deleteItemType = 'glossary';
+                deleteItemId = glossaryId;
+                const glossaryName = document.getElementById('glossaryName').value;
+                
+                document.getElementById('deleteConfirmMessage').textContent = 
+                    `Are you sure you want to delete the glossary "${glossaryName}"? This will permanently delete all terms in this glossary.`;
+                
+                const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+                deleteModal.show();
+            });
+            
+            // Add entry button
+            document.getElementById('addEntryBtn').addEventListener('click', function() {
+                // Clear form
+                document.getElementById('entryForm').reset();
+                document.getElementById('entryId').value = '';
+                
+                // Update modal title
+                document.getElementById('entryModalLabel').textContent = 'Add New Term';
+                
+                // Show modal
+                const entryModal = new bootstrap.Modal(document.getElementById('entryModal'));
+                entryModal.show();
+            });
+            
+            // Save entry button
+            document.getElementById('saveEntryBtn').addEventListener('click', function() {
+                if (!validateEntryForm()) return;
+                saveEntry();
+            });
+            
+            // Import button
+            document.getElementById('importBtn').addEventListener('click', function() {
+                // Clear form
+                document.getElementById('importForm').reset();
+                
+                // Show modal
+                const importModal = new bootstrap.Modal(document.getElementById('importModal'));
+                importModal.show();
+            });
+            
+            // Submit import button
+            document.getElementById('submitImportBtn').addEventListener('click', function() {
+                if (!document.getElementById('importFile').files.length) {
+                    showToast('Please select a file to import', 'warning');
+                    return;
+                }
+                importTerms();
+            });
+            
+            // Export button
+            document.getElementById('exportBtn').addEventListener('click', function() {
+                if (!currentGlossaryId) return;
+                exportTerms(currentGlossaryId);
+            });
+            
+            // Delete confirmation button
+            document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+                if (deleteItemType === 'glossary') {
+                    deleteGlossary(deleteItemId);
+                } else if (deleteItemType === 'entry') {
+                    deleteEntry(deleteItemId);
+                }
+                
+                // Close modal
+                const deleteModal = bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'));
+                deleteModal.hide();
+            });
+        }
+        
+        // AJAX functions
+        function saveGlossary() {
+            const glossaryId = document.getElementById('glossaryId').value;
+            const name = document.getElementById('glossaryName').value;
+            const description = document.getElementById('glossaryDescription').value;
+            const sourceLang = document.getElementById('sourceLanguage').value;
+            const targetLang = document.getElementById('targetLanguage').value;
+            
+            const data = {
+                name: name,
+                description: description,
+                source_language: sourceLang,
+                target_language: targetLang
+            };
+            
+            const url = glossaryId ? `/glossary/${glossaryId}` : '/glossary';
+            const method = glossaryId ? 'PUT' : 'POST';
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Glossary saved successfully', 'success');
+                    
+                    // Reload page to refresh list
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Failed to save glossary', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving glossary:', error);
+                showToast('Failed to save glossary', 'error');
+            });
+        }
+        
+        function deleteGlossary(glossaryId) {
+            fetch(`/glossary/${glossaryId}`, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Glossary deleted successfully', 'success');
+                    
+                    // Reload page to refresh list
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Failed to delete glossary', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting glossary:', error);
+                showToast('Failed to delete glossary', 'error');
+            });
+        }
+        
+        function loadGlossaryEntries(glossaryId) {
+            fetch(`/glossary/${glossaryId}/entries`)
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                // Show entries container, hide placeholder
+                document.getElementById('entriesPlaceholder').classList.add('d-none');
+                document.getElementById('entriesContainer').classList.remove('d-none');
+                
+                // Populate entries table
+                const tableBody = document.getElementById('entriesTableBody');
+                tableBody.innerHTML = '';
+                
+                if (data.entries && data.entries.length > 0) {
+                    document.getElementById('noEntriesMessage').classList.add('d-none');
+                    
+                    data.entries.forEach(entry => {
+                        const row = document.createElement('tr');
+                        row.dataset.id = entry.id;
+                        
+                        // Source term cell
+                        const sourceCell = document.createElement('td');
+                        sourceCell.textContent = entry.source_term;
+                        
+                        // Target term cell
+                        const targetCell = document.createElement('td');
+                        targetCell.textContent = entry.target_term;
+                        
+                        // Actions cell
+                        const actionsCell = document.createElement('td');
+                        
+                        // Edit button
+                        const editBtn = document.createElement('button');
+                        editBtn.className = 'btn btn-sm btn-outline-primary me-1';
+                        editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+                        editBtn.addEventListener('click', function() {
+                            loadEntryForEdit(entry);
+                        });
+                        
+                        // Delete button
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                        deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                        deleteBtn.addEventListener('click', function() {
+                            confirmDeleteEntry(entry.id);
+                        });
+                        
+                        actionsCell.appendChild(editBtn);
+                        actionsCell.appendChild(deleteBtn);
+                        
+                        // Add cells to row
+                        row.appendChild(sourceCell);
+                        row.appendChild(targetCell);
+                        row.appendChild(actionsCell);
+                        
+                        // Add row to table
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    document.getElementById('noEntriesMessage').classList.remove('d-none');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading glossary entries:', error);
+                showToast('Failed to load glossary entries', 'error');
+            });
+        }
+        
+        function loadEntryForEdit(entry) {
+            // Populate form
+            document.getElementById('entryId').value = entry.id;
+            document.getElementById('sourceTerm').value = entry.source_term;
+            document.getElementById('targetTerm').value = entry.target_term;
+            document.getElementById('context').value = entry.context || '';
+            document.getElementById('notes').value = entry.notes || '';
+            
+            // Update modal title
+            document.getElementById('entryModalLabel').textContent = 'Edit Term';
+            
+            // Show modal
+            const entryModal = new bootstrap.Modal(document.getElementById('entryModal'));
+            entryModal.show();
+        }
+        
+        function saveEntry() {
+            const entryId = document.getElementById('entryId').value;
+            const sourceTerm = document.getElementById('sourceTerm').value;
+            const targetTerm = document.getElementById('targetTerm').value;
+            const context = document.getElementById('context').value;
+            const notes = document.getElementById('notes').value;
+            
+            if (!currentGlossaryId) {
+                showToast('No glossary selected', 'warning');
+                return;
+            }
+            
+            const data = {
+                source_term: sourceTerm,
+                target_term: targetTerm,
+                context: context,
+                notes: notes
+            };
+            
+            const url = entryId 
+                ? `/glossary/${currentGlossaryId}/entries/${entryId}`
+                : `/glossary/${currentGlossaryId}/entries`;
+                
+            const method = entryId ? 'PUT' : 'POST';
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Term saved successfully', 'success');
+                    
+                    // Close modal
+                    const entryModal = bootstrap.Modal.getInstance(document.getElementById('entryModal'));
+                    entryModal.hide();
+                    
+                    // Reload entries
+                    loadGlossaryEntries(currentGlossaryId);
+                } else {
+                    showToast(data.message || 'Failed to save term', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving entry:', error);
+                showToast('Failed to save term', 'error');
+            });
+        }
+        
+        function confirmDeleteEntry(entryId) {
+            deleteItemType = 'entry';
+            deleteItemId = entryId;
+            
+            document.getElementById('deleteConfirmMessage').textContent = 
+                'Are you sure you want to delete this term? This action cannot be undone.';
+            
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+            deleteModal.show();
+        }
+        
+        function deleteEntry(entryId) {
+            fetch(`/glossary/${currentGlossaryId}/entries/${entryId}`, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Term deleted successfully', 'success');
+                    
+                    // Reload entries
+                    loadGlossaryEntries(currentGlossaryId);
+                } else {
+                    showToast(data.message || 'Failed to delete term', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting entry:', error);
+                showToast('Failed to delete term', 'error');
+            });
+        }
+        
+        function importTerms() {
+            const file = document.getElementById('importFile').files[0];
+            const hasHeader = document.getElementById('hasHeader').checked;
+            
+            if (!file || !currentGlossaryId) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('has_header', hasHeader ? 'true' : 'false');
+            
+            fetch(`/glossary/${currentGlossaryId}/import`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || `Imported ${data.count} terms successfully`, 'success');
+                    
+                    // Close modal
+                    const importModal = bootstrap.Modal.getInstance(document.getElementById('importModal'));
+                    importModal.hide();
+                    
+                    // Reload entries
+                    loadGlossaryEntries(currentGlossaryId);
+                } else {
+                    showToast(data.message || 'Failed to import terms', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error importing terms:', error);
+                showToast('Failed to import terms', 'error');
+            });
+        }
+        
+        function exportTerms(glossaryId) {
+            window.location.href = `/glossary/${glossaryId}/export`;
+        }
+        
+        function validateEntryForm() {
+            const sourceTerm = document.getElementById('sourceTerm').value.trim();
+            const targetTerm = document.getElementById('targetTerm').value.trim();
+            
+            if (!sourceTerm) {
+                showToast('Source term is required', 'warning');
+                return false;
+            }
+            
+            if (!targetTerm) {
+                showToast('Target term is required', 'warning');
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // Utility function for displaying toast notifications
+        function showToast(message, type = 'info') {
+            // Use the existing toast system from base.html if available
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            } else {
+                alert(message);
+            }
+        }
+    });
+</script>
+{% endblock %}

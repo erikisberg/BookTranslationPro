@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort, Response
 from werkzeug.utils import secure_filename
 import tempfile
 import logging
@@ -17,7 +17,9 @@ from auth import login_required, get_current_user, get_user_id, sign_up, sign_in
 from supabase_config import (
     get_user_data, save_user_data, get_user_translations, save_translation,
     get_full_translation, delete_translation, get_user_settings, save_user_settings,
-    get_user_assistants, get_assistant, save_assistant, delete_assistant
+    get_user_assistants, get_assistant, save_assistant, delete_assistant,
+    get_user_glossaries, get_glossary, create_glossary, update_glossary, delete_glossary,
+    get_glossary_entries, create_glossary_entry, update_glossary_entry, delete_glossary_entry
 )
 
 # Load environment variables from .env file
@@ -133,6 +135,39 @@ def format_datetime(value):
 @app.template_filter('tojson')
 def to_json(value):
     return json.dumps(value)
+
+# Language codes for DeepL and glossary configuration
+LANGUAGE_CODES = {
+    'BG': 'Bulgarian',
+    'CS': 'Czech',
+    'DA': 'Danish',
+    'DE': 'German',
+    'EL': 'Greek',
+    'EN': 'English',
+    'ES': 'Spanish',
+    'ET': 'Estonian',
+    'FI': 'Finnish',
+    'FR': 'French',
+    'HU': 'Hungarian',
+    'ID': 'Indonesian',
+    'IT': 'Italian',
+    'JA': 'Japanese',
+    'KO': 'Korean',
+    'LT': 'Lithuanian',
+    'LV': 'Latvian',
+    'NB': 'Norwegian',
+    'NL': 'Dutch',
+    'PL': 'Polish',
+    'PT': 'Portuguese',
+    'RO': 'Romanian',
+    'RU': 'Russian',
+    'SK': 'Slovak',
+    'SL': 'Slovenian',
+    'SV': 'Swedish',
+    'TR': 'Turkish',
+    'UK': 'Ukrainian',
+    'ZH': 'Chinese'
+}
 
 # Directory to store translations temporarily
 TRANSLATIONS_DIR = os.path.join(tempfile.gettempdir(), 'translations')
@@ -565,8 +600,18 @@ def index():
         if assistants:
             session['user_assistants'] = assistants
             session.modified = True
+    
+    # Get user's glossaries for the dropdown
+    glossaries = get_user_glossaries(user_id)
+    
+    # Enrich glossaries with language names
+    for glossary in glossaries:
+        if glossary.get('source_language') in LANGUAGE_CODES:
+            glossary['source_language'] = LANGUAGE_CODES[glossary['source_language']]
+        if glossary.get('target_language') in LANGUAGE_CODES:
+            glossary['target_language'] = LANGUAGE_CODES[glossary['target_language']]
             
-    return render_template('index.html', assistants=assistants)
+    return render_template('index.html', assistants=assistants, glossaries=glossaries)
 
 @app.route('/assistant-config', methods=['GET'])
 @login_required
@@ -1024,6 +1069,7 @@ def upload_file():
                 # Get processing options from form
                 use_cache = request.form.get('useCache') != 'false'  # Default to True
                 smart_review = request.form.get('smartReview') != 'false'  # Default to True
+                glossary_id = request.form.get('glossaryId')  # Will be None if not provided
                 
                 # Process this document
                 file_translations = process_document(
@@ -1037,7 +1083,8 @@ def upload_file():
                     return_segments=True,
                     use_cache=use_cache,
                     smart_review=smart_review,
-                    complexity_threshold=40  # Default threshold, could be made configurable
+                    complexity_threshold=40,  # Default threshold, could be made configurable
+                    glossary_id=glossary_id
                 )
                 
                 # Store original filename in each translation item for multi-file identification
@@ -1445,6 +1492,413 @@ def download_final():
                 os.remove(output_path)
             except:
                 pass
+
+# Glossary Management Routes
+@app.route('/glossary', methods=['GET'])
+@login_required
+def glossary_list():
+    """Show glossary management page"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+        
+    glossaries = get_user_glossaries(user_id)
+    
+    # Enrich glossaries with entry counts
+    for glossary in glossaries:
+        entries = get_glossary_entries(glossary['id'])
+        glossary['entries_count'] = len(entries)
+    
+    return render_template('glossary.html', glossaries=glossaries, languages=LANGUAGE_CODES)
+
+@app.route('/glossary', methods=['POST'])
+@login_required
+def create_new_glossary():
+    """Create a new glossary"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Get glossary data from request
+    data = request.json
+    if not data or not data.get('name'):
+        return json_error('Glossary name is required', 400)
+        
+    # Create glossary
+    result = create_glossary(user_id, data)
+    if not result:
+        return json_error('Failed to create glossary', 500)
+        
+    # Track in analytics
+    if posthog:
+        try:
+            posthog.capture(
+                distinct_id=user_id,
+                event='glossary_created',
+                properties={
+                    'glossary_id': result['id'],
+                    'glossary_name': result['name'],
+                    'source_language': result.get('source_language', 'not_set'),
+                    'target_language': result.get('target_language', 'not_set')
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error tracking glossary creation: {str(e)}")
+    
+    return json_response({
+        'success': True,
+        'message': 'Glossary created successfully',
+        'glossary': result
+    })
+
+@app.route('/glossary/<glossary_id>', methods=['GET'])
+@login_required
+def get_glossary_detail(glossary_id):
+    """Get glossary details"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    return json_response({
+        'success': True,
+        'glossary': glossary
+    })
+
+@app.route('/glossary/<glossary_id>', methods=['PUT'])
+@login_required
+def update_glossary_detail(glossary_id):
+    """Update an existing glossary"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Get glossary data from request
+    data = request.json
+    if not data:
+        return json_error('No data provided', 400)
+        
+    # Check if glossary exists
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    # Update glossary
+    result = update_glossary(user_id, glossary_id, data)
+    if not result:
+        return json_error('Failed to update glossary', 500)
+    
+    return json_response({
+        'success': True,
+        'message': 'Glossary updated successfully',
+        'glossary': result
+    })
+
+@app.route('/glossary/<glossary_id>', methods=['DELETE'])
+@login_required
+def delete_glossary_by_id(glossary_id):
+    """Delete a glossary"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Check if glossary exists
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    # Delete glossary
+    result = delete_glossary(user_id, glossary_id)
+    if not result:
+        return json_error('Failed to delete glossary', 500)
+    
+    # Track in analytics
+    if posthog:
+        try:
+            posthog.capture(
+                distinct_id=user_id,
+                event='glossary_deleted',
+                properties={
+                    'glossary_id': glossary_id,
+                    'glossary_name': glossary.get('name', 'unknown')
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error tracking glossary deletion: {str(e)}")
+    
+    return json_response({
+        'success': True,
+        'message': 'Glossary deleted successfully'
+    })
+
+@app.route('/glossary/<glossary_id>/entries', methods=['GET'])
+@login_required
+def get_glossary_entries_list(glossary_id):
+    """Get entries for a specific glossary"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Check if glossary exists and belongs to user
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    # Get entries
+    entries = get_glossary_entries(glossary_id)
+    
+    return json_response({
+        'success': True,
+        'entries': entries
+    })
+
+@app.route('/glossary/<glossary_id>/entries', methods=['POST'])
+@login_required
+def create_new_entry(glossary_id):
+    """Create a new glossary entry"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Check if glossary exists and belongs to user
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    # Get entry data from request
+    data = request.json
+    if not data or not data.get('source_term') or not data.get('target_term'):
+        return json_error('Source term and target term are required', 400)
+        
+    # Create entry
+    result = create_glossary_entry(glossary_id, data)
+    if not result:
+        return json_error('Failed to create glossary entry', 500)
+    
+    return json_response({
+        'success': True,
+        'message': 'Term added successfully',
+        'entry': result
+    })
+
+@app.route('/glossary/<glossary_id>/entries/<entry_id>', methods=['PUT'])
+@login_required
+def update_entry(glossary_id, entry_id):
+    """Update an existing glossary entry"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Check if glossary exists and belongs to user
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    # Get entry data from request
+    data = request.json
+    if not data:
+        return json_error('No data provided', 400)
+        
+    # Update entry
+    result = update_glossary_entry(entry_id, data)
+    if not result:
+        return json_error('Failed to update glossary entry', 500)
+    
+    return json_response({
+        'success': True,
+        'message': 'Term updated successfully',
+        'entry': result
+    })
+
+@app.route('/glossary/<glossary_id>/entries/<entry_id>', methods=['DELETE'])
+@login_required
+def delete_entry(glossary_id, entry_id):
+    """Delete a glossary entry"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Check if glossary exists and belongs to user
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    # Delete entry
+    result = delete_glossary_entry(entry_id)
+    if not result:
+        return json_error('Failed to delete glossary entry', 500)
+    
+    return json_response({
+        'success': True,
+        'message': 'Term deleted successfully'
+    })
+
+@app.route('/glossary/<glossary_id>/import', methods=['POST'])
+@login_required
+def import_glossary_entries(glossary_id):
+    """Import glossary entries from CSV file"""
+    user_id = get_user_id()
+    if not user_id:
+        return json_error('Unauthorized', 401)
+        
+    # Check if glossary exists and belongs to user
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        return json_error('Glossary not found', 404)
+        
+    # Check if file was uploaded
+    if 'file' not in request.files:
+        return json_error('No file provided', 400)
+        
+    file = request.files['file']
+    if file.filename == '':
+        return json_error('No file selected', 400)
+        
+    # Process CSV file
+    has_header = request.form.get('has_header', 'false').lower() == 'true'
+    try:
+        import csv
+        
+        # Save the file to a temporary location
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+        file.save(temp_file.name)
+        temp_file.close()
+        
+        # Read the CSV file
+        entries = []
+        with open(temp_file.name, 'r', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile)
+            
+            # Skip header row if needed
+            if has_header:
+                next(reader, None)
+                
+            for row in reader:
+                if len(row) >= 2:
+                    entry_data = {
+                        'source_term': row[0].strip(),
+                        'target_term': row[1].strip()
+                    }
+                    
+                    # Add optional fields if available
+                    if len(row) >= 3:
+                        entry_data['context'] = row[2].strip()
+                    if len(row) >= 4:
+                        entry_data['notes'] = row[3].strip()
+                        
+                    # Only add if source and target terms are not empty
+                    if entry_data['source_term'] and entry_data['target_term']:
+                        entries.append(entry_data)
+        
+        # Clean up temporary file
+        os.unlink(temp_file.name)
+        
+        # Process each entry
+        success_count = 0
+        for entry_data in entries:
+            result = create_glossary_entry(glossary_id, entry_data)
+            if result:
+                success_count += 1
+        
+        # Track in analytics
+        if posthog:
+            try:
+                posthog.capture(
+                    distinct_id=user_id,
+                    event='glossary_entries_imported',
+                    properties={
+                        'glossary_id': glossary_id,
+                        'glossary_name': glossary.get('name', 'unknown'),
+                        'count': success_count,
+                        'total_entries': len(entries)
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error tracking glossary import: {str(e)}")
+        
+        return json_response({
+            'success': True,
+            'message': f'Successfully imported {success_count} terms',
+            'count': success_count
+        })
+    except Exception as e:
+        logger.error(f"Error importing glossary entries: {str(e)}")
+        return json_error(f'Error importing glossary entries: {str(e)}', 500)
+
+@app.route('/glossary/<glossary_id>/export', methods=['GET'])
+@login_required
+def export_glossary_entries(glossary_id):
+    """Export glossary entries to CSV file"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+        
+    # Check if glossary exists and belongs to user
+    glossary = get_glossary(user_id, glossary_id)
+    if not glossary:
+        flash('Glossary not found', 'danger')
+        return redirect(url_for('glossary_list'))
+        
+    # Get entries
+    entries = get_glossary_entries(glossary_id)
+    
+    # Create CSV file
+    try:
+        import csv
+        from io import StringIO
+        
+        # Create in-memory CSV file
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(['source_term', 'target_term', 'context', 'notes'])
+        
+        # Write entries
+        for entry in entries:
+            writer.writerow([
+                entry.get('source_term', ''),
+                entry.get('target_term', ''),
+                entry.get('context', ''),
+                entry.get('notes', '')
+            ])
+        
+        # Prepare response
+        output.seek(0)
+        
+        # Track in analytics
+        if posthog:
+            try:
+                posthog.capture(
+                    distinct_id=user_id,
+                    event='glossary_entries_exported',
+                    properties={
+                        'glossary_id': glossary_id,
+                        'glossary_name': glossary.get('name', 'unknown'),
+                        'count': len(entries)
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error tracking glossary export: {str(e)}")
+        
+        # Create a safe filename from the glossary name
+        safe_name = ''.join(c for c in glossary.get('name', 'glossary') if c.isalnum() or c in ' _-').strip()
+        safe_name = safe_name.replace(' ', '_')
+        
+        filename = f"{safe_name}_glossary.csv"
+        
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment;filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"Error exporting glossary entries: {str(e)}")
+        flash(f'Error exporting glossary: {str(e)}', 'danger')
+        return redirect(url_for('glossary_list'))
 
 @app.errorhandler(404)
 def not_found_error(e):

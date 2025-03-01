@@ -118,6 +118,24 @@
                         </div>
                         
                         <div class="mb-3">
+                            <label for="glossarySelect" class="form-label">Ordlista</label>
+                            <select class="form-select" id="glossarySelect" name="glossaryId">
+                                <option value="">Ingen ordlista</option>
+                                {% if glossaries %}
+                                    {% for glossary in glossaries %}
+                                    <option value="{{ glossary.id }}">{{ glossary.name }} ({{ glossary.source_language }} → {{ glossary.target_language }})</option>
+                                    {% endfor %}
+                                {% else %}
+                                    <option value="" disabled>Inga ordlistor konfigurerade</option>
+                                {% endif %}
+                            </select>
+                            <div class="form-text">Tillämpa ordlista för att säkerställa konsekvent terminologi</div>
+                            <div class="form-text text-primary">
+                                <a href="{{ url_for('glossary_list') }}"><i class="bi bi-plus-circle"></i> Hantera ordlistor</a>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
                             <div class="form-check mb-2">
                                 <input type="checkbox" class="form-check-input" id="skipOpenAI" name="skipOpenAI">
                                 <label class="form-check-label" for="skipOpenAI">Hoppa över OpenAI-granskning (snabbare, använder endast DeepL-översättning)</label>

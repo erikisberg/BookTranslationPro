@@ -313,3 +313,243 @@ def delete_assistant(user_id, assistant_id):
     except Exception as e:
         logger.error(f"Error deleting assistant: {e}")
         return False
+
+# Glossary Management Functions
+
+def get_user_glossaries(user_id, limit=20, offset=0):
+    """Fetch user's glossaries"""
+    try:
+        logger.debug(f"Fetching glossaries for user_id: {user_id}")
+        response = supabase.table('glossaries').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(limit).offset(offset).execute()
+        if hasattr(response, 'data'):
+            logger.debug(f"Found {len(response.data)} glossaries for user_id: {user_id}")
+            return response.data
+        logger.warning(f"No data returned when fetching glossaries for user_id: {user_id}")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching glossaries: {e}")
+        return []
+
+def get_glossary(user_id, glossary_id):
+    """Fetch a specific glossary"""
+    try:
+        logger.debug(f"Fetching glossary {glossary_id} for user_id: {user_id}")
+        response = supabase.table('glossaries').select('*').eq('id', glossary_id).eq('user_id', user_id).limit(1).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        logger.warning(f"No glossary found with id: {glossary_id} for user_id: {user_id}")
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching glossary: {e}")
+        return None
+
+def create_glossary(user_id, glossary_data):
+    """Create a new glossary"""
+    try:
+        # Ensure required fields
+        if not glossary_data.get('name'):
+            logger.error("Glossary name is required")
+            return None
+            
+        data = {
+            'id': str(uuid.uuid4()),
+            'user_id': user_id,
+            'name': glossary_data.get('name'),
+            'description': glossary_data.get('description', ''),
+            'source_language': glossary_data.get('source_language', ''),
+            'target_language': glossary_data.get('target_language', ''),
+            'created_at': 'now()',
+            'updated_at': 'now()'
+        }
+        
+        logger.debug(f"Creating new glossary for user_id: {user_id}")
+        response = supabase.table('glossaries').insert(data).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Glossary created successfully: {response.data[0]['id']}")
+            return response.data[0]
+        logger.warning("Failed to create glossary")
+        return None
+    except Exception as e:
+        logger.error(f"Error creating glossary: {e}")
+        return None
+
+def update_glossary(user_id, glossary_id, glossary_data):
+    """Update an existing glossary"""
+    try:
+        # Check if glossary exists
+        if not get_glossary(user_id, glossary_id):
+            logger.warning(f"Glossary not found: {glossary_id}")
+            return None
+            
+        update_data = {
+            'name': glossary_data.get('name'),
+            'description': glossary_data.get('description'),
+            'source_language': glossary_data.get('source_language'),
+            'target_language': glossary_data.get('target_language'),
+            'updated_at': 'now()'
+        }
+        
+        # Remove any None values
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+        
+        logger.debug(f"Updating glossary {glossary_id} for user_id: {user_id}")
+        response = supabase.table('glossaries').update(update_data).eq('id', glossary_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Glossary updated successfully: {glossary_id}")
+            return response.data[0]
+        logger.warning(f"Failed to update glossary: {glossary_id}")
+        return None
+    except Exception as e:
+        logger.error(f"Error updating glossary: {e}")
+        return None
+
+def delete_glossary(user_id, glossary_id):
+    """Delete a glossary and all its entries"""
+    try:
+        # First delete all entries
+        logger.debug(f"Deleting entries for glossary {glossary_id}")
+        supabase.table('glossary_entries').delete().eq('glossary_id', glossary_id).execute()
+        
+        # Then delete the glossary
+        logger.debug(f"Deleting glossary {glossary_id} for user_id: {user_id}")
+        response = supabase.table('glossaries').delete().eq('id', glossary_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data'):
+            logger.info(f"Glossary deleted successfully: {glossary_id}")
+            return True
+        logger.warning(f"Failed to delete glossary: {glossary_id}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting glossary: {e}")
+        return False
+
+def get_glossary_entries(glossary_id, limit=100, offset=0):
+    """Fetch entries for a specific glossary"""
+    try:
+        logger.debug(f"Fetching entries for glossary_id: {glossary_id}")
+        response = supabase.table('glossary_entries').select('*').eq('glossary_id', glossary_id).order('source_term').limit(limit).offset(offset).execute()
+        
+        if hasattr(response, 'data'):
+            logger.debug(f"Found {len(response.data)} entries for glossary_id: {glossary_id}")
+            return response.data
+        logger.warning(f"No data returned when fetching entries for glossary_id: {glossary_id}")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching glossary entries: {e}")
+        return []
+
+def create_glossary_entry(glossary_id, entry_data):
+    """Create a new glossary entry"""
+    try:
+        # Ensure required fields
+        if not entry_data.get('source_term') or not entry_data.get('target_term'):
+            logger.error("Source term and target term are required")
+            return None
+            
+        data = {
+            'id': str(uuid.uuid4()),
+            'glossary_id': glossary_id,
+            'source_term': entry_data.get('source_term'),
+            'target_term': entry_data.get('target_term'),
+            'context': entry_data.get('context', ''),
+            'notes': entry_data.get('notes', ''),
+            'created_at': 'now()',
+            'updated_at': 'now()'
+        }
+        
+        logger.debug(f"Creating new entry for glossary_id: {glossary_id}")
+        response = supabase.table('glossary_entries').insert(data).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Glossary entry created successfully: {response.data[0]['id']}")
+            return response.data[0]
+        logger.warning("Failed to create glossary entry")
+        return None
+    except Exception as e:
+        logger.error(f"Error creating glossary entry: {e}")
+        return None
+
+def update_glossary_entry(entry_id, entry_data):
+    """Update an existing glossary entry"""
+    try:
+        update_data = {
+            'source_term': entry_data.get('source_term'),
+            'target_term': entry_data.get('target_term'),
+            'context': entry_data.get('context'),
+            'notes': entry_data.get('notes'),
+            'updated_at': 'now()'
+        }
+        
+        # Remove any None values
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+        
+        logger.debug(f"Updating glossary entry: {entry_id}")
+        response = supabase.table('glossary_entries').update(update_data).eq('id', entry_id).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Glossary entry updated successfully: {entry_id}")
+            return response.data[0]
+        logger.warning(f"Failed to update glossary entry: {entry_id}")
+        return None
+    except Exception as e:
+        logger.error(f"Error updating glossary entry: {e}")
+        return None
+
+def delete_glossary_entry(entry_id):
+    """Delete a glossary entry"""
+    try:
+        logger.debug(f"Deleting glossary entry: {entry_id}")
+        response = supabase.table('glossary_entries').delete().eq('id', entry_id).execute()
+        
+        if hasattr(response, 'data'):
+            logger.info(f"Glossary entry deleted successfully: {entry_id}")
+            return True
+        logger.warning(f"Failed to delete glossary entry: {entry_id}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting glossary entry: {e}")
+        return False
+
+def apply_glossary_to_text(text, glossary_id):
+    """Apply glossary terms to a text string"""
+    if not text or not glossary_id:
+        return text
+        
+    try:
+        # Get all glossary entries
+        entries = get_glossary_entries(glossary_id)
+        if not entries:
+            return text
+            
+        # Sort entries by length of source term (longest first)
+        # This prevents shorter terms from replacing parts of longer terms
+        entries.sort(key=lambda x: len(x.get('source_term', '')), reverse=True)
+        
+        # Apply replacements
+        for entry in entries:
+            source_term = entry.get('source_term', '')
+            target_term = entry.get('target_term', '')
+            
+            if source_term and target_term:
+                # Replace with word boundary check to avoid partial word replacements
+                # This is a simple implementation - more sophisticated NLP might be needed
+                text = text.replace(f" {source_term} ", f" {target_term} ")
+                
+                # Handle beginning of text
+                if text.startswith(source_term + " "):
+                    text = target_term + " " + text[len(source_term)+1:]
+                    
+                # Handle end of text
+                if text.endswith(" " + source_term):
+                    text = text[:-len(source_term)-1] + " " + target_term
+                    
+                # Handle standalone term (the entire text)
+                if text == source_term:
+                    text = target_term
+                    
+        return text
+    except Exception as e:
+        logger.error(f"Error applying glossary to text: {e}")
+        return text

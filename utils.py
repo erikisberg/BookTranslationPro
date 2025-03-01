@@ -447,8 +447,8 @@ def extract_text_from_page(pdf_reader, page_num):
         logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
         raise Exception(f"Failed to extract text from page {page_num + 1}: {str(e)}")
 
-def translate_text(text, deepl_api_key, target_language='SV', source_language='auto', use_cache=True):
-    """First step: Translate text using DeepL with caching"""
+def translate_text(text, deepl_api_key, target_language='SV', source_language='auto', use_cache=True, glossary_id=None):
+    """First step: Translate text using DeepL with caching and glossary support"""
     if not text or text.isspace():
         raise ValueError("Cannot translate empty text")
 
@@ -461,6 +461,18 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
             cached_translation = check_translation_cache(text, target_language)
             if cached_translation:
                 logger.info("Translation found in cache, skipping DeepL API call")
+                
+                # Apply glossary to cached translation if needed
+                if glossary_id:
+                    try:
+                        from supabase_config import apply_glossary_to_text
+                        glossary_applied_text = apply_glossary_to_text(cached_translation, glossary_id)
+                        logger.info("Applied glossary to cached translation")
+                        return glossary_applied_text, generate_text_hash(text, target_language), text
+                    except Exception as glossary_error:
+                        logger.error(f"Error applying glossary to cached translation: {str(glossary_error)}")
+                        # Fall back to cached translation without glossary
+                
                 return cached_translation, generate_text_hash(text, target_language), text
         except Exception as cache_error:
             # If cache check fails, log but continue with normal translation
@@ -487,6 +499,17 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
         logger.info("Text successfully translated with DeepL")
         logger.info(f"Translation sample: {result.text[:100]}...")
         
+        # Apply glossary to translation if specified
+        translation_text = result.text
+        if glossary_id:
+            try:
+                from supabase_config import apply_glossary_to_text
+                translation_text = apply_glossary_to_text(translation_text, glossary_id)
+                logger.info("Applied glossary to DeepL translation")
+            except Exception as glossary_error:
+                logger.error(f"Error applying glossary to translation: {str(glossary_error)}")
+                # Continue with the original translation
+        
         # Generate hash for caching if needed
         text_hash = None
         if use_cache:
@@ -496,7 +519,7 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
             except Exception as hash_error:
                 logger.error(f"Error generating hash for caching: {str(hash_error)}")
         
-        return result.text, text_hash, text
+        return translation_text, text_hash, text
 
     except Exception as e:
         logger.error(f"DeepL translation error: {str(e)}")
@@ -1079,12 +1102,13 @@ def analyze_complexity(text):
     
     return complexity_score, features
 
-def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True, smart_review=True, complexity_threshold=40):
+def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True, smart_review=True, complexity_threshold=40, glossary_id=None):
     """Process a document by extracting text, translating, and optionally reviewing with AI.
     
     Works with various file formats including PDF, DOCX, DOC, TXT, RTF, and ODT.
     Uses translation caching to improve performance and reduce API calls.
     With smart_review enabled, only complex segments will be sent for OpenAI review.
+    With glossary_id, applies custom glossary terms to translations.
     """
     try:
         # Extract text from the file using the appropriate method
@@ -1098,10 +1122,13 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
             raise Exception(f"Could not read document content: {str(e)}")
         
         logger.info(f"Translation settings - Source: {source_language}, Target: {target_language}")
-        
+        if glossary_id:
+            logger.info(f"Using glossary ID: {glossary_id}")
+            
         # Process each section
         translations = []
         cache_hits = 0
+        glossary_applied_count = 0
         for i, section in enumerate(text_sections):
             try:
                 section_id = section['id']
@@ -1114,7 +1141,7 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                     logger.warning(f"Section {i+1} contains insufficient text, skipping")
                     continue
                 
-                # Step 1: Translate text using DeepL (with caching)
+                # Step 1: Translate text using DeepL (with caching and glossary)
                 logger.info(f"Translating section {i+1} with DeepL")
                 text_hash = None
                 source_text_for_cache = None
@@ -1126,7 +1153,8 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                         deepl_api_key, 
                         target_language, 
                         source_language, 
-                        use_cache=use_cache
+                        use_cache=use_cache,
+                        glossary_id=glossary_id
                     )
                     
                     # Handle tuple return or just the translation text
@@ -1142,6 +1170,10 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                         logger.error("Translation returned empty result")
                         translated_text = original_text
                         raise ValueError("Translation returned empty result")
+                        
+                    # Track if glossary was applied
+                    if glossary_id:
+                        glossary_applied_count += 1
                 except Exception as e:
                     logger.error(f"DeepL translation error for section {i+1}: {str(e)}")
                     translated_text = original_text  # Fallback to original text
@@ -1200,7 +1232,8 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                     'cache_metadata': cache_metadata,
                     'complexity_score': complexity_score,
                     'reviewed_by_ai': openai_api_key and assistant_id and (not smart_review or needs_review),
-                    'review_skipped_reason': 'low_complexity' if (smart_review and not needs_review and openai_api_key and assistant_id) else None
+                    'review_skipped_reason': 'low_complexity' if (smart_review and not needs_review and openai_api_key and assistant_id) else None,
+                    'glossary_applied': glossary_id is not None
                 })
                 logger.info(f"Successfully completed processing section {i+1}")
                 
@@ -1230,6 +1263,11 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
             
             logger.info(f"Smart review performance: {reviewed_sections}/{total_sections} sections reviewed ({review_rate:.1f}%)")
             logger.info(f"Smart review savings: {skipped_sections}/{total_sections} sections skipped ({skip_rate:.1f}%)")
+            
+        # Report glossary efficiency
+        if glossary_id and total_sections > 0:
+            glossary_rate = (glossary_applied_count / total_sections) * 100
+            logger.info(f"Glossary applied to {glossary_applied_count}/{total_sections} sections ({glossary_rate:.1f}%)")
         
         # Sort translations by section ID to maintain document order
         translations.sort(key=lambda x: x['id'])
