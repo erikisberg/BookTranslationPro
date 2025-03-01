@@ -61,12 +61,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
             clearInterval(progressInterval);
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Upload failed');
-            }
-
             const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Upload failed');
+            }
 
             // Handle successful response
             progressBar.style.width = '100%';

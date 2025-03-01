@@ -90,8 +90,8 @@ def save_reviews():
         translations = session.get('translations', [])
 
         # Update translations with reviewed text
-        for i, translation in enumerate(translations):
-            key = f'translation_{i}'
+        for translation in translations:
+            key = f'translation_{translation["id"]}'
             if key in request.form:
                 translation['translated_text'] = request.form[key]
 
