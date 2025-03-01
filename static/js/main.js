@@ -14,9 +14,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const buttonText = uploadButton ? uploadButton.querySelector('.button-text') : null;
     const spinner = uploadButton ? uploadButton.querySelector('.spinner-border') : null;
 
+    async function handleResponse(response) {
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server error: Invalid response format');
+        }
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Operation failed');
+        }
+        return data;
+    }
+
     uploadForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-        console.log('Starting file upload process');
 
         const fileInput = document.getElementById('pdfFile');
         const file = fileInput.files[0];
@@ -33,113 +46,92 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const formData = new FormData();
         formData.append('file', file);
-        console.log('Form data created with file:', file.name);
 
         try {
-            setLoading(true);
-            errorContainer.classList.add('d-none');
+            // Show loading state
+            if (buttonText) buttonText.textContent = 'Processing...';
+            if (spinner) spinner.classList.remove('d-none');
+            if (uploadButton) uploadButton.disabled = true;
             progressContainer.classList.remove('d-none');
-            progressBar.style.width = '0%';
-            statusText.textContent = 'Starting upload...';
+            errorContainer.classList.add('d-none');
+
+            // Simulate progress for better UX
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 5;
+                if (progress <= 90) {
+                    progressBar.style.width = `${progress}%`;
+                    statusText.textContent = `Processing page...`;
+                }
+            }, 1000);
 
             const response = await fetch('/upload', {
                 method: 'POST',
                 body: formData,
                 headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
                 }
             });
 
-            if (!response.ok || !response.headers.get('content-type').includes('text/event-stream')) {
-                // Handle non-streaming error responses
-                const errorText = await response.text();
-                console.error('Upload error response:', errorText);
-                throw new Error('Failed to process file');
-            }
+            clearInterval(progressInterval);
+            const data = await handleResponse(response);
 
-            const reader = response.body.getReader();
-            let translations = [];
+            // Handle successful response
+            progressBar.style.width = '100%';
+            statusText.textContent = 'Translation complete! Redirecting to review...';
 
-            while (true) {
-                const {value, done} = await reader.read();
-                if (done) break;
-
-                const chunk = new TextDecoder().decode(value);
-                const events = chunk.split('\n\n').filter(Boolean);
-
-                for (const event of events) {
-                    if (!event.startsWith('data: ')) continue;
-                    const jsonStr = event.slice(6);
-                    try {
-                        const data = JSON.parse(jsonStr);
-                        console.log('Stream data:', data);
-
-                        if (data.status === 'error') {
-                            throw new Error(data.message);
-                        }
-
-                        // Update progress based on status
-                        if (data.status === 'started') {
-                            statusText.textContent = 'Processing PDF...';
-                        } else if (data.status === 'extracting') {
-                            progressBar.style.width = `${(data.page / data.total_pages * 30)}%`;
-                            statusText.textContent = `Extracting text from page ${data.page}...`;
-                        } else if (data.status === 'translating') {
-                            progressBar.style.width = `${(data.page / data.total_pages * 60)}%`;
-                            statusText.textContent = `Translating page ${data.page}...`;
-                        } else if (data.status === 'reviewing') {
-                            progressBar.style.width = `${(data.page / data.total_pages * 90)}%`;
-                            statusText.textContent = `Reviewing translation of page ${data.page}...`;
-                        } else if (data.status === 'completed') {
-                            translations = data.translations;
-                            progressBar.style.width = '100%';
-                            statusText.textContent = 'Processing complete!';
-                            // Store translations in session and redirect
-                            const saveResponse = await fetch('/save-translations', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                body: JSON.stringify({translations})
-                            });
-                            if (saveResponse.ok) {
-                                window.location.href = '/review';
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error processing stream data:', error);
-                        throw error;
-                    }
-                }
+            // Redirect to review page
+            if (data.redirect) {
+                window.location.href = data.redirect;
             }
 
         } catch (error) {
-            console.error('Upload process error:', error);
-            showError(error.message || 'Failed to process file');
+            showError(error.message);
             resetForm();
         }
     });
 
     function showError(message) {
-        console.error('Showing error:', message);
         errorContainer.textContent = message;
         errorContainer.classList.remove('d-none');
-        progressContainer.classList.add('d-none');
-    }
-
-    function setLoading(isLoading) {
-        if (buttonText) buttonText.textContent = isLoading ? 'Processing...' : 'Translate PDF';
-        if (spinner) spinner.classList.toggle('d-none', !isLoading);
-        if (uploadButton) uploadButton.disabled = isLoading;
+        if (progressContainer) progressContainer.classList.add('d-none');
     }
 
     function resetForm() {
-        console.log('Resetting form');
-        setLoading(false);
+        if (buttonText) buttonText.textContent = 'Translate PDF';
+        if (spinner) spinner.classList.add('d-none');
+        if (uploadButton) uploadButton.disabled = false;
         progressContainer.classList.add('d-none');
         progressBar.style.width = '0%';
         statusText.textContent = '';
         uploadForm.reset();
+    }
+
+    // Handle review form submission
+    const reviewForm = document.querySelector('form[action="/save-reviews"]');
+    if (reviewForm) {
+        reviewForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            try {
+                const response = await fetch('/save-reviews', {
+                    method: 'POST',
+                    body: new FormData(this),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await handleResponse(response);
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                }
+
+            } catch (error) {
+                alert('Error saving reviews: ' + error.message);
+            }
+        });
     }
 });
