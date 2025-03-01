@@ -148,6 +148,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const useCache = document.getElementById('useCache').checked;
         formData.append('useCache', useCache);
         
+        // Add the smartReview checkbox value
+        const smartReview = document.getElementById('smartReview').checked;
+        formData.append('smartReview', smartReview);
+        
         // Add language options
         const sourceLanguage = document.getElementById('sourceLanguage').value;
         const targetLanguage = document.getElementById('targetLanguage').value;

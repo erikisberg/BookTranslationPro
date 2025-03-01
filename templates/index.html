@@ -123,6 +123,12 @@
                                 <label class="form-check-label" for="skipOpenAI">Hoppa över OpenAI-granskning (snabbare, använder endast DeepL-översättning)</label>
                             </div>
                             
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" id="smartReview" name="smartReview" checked>
+                                <label class="form-check-label" for="smartReview">Smart granskning (skickar endast komplexa avsnitt till OpenAI)</label>
+                                <div class="form-text text-primary"><i class="bi bi-magic"></i> Analyserar textkomplexitet och prioriterar AI-granskning där det behövs mest</div>
+                            </div>
+                            
                             <div class="form-check">
                                 <input type="checkbox" class="form-check-input" id="useCache" name="useCache" checked>
                                 <label class="form-check-label" for="useCache">Använd översättningscache (snabbare för återkommande texter)</label>

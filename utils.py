@@ -993,11 +993,98 @@ def create_html_with_text(text_content, font_family='helvetica', font_size=12,
         logger.error(f"Error creating HTML: {str(e)}")
         raise Exception(f"Failed to create HTML document: {str(e)}")
 
-def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True):
+def analyze_complexity(text):
+    """Analyze text complexity to determine if it needs AI review.
+    
+    Returns a complexity score and features dict with analysis details.
+    Higher scores indicate more complex text that would benefit from review.
+    """
+    if not text or not isinstance(text, str):
+        return 0, {}
+        
+    # Initialize complexity metrics
+    features = {
+        'length': len(text),
+        'avg_sentence_length': 0,
+        'long_sentences': 0,  # Sentences > 30 words
+        'complex_words': 0,   # Words > 6 chars
+        'punctuation_count': 0,
+        'special_chars': 0
+    }
+    
+    # Count punctuation and special characters
+    punctuation_chars = '.,:;?!-—()[]{}"\''
+    special_chars = '@#$%^&*+=<>|~`§±'
+    
+    for char in text:
+        if char in punctuation_chars:
+            features['punctuation_count'] += 1
+        if char in special_chars:
+            features['special_chars'] += 1
+    
+    # Split into sentences and words
+    sentences = [s.strip() for s in text.replace('!', '.').replace('?', '.').split('.') if s.strip()]
+    if sentences:
+        features['avg_sentence_length'] = len(text) / len(sentences)
+        
+    # Count long sentences and complex words
+    for sentence in sentences:
+        words = sentence.split()
+        if len(words) > 30:
+            features['long_sentences'] += 1
+        
+        for word in words:
+            if len(word) > 6:
+                features['complex_words'] += 1
+    
+    # Calculate complexity score (weighted sum of features)
+    complexity_score = 0
+    
+    # Base score on length (longer text is more likely to need review)
+    if features['length'] > 5000:
+        complexity_score += 30
+    elif features['length'] > 1000:
+        complexity_score += 20
+    elif features['length'] > 500:
+        complexity_score += 10
+        
+    # Score based on sentence structure
+    if features['avg_sentence_length'] > 25:
+        complexity_score += 25
+    elif features['avg_sentence_length'] > 15:
+        complexity_score += 15
+        
+    # Score based on complex words ratio
+    if features['complex_words'] > 100:
+        complexity_score += 20
+    elif features['complex_words'] > 50:
+        complexity_score += 10
+        
+    # Score based on punctuation density
+    punctuation_ratio = features['punctuation_count'] / max(1, features['length'])
+    if punctuation_ratio > 0.1:
+        complexity_score += 15
+    elif punctuation_ratio > 0.05:
+        complexity_score += 10
+        
+    # Score special characters
+    if features['special_chars'] > 20:
+        complexity_score += 10
+        
+    # Add bonus for long sentences
+    complexity_score += min(20, features['long_sentences'] * 5)
+    
+    # Cap at 100
+    complexity_score = min(100, complexity_score)
+    
+    return complexity_score, features
+
+def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True, smart_review=True, complexity_threshold=40):
     """Process a document by extracting text, translating, and optionally reviewing with AI.
     
     Works with various file formats including PDF, DOCX, DOC, TXT, RTF, and ODT.
     Uses translation caching to improve performance and reduce API calls.
+    With smart_review enabled, only complex segments will be sent for OpenAI review.
     """
     try:
         # Extract text from the file using the appropriate method
@@ -1061,8 +1148,23 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                     
                 # Step 2: Review translation using OpenAI (if enabled)
                 reviewed_text = translated_text  # Default to DeepL translation
+                complexity_score = 0
+                complexity_features = {}
+                needs_review = True
                 
-                if openai_api_key and assistant_id:
+                # Determine if this text needs review (for smart review mode)
+                if smart_review and openai_api_key and assistant_id:
+                    # Analyze complexity to decide if OpenAI review is needed
+                    complexity_score, complexity_features = analyze_complexity(original_text)
+                    needs_review = complexity_score >= complexity_threshold
+                    
+                    if needs_review:
+                        logger.info(f"Section {i+1} complexity: {complexity_score} (above threshold, sending for review)")
+                    else:
+                        logger.info(f"Section {i+1} complexity: {complexity_score} (below threshold, skipping review)")
+                
+                # Perform OpenAI review if needed
+                if openai_api_key and assistant_id and (not smart_review or needs_review):
                     logger.info(f"Reviewing translation for section {i+1} with OpenAI")
                     try:
                         reviewed_text = review_translation(
@@ -1075,6 +1177,8 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                         logger.error(f"OpenAI review error for section {i+1}: {str(e)}")
                         # Keep using the DeepL translation (no need to raise an error)
                         logger.info(f"Using DeepL translation without OpenAI review for section {i+1}")
+                elif openai_api_key and assistant_id and smart_review and not needs_review:
+                    logger.info(f"OpenAI review skipped for section {i+1} (simple text, using DeepL only)")
                 else:
                     logger.info(f"OpenAI review skipped for section {i+1} (using DeepL translation only)")
                 
@@ -1093,7 +1197,10 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                     'translated_text': reviewed_text,
                     'status': 'success',
                     'source': source_info,
-                    'cache_metadata': cache_metadata
+                    'cache_metadata': cache_metadata,
+                    'complexity_score': complexity_score,
+                    'reviewed_by_ai': openai_api_key and assistant_id and (not smart_review or needs_review),
+                    'review_skipped_reason': 'low_complexity' if (smart_review and not needs_review and openai_api_key and assistant_id) else None
                 })
                 logger.info(f"Successfully completed processing section {i+1}")
                 
@@ -1113,6 +1220,16 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
         if use_cache and total_sections > 0:
             cache_rate = (cache_hits / total_sections) * 100
             logger.info(f"Translation cache performance: {cache_hits}/{total_sections} sections from cache ({cache_rate:.1f}%)")
+            
+        # Report smart review efficiency
+        if smart_review and openai_api_key and assistant_id and total_sections > 0:
+            reviewed_sections = sum(1 for t in translations if t.get('reviewed_by_ai', False))
+            skipped_sections = sum(1 for t in translations if t.get('review_skipped_reason') == 'low_complexity')
+            review_rate = (reviewed_sections / total_sections) * 100
+            skip_rate = (skipped_sections / total_sections) * 100
+            
+            logger.info(f"Smart review performance: {reviewed_sections}/{total_sections} sections reviewed ({review_rate:.1f}%)")
+            logger.info(f"Smart review savings: {skipped_sections}/{total_sections} sections skipped ({skip_rate:.1f}%)")
         
         # Sort translations by section ID to maintain document order
         translations.sort(key=lambda x: x['id'])

@@ -39,9 +39,30 @@
                             <div class="col-md-6">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <h5>Översättning</h5>
-                                    <span class="translation-status {{ 'success' if translation.status == 'success' else 'danger' }}">
-                                        {{ 'OK' if translation.status == 'success' else 'Error' }}
-                                    </span>
+                                    <div>
+                                        {% if translation.complexity_score is defined %}
+                                        <span class="badge {% if translation.complexity_score > 70 %}bg-danger{% elif translation.complexity_score > 40 %}bg-warning{% else %}bg-success{% endif %} me-2" 
+                                              title="Text complexity score: {{ translation.complexity_score }}">
+                                            Komplexitet: {{ translation.complexity_score }}
+                                        </span>
+                                        {% endif %}
+                                        
+                                        {% if translation.reviewed_by_ai is defined %}
+                                            {% if translation.reviewed_by_ai %}
+                                            <span class="badge bg-primary me-2" title="Reviewed by OpenAI">
+                                                <i class="bi bi-robot"></i> AI-granskad
+                                            </span>
+                                            {% elif translation.review_skipped_reason == 'low_complexity' %}
+                                            <span class="badge bg-info me-2" title="AI review skipped (simple text)">
+                                                <i class="bi bi-speedometer"></i> Direkt (enkel text)
+                                            </span>
+                                            {% endif %}
+                                        {% endif %}
+                                        
+                                        <span class="translation-status {{ 'success' if translation.status == 'success' else 'danger' }}">
+                                            {{ 'OK' if translation.status == 'success' else 'Error' }}
+                                        </span>
+                                    </div>
                                 </div>
                                 <textarea 
                                     name="translation_{{ translation.id }}" 

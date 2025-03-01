@@ -1021,8 +1021,9 @@ def upload_file():
             try:
                 logger.info(f"Processing file {i+1}/{len(filepaths)}: {os.path.basename(filepath)}")
                 
-                # Get use_cache option from form
+                # Get processing options from form
                 use_cache = request.form.get('useCache') != 'false'  # Default to True
+                smart_review = request.form.get('smartReview') != 'false'  # Default to True
                 
                 # Process this document
                 file_translations = process_document(
@@ -1034,7 +1035,9 @@ def upload_file():
                     target_language=target_language,
                     custom_instructions=custom_instructions,
                     return_segments=True,
-                    use_cache=use_cache
+                    use_cache=use_cache,
+                    smart_review=smart_review,
+                    complexity_threshold=40  # Default threshold, could be made configurable
                 )
                 
                 # Store original filename in each translation item for multi-file identification
@@ -1064,18 +1067,26 @@ def upload_file():
         session['original_filename'] = ", ".join(original_filenames) if len(original_filenames) > 1 else original_filenames[0]
         session['file_count'] = len(original_filenames)
 
-        # Gather cache stats
+        # Gather cache and smart review stats
         cache_hits = 0
         cache_ratio = 0
+        smart_review_savings = 0
+        smart_review_ratio = 0
         
         for t in all_translations:
             # Check if translation contains cache metadata
             if t.get('cache_metadata') and t.get('cache_metadata').get('source_hash'):
                 cache_hits += 1
+                
+            # Check if review was skipped due to smart review
+            if t.get('review_skipped_reason') == 'low_complexity':
+                smart_review_savings += 1
         
         if total_sections > 0:
             cache_ratio = (cache_hits / total_sections) * 100
+            smart_review_ratio = (smart_review_savings / total_sections) * 100
             logger.info(f"Cache statistics: {cache_hits}/{total_sections} segments from cache ({cache_ratio:.1f}%)")
+            logger.info(f"Smart review savings: {smart_review_savings}/{total_sections} segments skipped ({smart_review_ratio:.1f}%)")
         
         # Track successful file upload and translation
         if posthog:
@@ -1090,7 +1101,10 @@ def upload_file():
                     'translation_id': translation_id,
                     'cache_enabled': use_cache,
                     'cache_hits': cache_hits,
-                    'cache_ratio': round(cache_ratio, 1)
+                    'cache_ratio': round(cache_ratio, 1),
+                    'smart_review_enabled': smart_review,
+                    'smart_review_savings': smart_review_savings,
+                    'smart_review_ratio': round(smart_review_ratio, 1)
                 }
             )
 
