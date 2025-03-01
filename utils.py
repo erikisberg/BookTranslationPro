@@ -6,14 +6,403 @@ from openai import OpenAI
 import tempfile
 import logging
 import time
+import re
+import io
+from pathlib import Path
+import subprocess
+import shutil
+
+# Try to import optional document processing libraries
+try:
+    import docx
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+try:
+    from pdfminer.high_level import extract_text as pdfminer_extract_text
+    PDFMINER_AVAILABLE = True
+except ImportError:
+    PDFMINER_AVAILABLE = False
+
+try:
+    import textract
+    TEXTRACT_AVAILABLE = True
+except ImportError:
+    TEXTRACT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 def is_allowed_file(filename):
-    return filename.lower().endswith('.pdf')
+    """Check if the file type is supported for processing"""
+    if not filename:
+        return False
+    
+    allowed_extensions = [
+        '.pdf',  # Adobe PDF
+        '.docx', '.doc',  # Microsoft Word
+        '.txt',  # Plain text
+        '.rtf',  # Rich Text Format
+        '.odt'   # OpenDocument Text
+    ]
+    
+    return any(filename.lower().endswith(ext) for ext in allowed_extensions)
+
+def extract_text_from_pdf(filepath):
+    """Extract text from a PDF file using multiple methods for reliability"""
+    pages_text = []
+    fallback_used = False
+    
+    # First try with PyPDF2
+    try:
+        with open(filepath, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            total_pages = len(pdf_reader.pages)
+            logger.info(f"Processing PDF with {total_pages} pages using PyPDF2")
+            
+            for page_num in range(total_pages):
+                try:
+                    page = pdf_reader.pages[page_num]
+                    text = page.extract_text()
+                    
+                    # Check if text was extracted
+                    if text and not text.isspace() and len(text.strip()) > 10:
+                        pages_text.append({
+                            'id': page_num,
+                            'text': text.strip(),
+                            'source': 'PyPDF2'
+                        })
+                        logger.info(f"Successfully extracted {len(text)} characters from page {page_num + 1} with PyPDF2")
+                    else:
+                        # If PyPDF2 fails, flag for fallback methods
+                        fallback_used = True
+                        logger.warning(f"PyPDF2 extracted insufficient text from page {page_num + 1}, will try fallback")
+                
+                except Exception as e:
+                    fallback_used = True
+                    logger.error(f"PyPDF2 error on page {page_num + 1}: {str(e)}")
+    
+    except Exception as e:
+        fallback_used = True
+        logger.error(f"PyPDF2 failed to process PDF: {str(e)}")
+    
+    # If PyPDF2 couldn't extract text from some pages, try pdfminer
+    if fallback_used and PDFMINER_AVAILABLE:
+        try:
+            logger.info(f"Trying PDFMiner for better text extraction")
+            full_text = pdfminer_extract_text(filepath)
+            
+            # If we got text but haven't processed any pages successfully yet
+            if full_text and len(pages_text) == 0:
+                # Split into pages based on common page break markers
+                page_texts = re.split(r'\f|\n\s*\n\s*\n', full_text)
+                
+                for i, page_text in enumerate(page_texts):
+                    if page_text and not page_text.isspace() and len(page_text.strip()) > 10:
+                        pages_text.append({
+                            'id': i,
+                            'text': page_text.strip(),
+                            'source': 'PDFMiner'
+                        })
+                        logger.info(f"Successfully extracted text from section {i+1} with PDFMiner")
+            
+            # If we have page numbers with missing text, fill them in
+            elif len(pages_text) > 0:
+                # Get page numbers that failed with PyPDF2
+                failed_pages = []
+                extracted_ids = [page['id'] for page in pages_text]
+                
+                with open(filepath, 'rb') as file:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    for i in range(len(pdf_reader.pages)):
+                        if i not in extracted_ids:
+                            failed_pages.append(i)
+                
+                # Try to estimate page boundaries and insert content
+                if failed_pages and full_text:
+                    logger.info(f"Attempting to fix {len(failed_pages)} pages with PDFMiner")
+                    # This is a simplistic approach - in a real app, you'd need more sophisticated page detection
+                    approx_page_length = len(full_text) / len(pdf_reader.pages)
+                    
+                    for page_num in failed_pages:
+                        start_pos = int(page_num * approx_page_length)
+                        end_pos = int((page_num + 1) * approx_page_length)
+                        if start_pos < len(full_text) and end_pos <= len(full_text):
+                            page_text = full_text[start_pos:end_pos].strip()
+                            if len(page_text) > 10:
+                                pages_text.append({
+                                    'id': page_num,
+                                    'text': page_text,
+                                    'source': 'PDFMiner-estimated'
+                                })
+                                logger.info(f"Added estimated text for page {page_num+1} with PDFMiner")
+        
+        except Exception as e:
+            logger.error(f"PDFMiner fallback failed: {str(e)}")
+    
+    # Last resort - try textract if available
+    if len(pages_text) == 0 and TEXTRACT_AVAILABLE:
+        try:
+            logger.info("Trying textract as last resort")
+            text = textract.process(filepath).decode('utf-8')
+            if text and len(text.strip()) > 10:
+                # We don't know page boundaries, so just create a single "page"
+                pages_text.append({
+                    'id': 0,
+                    'text': text.strip(),
+                    'source': 'textract'
+                })
+                logger.info(f"Extracted {len(text)} characters with textract")
+        except Exception as e:
+            logger.error(f"Textract fallback failed: {str(e)}")
+    
+    # Sort by page number
+    pages_text.sort(key=lambda x: x['id'])
+    
+    if not pages_text:
+        raise Exception("Could not extract any text from the PDF with any method")
+    
+    logger.info(f"Successfully extracted text from {len(pages_text)} pages/sections")
+    return pages_text
+
+def extract_text_from_docx(filepath):
+    """Extract text from a DOCX file"""
+    if not DOCX_AVAILABLE:
+        raise ImportError("python-docx package is not installed")
+    
+    try:
+        doc = docx.Document(filepath)
+        sections = []
+        
+        # Option 1: Extract by paragraphs
+        current_section = []
+        section_count = 0
+        
+        for i, para in enumerate(doc.paragraphs):
+            text = para.text.strip()
+            if text:
+                current_section.append(text)
+            
+            # Create a new section after a certain number of paragraphs
+            # or if we encounter a page break (simplistic detection)
+            if (i > 0 and i % 10 == 0) or (text.startswith('\f') or not text and len(current_section) > 5):
+                section_text = '\n'.join(current_section)
+                if len(section_text) > 10:
+                    sections.append({
+                        'id': section_count,
+                        'text': section_text,
+                        'source': 'docx-paragraphs'
+                    })
+                    section_count += 1
+                    current_section = []
+        
+        # Add the final section if it exists
+        if current_section:
+            section_text = '\n'.join(current_section)
+            if len(section_text) > 10:
+                sections.append({
+                    'id': section_count,
+                    'text': section_text,
+                    'source': 'docx-paragraphs'
+                })
+        
+        # If we couldn't parse meaningful sections, try a simpler approach
+        if not sections:
+            full_text = '\n'.join([p.text for p in doc.paragraphs if p.text.strip()])
+            if full_text and len(full_text) > 10:
+                sections.append({
+                    'id': 0,
+                    'text': full_text,
+                    'source': 'docx-full'
+                })
+        
+        if not sections:
+            raise Exception("Could not extract meaningful text from DOCX")
+            
+        logger.info(f"Successfully extracted {len(sections)} sections from DOCX")
+        return sections
+        
+    except Exception as e:
+        logger.error(f"Error extracting text from DOCX: {str(e)}")
+        raise
+
+def extract_text_from_txt(filepath):
+    """Extract text from a plain text file"""
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as file:
+            text = file.read()
+        
+        # Split into manageable sections (e.g., by double line breaks)
+        sections = re.split(r'\n\s*\n', text)
+        pages_text = []
+        
+        # If we have very few sections, try to split by other means
+        if len(sections) <= 1:
+            # Try splitting by regular expressions matching potential section headers
+            sections = re.split(r'\n\s*(?:[A-Z][A-Z\s]+:|\d+\.\s+[A-Z]|\*\*\*|\-{3,}|\={3,})', text)
+        
+        # If we still have only one section, create artificial sections
+        if len(sections) <= 1 and len(text) > 5000:
+            # Create sections of about 3000 characters each, at line breaks
+            lines = text.split('\n')
+            section = []
+            char_count = 0
+            section_count = 0
+            
+            for line in lines:
+                section.append(line)
+                char_count += len(line)
+                
+                if char_count > 3000 and line.strip():
+                    section_text = '\n'.join(section)
+                    pages_text.append({
+                        'id': section_count,
+                        'text': section_text,
+                        'source': 'txt-chunked'
+                    })
+                    section_count += 1
+                    section = []
+                    char_count = 0
+            
+            # Add the final section
+            if section:
+                section_text = '\n'.join(section)
+                pages_text.append({
+                    'id': section_count,
+                    'text': section_text,
+                    'source': 'txt-chunked'
+                })
+        else:
+            # Use the natural sections we found
+            for i, section_text in enumerate(sections):
+                if section_text.strip() and len(section_text.strip()) > 10:
+                    pages_text.append({
+                        'id': i,
+                        'text': section_text.strip(),
+                        'source': 'txt-sections'
+                    })
+        
+        if not pages_text:
+            # Just use the whole text as one section
+            pages_text.append({
+                'id': 0,
+                'text': text.strip(),
+                'source': 'txt-full'
+            })
+        
+        logger.info(f"Successfully extracted {len(pages_text)} sections from text file")
+        return pages_text
+        
+    except Exception as e:
+        logger.error(f"Error extracting text from text file: {str(e)}")
+        raise
+
+def extract_text_from_file(filepath):
+    """Extract text from various file formats"""
+    file_ext = os.path.splitext(filepath)[1].lower()
+    
+    if file_ext in ['.pdf']:
+        return extract_text_from_pdf(filepath)
+    elif file_ext in ['.docx', '.doc']:
+        # For .doc, try to convert to .docx first if possible
+        if file_ext == '.doc' and shutil.which('soffice'):
+            try:
+                logger.info("Converting .doc to .docx for better text extraction")
+                temp_dir = tempfile.mkdtemp()
+                output_path = os.path.join(temp_dir, 'converted.docx')
+                
+                # Use LibreOffice to convert
+                subprocess.run([
+                    'soffice', '--headless', '--convert-to', 'docx', 
+                    '--outdir', temp_dir, filepath
+                ], check=True, capture_output=True)
+                
+                if os.path.exists(output_path):
+                    result = extract_text_from_docx(output_path)
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return result
+            except Exception as e:
+                logger.error(f"Error converting .doc to .docx: {str(e)}")
+                # Continue with original file
+        
+        # If conversion failed or wasn't attempted, try direct extraction
+        if DOCX_AVAILABLE:
+            try:
+                return extract_text_from_docx(filepath)
+            except Exception:
+                pass
+                
+        # Fallback to textract if available
+        if TEXTRACT_AVAILABLE:
+            try:
+                text = textract.process(filepath).decode('utf-8')
+                if text and len(text.strip()) > 10:
+                    return [{
+                        'id': 0,
+                        'text': text.strip(),
+                        'source': 'textract'
+                    }]
+            except Exception as e:
+                logger.error(f"Textract fallback failed for DOCX: {str(e)}")
+        
+        raise Exception(f"Could not extract text from {file_ext} file")
+        
+    elif file_ext in ['.txt', '.rtf']:
+        # For RTF, try to convert to txt first if possible
+        if file_ext == '.rtf' and TEXTRACT_AVAILABLE:
+            try:
+                text = textract.process(filepath).decode('utf-8')
+                return [{
+                    'id': 0,
+                    'text': text.strip(),
+                    'source': 'textract-rtf'
+                }]
+            except:
+                pass
+        
+        # Plain text
+        return extract_text_from_txt(filepath)
+    
+    elif file_ext in ['.odt']:
+        # Use textract if available
+        if TEXTRACT_AVAILABLE:
+            try:
+                text = textract.process(filepath).decode('utf-8')
+                if text and len(text.strip()) > 10:
+                    return [{
+                        'id': 0,
+                        'text': text.strip(),
+                        'source': 'textract-odt'
+                    }]
+            except Exception as e:
+                logger.error(f"Textract failed for ODT: {str(e)}")
+        
+        # Try LibreOffice conversion as fallback
+        if shutil.which('soffice'):
+            try:
+                temp_dir = tempfile.mkdtemp()
+                output_path = os.path.join(temp_dir, 'converted.txt')
+                
+                # Use LibreOffice to convert
+                subprocess.run([
+                    'soffice', '--headless', '--convert-to', 'txt:Text', 
+                    '--outdir', temp_dir, filepath
+                ], check=True, capture_output=True)
+                
+                if os.path.exists(output_path):
+                    result = extract_text_from_txt(output_path)
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    return result
+            except Exception as e:
+                logger.error(f"Error converting ODT: {str(e)}")
+        
+        raise Exception("Could not extract text from ODT file")
+    
+    else:
+        raise ValueError(f"Unsupported file format: {file_ext}")
 
 def extract_text_from_page(pdf_reader, page_num):
-    """Extract and validate text from a PDF page"""
+    """Legacy function for backward compatibility"""
     try:
         page = pdf_reader.pages[page_num]
         text = page.extract_text()
@@ -471,92 +860,113 @@ def create_html_with_text(text_content, font_family='helvetica', font_size=12,
         logger.error(f"Error creating HTML: {str(e)}")
         raise Exception(f"Failed to create HTML document: {str(e)}")
 
-def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False):
-    """Process each page of the PDF independently with separate API calls."""
+def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False):
+    """Process a document by extracting text, translating, and optionally reviewing with AI.
+    
+    Works with various file formats including PDF, DOCX, DOC, TXT, RTF, and ODT.
+    """
     try:
-        with open(filepath, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            translations = []
-            total_pages = len(pdf_reader.pages)
-
-            logger.info(f"Starting to process PDF with {total_pages} pages")
-            logger.info(f"Translation settings - Source: {source_language}, Target: {target_language}")
-
-            for page_num in range(total_pages):
-                try:
-                    logger.info(f"Processing page {page_num + 1} of {total_pages}")
-
-                    # Step 1: Extract text from the current page
-                    original_text = extract_text_from_page(pdf_reader, page_num)
-                    if not original_text:
-                        raise ValueError("No valid text extracted from page")
-
-                    # Step 2: Translate text using DeepL
-                    logger.info(f"Translating page {page_num + 1} with DeepL")
-                    try:
-                        translated_text = translate_text(original_text, deepl_api_key, target_language, source_language)
-                        if not translated_text:
-                            logger.error("Translation returned empty result")
-                            translated_text = original_text
-                            raise ValueError("Translation returned empty result")
-                    except Exception as e:
-                        logger.error(f"DeepL translation error for page {page_num + 1}: {str(e)}")
-                        translated_text = original_text  # Fallback to original text
-                        raise ValueError(f"DeepL translation failed: {str(e)}")
-
-                    # Step 3: Review translation using OpenAI (if enabled)
-                    reviewed_text = translated_text  # Default to DeepL translation
-                    
-                    if openai_api_key and assistant_id:
-                        logger.info(f"Reviewing translation for page {page_num + 1} with OpenAI")
-                        try:
-                            reviewed_text = review_translation(
-                                translated_text,
-                                openai_api_key,
-                                assistant_id,
-                                instructions=custom_instructions
-                            )
-                        except Exception as e:
-                            logger.error(f"OpenAI review error for page {page_num + 1}: {str(e)}")
-                            # Keep using the DeepL translation (no need to raise an error)
-                            logger.info(f"Using DeepL translation without OpenAI review for page {page_num + 1}")
-                    else:
-                        logger.info(f"OpenAI review skipped for page {page_num + 1} (using DeepL translation only)")
-
-                    translations.append({
-                        'id': page_num,
-                        'original_text': original_text,
-                        'translated_text': reviewed_text,
-                        'status': 'success'
-                    })
-                    logger.info(f"Successfully completed processing page {page_num + 1}")
-
-                except Exception as e:
-                    logger.error(f"Error processing page {page_num + 1}: {str(e)}")
-                    translations.append({
-                        'id': page_num,
-                        'original_text': original_text if 'original_text' in locals() else '',
-                        'translated_text': translated_text if 'translated_text' in locals() else original_text if 'original_text' in locals() else '',
-                        'status': 'error',
-                        'error': str(e)
-                    })
+        # Extract text from the file using the appropriate method
+        file_ext = os.path.splitext(filepath)[1].lower()
+        try:
+            text_sections = extract_text_from_file(filepath)
+            total_sections = len(text_sections)
+            logger.info(f"Starting to process document with {total_sections} sections")
+        except Exception as e:
+            logger.error(f"Failed to extract text from file: {str(e)}")
+            raise Exception(f"Could not read document content: {str(e)}")
+        
+        logger.info(f"Translation settings - Source: {source_language}, Target: {target_language}")
+        
+        # Process each section
+        translations = []
+        for i, section in enumerate(text_sections):
+            try:
+                section_id = section['id']
+                original_text = section['text']
+                source_info = section.get('source', 'unknown')
+                
+                logger.info(f"Processing section {i+1}/{total_sections} (id: {section_id}, source: {source_info})")
+                
+                if not original_text or len(original_text.strip()) < 10:
+                    logger.warning(f"Section {i+1} contains insufficient text, skipping")
                     continue
-
-            successful_pages = sum(1 for t in translations if t['status'] == 'success')
-            logger.info(f"PDF processing complete. Successfully processed {successful_pages} out of {total_pages} pages")
-
-            if not translations:
-                raise Exception("No pages could be processed")
-
-            if return_segments:
-                return translations
-            else:
-                successful_translations = [t['translated_text'] for t in translations if t['status'] == 'success']
-                if not successful_translations:
-                    raise Exception("No pages were successfully translated")
-                combined_text = '\n\n'.join(successful_translations)
-                return create_pdf_with_text(combined_text)
-
+                
+                # Step 1: Translate text using DeepL
+                logger.info(f"Translating section {i+1} with DeepL")
+                try:
+                    translated_text = translate_text(original_text, deepl_api_key, target_language, source_language)
+                    if not translated_text:
+                        logger.error("Translation returned empty result")
+                        translated_text = original_text
+                        raise ValueError("Translation returned empty result")
+                except Exception as e:
+                    logger.error(f"DeepL translation error for section {i+1}: {str(e)}")
+                    translated_text = original_text  # Fallback to original text
+                    
+                # Step 2: Review translation using OpenAI (if enabled)
+                reviewed_text = translated_text  # Default to DeepL translation
+                
+                if openai_api_key and assistant_id:
+                    logger.info(f"Reviewing translation for section {i+1} with OpenAI")
+                    try:
+                        reviewed_text = review_translation(
+                            translated_text,
+                            openai_api_key,
+                            assistant_id,
+                            instructions=custom_instructions
+                        )
+                    except Exception as e:
+                        logger.error(f"OpenAI review error for section {i+1}: {str(e)}")
+                        # Keep using the DeepL translation (no need to raise an error)
+                        logger.info(f"Using DeepL translation without OpenAI review for section {i+1}")
+                else:
+                    logger.info(f"OpenAI review skipped for section {i+1} (using DeepL translation only)")
+                
+                translations.append({
+                    'id': section_id,
+                    'original_text': original_text,
+                    'translated_text': reviewed_text,
+                    'status': 'success',
+                    'source': source_info
+                })
+                logger.info(f"Successfully completed processing section {i+1}")
+                
+            except Exception as e:
+                logger.error(f"Error processing section {i+1}: {str(e)}")
+                translations.append({
+                    'id': section['id'] if 'section' in locals() else i,
+                    'original_text': original_text if 'original_text' in locals() else '',
+                    'translated_text': translated_text if 'translated_text' in locals() else original_text if 'original_text' in locals() else '',
+                    'status': 'error',
+                    'error': str(e),
+                    'source': section.get('source', 'unknown') if 'section' in locals() else 'unknown'
+                })
+                continue
+        
+        # Sort translations by section ID to maintain document order
+        translations.sort(key=lambda x: x['id'])
+        
+        successful_sections = sum(1 for t in translations if t['status'] == 'success')
+        logger.info(f"Document processing complete. Successfully processed {successful_sections} out of {total_sections} sections")
+        
+        if not translations:
+            raise Exception("No sections could be processed")
+        
+        if return_segments:
+            return translations
+        else:
+            successful_translations = [t['translated_text'] for t in translations if t['status'] == 'success']
+            if not successful_translations:
+                raise Exception("No sections were successfully translated")
+            combined_text = '\n\n'.join(successful_translations)
+            return create_pdf_with_text(combined_text)
+    
     except Exception as e:
-        logger.error(f"PDF processing error: {str(e)}")
-        raise Exception(f"PDF processing failed: {str(e)}")
+        logger.error(f"Document processing error: {str(e)}")
+        raise Exception(f"Document processing failed: {str(e)}")
+
+# For backward compatibility
+def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False):
+    """Legacy function for backward compatibility"""
+    return process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language, target_language, custom_instructions, return_segments)

@@ -12,3 +12,7 @@ python-docx>=0.8.11
 python-dotenv>=1.0.0
 supabase>=2.0.0
 werkzeug>=3.1.3
+
+# Optional document processing dependencies
+pdfminer.six>=20221105
+textract>=1.6.5

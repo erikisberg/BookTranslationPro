@@ -10,7 +10,7 @@ from functools import wraps
 from dotenv import load_dotenv
 from posthog import Posthog
 from utils import (
-    process_pdf, is_allowed_file, create_pdf_with_text, create_pdf_with_formatting, 
+    process_document, process_pdf, is_allowed_file, create_pdf_with_text, create_pdf_with_formatting, 
     create_pdf_with_text_basic, create_docx_with_text, create_html_with_text
 )
 from auth import login_required, get_current_user, get_user_id, sign_up, sign_in, sign_out, reset_password
@@ -729,7 +729,7 @@ def upload_file():
                     'file_extension': os.path.splitext(file.filename)[1].lower() if file.filename else None
                 }
             )
-        return json_error('Invalid file type. Please upload a PDF.')
+        return json_error('Invalid file type. Please upload PDF, Word (DOCX/DOC), text (TXT), RTF, or ODT file.')
 
     try:
         filename = secure_filename(file.filename)
@@ -786,8 +786,8 @@ def upload_file():
                 custom_instructions = assistant_data.get('instructions')
                 logger.info(f"Using custom instructions for assistant: {assistant_data.get('name')}")
         
-        # Process the PDF and get translations
-        translations = process_pdf(
+        # Process the document and get translations
+        translations = process_document(
             filepath,
             deepl_api_key,
             openai_api_key,
