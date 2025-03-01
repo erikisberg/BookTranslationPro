@@ -108,7 +108,7 @@ Var särskilt uppmärksam på:
 <div class="modal fade" id="createAssistantModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('save_assistant') }}">
+            <form method="POST" action="{{ url_for('save_assistant_route') }}">
                 <div class="modal-header">
                     <h5 class="modal-title">Skapa ny assistent</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -162,7 +162,7 @@ Var särskilt uppmärksam på:
 <div class="modal fade" id="editAssistantModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('save_assistant') }}">
+            <form method="POST" action="{{ url_for('save_assistant_route') }}">
                 <input type="hidden" id="edit_id" name="id">
                 <div class="modal-header">
                     <h5 class="modal-title">Redigera assistent</h5>

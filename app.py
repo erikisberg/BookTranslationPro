@@ -545,7 +545,7 @@ def assistant_config():
 
 @app.route('/save-assistant', methods=['POST'])
 @login_required
-def save_assistant():
+def save_assistant_route():
     """Save or update an assistant configuration"""
     try:
         user_id = get_user_id()
