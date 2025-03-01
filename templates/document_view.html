@@ -129,26 +129,46 @@
                 <div class="card-body p-0">
                     <div id="sourceView" class="p-3 d-none">
                         <div class="source-content">
-                            <pre class="source-text">{{ source_content }}</pre>
+                            <div class="virtual-scroll-container" style="height: 500px; overflow-y: auto;" id="sourceScrollContainer">
+                                <div class="virtual-scroll-spacer" id="sourceTopSpacer" style="height: 0px;"></div>
+                                <div id="sourceContentContainer"></div>
+                                <div class="virtual-scroll-spacer" id="sourceBottomSpacer" style="height: 0px;"></div>
+                            </div>
                         </div>
                     </div>
                     
                     <div id="translatedView" class="p-3 d-none">
                         <div class="translated-content">
-                            <pre class="translated-text">{{ translated_content }}</pre>
+                            <div class="virtual-scroll-container" style="height: 500px; overflow-y: auto;" id="translatedScrollContainer">
+                                <div class="virtual-scroll-spacer" id="translatedTopSpacer" style="height: 0px;"></div>
+                                <div id="translatedContentContainer"></div>
+                                <div class="virtual-scroll-spacer" id="translatedBottomSpacer" style="height: 0px;"></div>
+                            </div>
                         </div>
                     </div>
                     
                     <div id="sideBySideView" class="d-flex">
                         <div class="source-panel p-3 border-end" style="width: 50%;">
                             <h6 class="text-muted text-center mb-3">Source ({{ document.source_language }})</h6>
-                            <pre class="source-text">{{ source_content }}</pre>
+                            <div class="virtual-scroll-container" style="height: 500px; overflow-y: auto;" id="sideBySideSourceContainer">
+                                <div class="virtual-scroll-spacer" id="sideBySideSourceTopSpacer" style="height: 0px;"></div>
+                                <div id="sideBySideSourceContent"></div>
+                                <div class="virtual-scroll-spacer" id="sideBySideSourceBottomSpacer" style="height: 0px;"></div>
+                            </div>
                         </div>
                         <div class="translated-panel p-3" style="width: 50%;">
                             <h6 class="text-muted text-center mb-3">Translation ({{ document.target_language }})</h6>
-                            <pre class="translated-text">{{ translated_content }}</pre>
+                            <div class="virtual-scroll-container" style="height: 500px; overflow-y: auto;" id="sideBySideTranslatedContainer">
+                                <div class="virtual-scroll-spacer" id="sideBySideTranslatedTopSpacer" style="height: 0px;"></div>
+                                <div id="sideBySideTranslatedContent"></div>
+                                <div class="virtual-scroll-spacer" id="sideBySideTranslatedBottomSpacer" style="height: 0px;"></div>
+                            </div>
                         </div>
                     </div>
+                    
+                    <!-- Store original content in hidden elements -->
+                    <div id="originalSourceContent" class="d-none">{{ source_content }}</div>
+                    <div id="originalTranslatedContent" class="d-none">{{ translated_content }}</div>
                 </div>
             </div>
             
@@ -419,11 +439,271 @@
                 alert(message);
             }
         }
+        
+        // Virtual Scrolling Implementation
+        initVirtualScrolling();
     });
+    
+    function initVirtualScrolling() {
+        // Get content from hidden elements
+        const sourceContent = document.getElementById('originalSourceContent').textContent;
+        const translatedContent = document.getElementById('originalTranslatedContent').textContent;
+        
+        // Split content into paragraphs
+        const sourceParagraphs = sourceContent.split('\n').filter(p => p.trim().length > 0);
+        const translatedParagraphs = translatedContent.split('\n').filter(p => p.trim().length > 0);
+        
+        // Estimated paragraph heights - will be refined as they're rendered
+        const avgLineHeight = 24; // pixels per line (estimate)
+        const avgCharsPerLine = 80; // characters per line (estimate)
+        
+        // Calculate initial height estimates for paragraphs
+        const sourceHeights = sourceParagraphs.map(p => {
+            const lines = Math.max(1, Math.ceil(p.length / avgCharsPerLine));
+            return lines * avgLineHeight;
+        });
+        
+        const translatedHeights = translatedParagraphs.map(p => {
+            const lines = Math.max(1, Math.ceil(p.length / avgCharsPerLine));
+            return lines * avgLineHeight;
+        });
+        
+        // Calculate total content heights
+        const totalSourceHeight = sourceHeights.reduce((sum, h) => sum + h, 0);
+        const totalTranslatedHeight = translatedHeights.reduce((sum, h) => sum + h, 0);
+        
+        // Get scroll containers and spacers
+        const containers = {
+            source: document.getElementById('sourceScrollContainer'),
+            translated: document.getElementById('translatedScrollContainer'),
+            sideBySideSource: document.getElementById('sideBySideSourceContainer'),
+            sideBySideTranslated: document.getElementById('sideBySideTranslatedContainer')
+        };
+        
+        const contentContainers = {
+            source: document.getElementById('sourceContentContainer'),
+            translated: document.getElementById('translatedContentContainer'),
+            sideBySideSource: document.getElementById('sideBySideSourceContent'),
+            sideBySideTranslated: document.getElementById('sideBySideTranslatedContent')
+        };
+        
+        const spacers = {
+            sourceTop: document.getElementById('sourceTopSpacer'),
+            sourceBottom: document.getElementById('sourceBottomSpacer'),
+            translatedTop: document.getElementById('translatedTopSpacer'),
+            translatedBottom: document.getElementById('translatedBottomSpacer'),
+            sideBySideSourceTop: document.getElementById('sideBySideSourceTopSpacer'),
+            sideBySideSourceBottom: document.getElementById('sideBySideSourceBottomSpacer'),
+            sideBySideTranslatedTop: document.getElementById('sideBySideTranslatedTopSpacer'),
+            sideBySideTranslatedBottom: document.getElementById('sideBySideTranslatedBottomSpacer')
+        };
+        
+        // Initialize bottom spacer heights to total content height
+        spacers.sourceBottom.style.height = `${totalSourceHeight}px`;
+        spacers.translatedBottom.style.height = `${totalTranslatedHeight}px`;
+        spacers.sideBySideSourceBottom.style.height = `${totalSourceHeight}px`;
+        spacers.sideBySideTranslatedBottom.style.height = `${totalTranslatedHeight}px`;
+        
+        // Variables to track visible content
+        let sourceVisibleRange = { start: -1, end: -1 };
+        let translatedVisibleRange = { start: -1, end: -1 };
+        let sideBySideSourceVisibleRange = { start: -1, end: -1 };
+        let sideBySideTranslatedVisibleRange = { start: -1, end: -1 };
+        
+        // Debounce scroll events for better performance
+        function debounce(func, wait) {
+            let timeout;
+            return function() {
+                const context = this;
+                const args = arguments;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), wait);
+            };
+        }
+        
+        // Render visible paragraphs for a specific container
+        function renderVisibleContent(containerType) {
+            const container = containers[containerType];
+            const contentContainer = contentContainers[containerType];
+            
+            if (!container || !contentContainer) return;
+            
+            const scrollTop = container.scrollTop;
+            const viewportHeight = container.clientHeight;
+            const buffer = viewportHeight; // One viewport height as buffer
+            
+            // Determine which paragraphs to render
+            const paragraphs = containerType.includes('Source') ? sourceParagraphs : translatedParagraphs;
+            const heights = containerType.includes('Source') ? sourceHeights : translatedHeights;
+            let visibleRange = { start: -1, end: -1 };
+            
+            // Calculate visible paragraph range
+            let currentHeight = 0;
+            for (let i = 0; i < heights.length; i++) {
+                const paraHeight = heights[i];
+                const paraTop = currentHeight;
+                const paraBottom = paraTop + paraHeight;
+                
+                if (paraBottom >= scrollTop - buffer && paraTop <= scrollTop + viewportHeight + buffer) {
+                    if (visibleRange.start === -1) visibleRange.start = i;
+                    visibleRange.end = i;
+                } else if (visibleRange.start !== -1 && paraTop > scrollTop + viewportHeight + buffer) {
+                    // We've found our range and now found paragraphs outside it
+                    break;
+                }
+                
+                currentHeight += paraHeight;
+            }
+            
+            // Store the visible range for this container
+            if (containerType === 'source') {
+                sourceVisibleRange = visibleRange;
+            } else if (containerType === 'translated') {
+                translatedVisibleRange = visibleRange;
+            } else if (containerType === 'sideBySideSource') {
+                sideBySideSourceVisibleRange = visibleRange;
+            } else if (containerType === 'sideBySideTranslated') {
+                sideBySideTranslatedVisibleRange = visibleRange;
+            }
+            
+            // Check if we need to render (visible range changed)
+            const previousRange = containerType === 'source' ? sourceVisibleRange :
+                                containerType === 'translated' ? translatedVisibleRange :
+                                containerType === 'sideBySideSource' ? sideBySideSourceVisibleRange :
+                                sideBySideTranslatedVisibleRange;
+            
+            // Only render if the visible range changed or it's the first render
+            // For simplicity, we're re-rendering every time for now
+            
+            // Calculate top spacer height
+            const topSpacerHeight = visibleRange.start > 0 ?
+                heights.slice(0, visibleRange.start).reduce((sum, h) => sum + h, 0) : 0;
+            
+            // Calculate rendered content height
+            const renderedHeight = visibleRange.end >= 0 && visibleRange.start <= visibleRange.end ?
+                heights.slice(visibleRange.start, visibleRange.end + 1).reduce((sum, h) => sum + h, 0) : 0;
+            
+            // Update spacers
+            if (containerType === 'source') {
+                spacers.sourceTop.style.height = `${topSpacerHeight}px`;
+                spacers.sourceBottom.style.height = `${Math.max(0, totalSourceHeight - topSpacerHeight - renderedHeight)}px`;
+            } else if (containerType === 'translated') {
+                spacers.translatedTop.style.height = `${topSpacerHeight}px`;
+                spacers.translatedBottom.style.height = `${Math.max(0, totalTranslatedHeight - topSpacerHeight - renderedHeight)}px`;
+            } else if (containerType === 'sideBySideSource') {
+                spacers.sideBySideSourceTop.style.height = `${topSpacerHeight}px`;
+                spacers.sideBySideSourceBottom.style.height = `${Math.max(0, totalSourceHeight - topSpacerHeight - renderedHeight)}px`;
+            } else if (containerType === 'sideBySideTranslated') {
+                spacers.sideBySideTranslatedTop.style.height = `${topSpacerHeight}px`;
+                spacers.sideBySideTranslatedBottom.style.height = `${Math.max(0, totalTranslatedHeight - topSpacerHeight - renderedHeight)}px`;
+            }
+            
+            // Clear and render the visible paragraphs
+            contentContainer.innerHTML = '';
+            if (visibleRange.start >= 0 && visibleRange.end >= visibleRange.start) {
+                for (let i = visibleRange.start; i <= visibleRange.end; i++) {
+                    if (i < paragraphs.length) {
+                        const para = document.createElement('div');
+                        para.className = 'virtual-paragraph';
+                        para.textContent = paragraphs[i];
+                        para.dataset.index = i;
+                        contentContainer.appendChild(para);
+                        
+                        // Refine height estimate based on actual rendered size
+                        if (containerType === 'source' || containerType === 'sideBySideSource') {
+                            sourceHeights[i] = para.offsetHeight;
+                        } else {
+                            translatedHeights[i] = para.offsetHeight;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Setup scroll event listeners
+        if (containers.source) {
+            containers.source.addEventListener('scroll', debounce(function() {
+                renderVisibleContent('source');
+            }, 50));
+        }
+        
+        if (containers.translated) {
+            containers.translated.addEventListener('scroll', debounce(function() {
+                renderVisibleContent('translated');
+            }, 50));
+        }
+        
+        if (containers.sideBySideSource) {
+            containers.sideBySideSource.addEventListener('scroll', debounce(function() {
+                renderVisibleContent('sideBySideSource');
+                
+                // Synchronize scrolling in side-by-side view
+                if (document.getElementById('viewSideBySide').checked) {
+                    const scrollPercentage = this.scrollTop / (this.scrollHeight - this.clientHeight);
+                    containers.sideBySideTranslated.scrollTop = scrollPercentage * 
+                        (containers.sideBySideTranslated.scrollHeight - containers.sideBySideTranslated.clientHeight);
+                }
+            }, 50));
+        }
+        
+        if (containers.sideBySideTranslated) {
+            containers.sideBySideTranslated.addEventListener('scroll', debounce(function() {
+                renderVisibleContent('sideBySideTranslated');
+                
+                // Synchronize scrolling in side-by-side view
+                if (document.getElementById('viewSideBySide').checked) {
+                    const scrollPercentage = this.scrollTop / (this.scrollHeight - this.clientHeight);
+                    containers.sideBySideSource.scrollTop = scrollPercentage * 
+                        (containers.sideBySideSource.scrollHeight - containers.sideBySideSource.clientHeight);
+                }
+            }, 50));
+        }
+        
+        // Initial rendering for the default view (side by side)
+        renderVisibleContent('sideBySideSource');
+        renderVisibleContent('sideBySideTranslated');
+        
+        // Add view mode change listeners to trigger rendering
+        document.getElementById('viewSource').addEventListener('change', function() {
+            if (this.checked) {
+                setTimeout(() => renderVisibleContent('source'), 0);
+            }
+        });
+        
+        document.getElementById('viewTranslated').addEventListener('change', function() {
+            if (this.checked) {
+                setTimeout(() => renderVisibleContent('translated'), 0);
+            }
+        });
+        
+        document.getElementById('viewSideBySide').addEventListener('change', function() {
+            if (this.checked) {
+                setTimeout(() => {
+                    renderVisibleContent('sideBySideSource');
+                    renderVisibleContent('sideBySideTranslated');
+                }, 0);
+            }
+        });
+        
+        // Handle window resize - recalculate visible content
+        window.addEventListener('resize', debounce(function() {
+            const activeView = document.getElementById('viewSource').checked ? 'source' :
+                              document.getElementById('viewTranslated').checked ? 'translated' : 'sideBySide';
+            
+            if (activeView === 'source') {
+                renderVisibleContent('source');
+            } else if (activeView === 'translated') {
+                renderVisibleContent('translated');
+            } else {
+                renderVisibleContent('sideBySideSource');
+                renderVisibleContent('sideBySideTranslated');
+            }
+        }, 100));
+    }
 </script>
 
 <style>
-    pre.source-text, pre.translated-text {
+    pre.source-text, pre.translated-text, .virtual-paragraph {
         white-space: pre-wrap;
         font-family: inherit;
         font-size: 0.9rem;
@@ -434,11 +714,34 @@
     #sideBySideView {
         min-height: 400px;
         max-height: 600px;
-        overflow-y: auto;
     }
     
     .source-panel, .translated-panel {
+        overflow-y: hidden;
+    }
+    
+    .virtual-scroll-container {
+        min-height: 400px;
+        max-height: 600px;
         overflow-y: auto;
+        position: relative;
+    }
+    
+    .virtual-paragraph {
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Loading indicator for virtual scrolling */
+    .virtual-loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(255, 255, 255, 0.8);
+        padding: 10px 20px;
+        border-radius: 4px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        z-index: 100;
     }
 </style>
 {% endblock %}
