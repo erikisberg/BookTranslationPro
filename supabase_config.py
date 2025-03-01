@@ -1,5 +1,6 @@
 import os
 import uuid
+import hashlib
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import logging
@@ -101,8 +102,8 @@ def get_user_translations(user_id, limit=20, offset=0):
         logger.error(f"Error fetching translations: {e}")
         return []
 
-def save_translation(user_id, original_filename, translated_text, settings=None):
-    """Save a translation to the user's history"""
+def save_translation(user_id, original_filename, translated_text, settings=None, source_text=None, source_hash=None, target_language=None):
+    """Save a translation to the user's history and translation cache"""
     try:
         data = {
             'user_id': user_id,
@@ -123,9 +124,30 @@ def save_translation(user_id, original_filename, translated_text, settings=None)
             content
         )
         
+        # If source text and hash are provided, save to translation cache
+        if source_text and source_hash and target_language:
+            try:
+                # Check if entry already exists in cache by hash
+                cache_data = {
+                    'source_hash': source_hash,
+                    'source_text': source_text,
+                    'target_language': target_language,
+                    'translated_text': translated_text,
+                    'user_id': user_id,  # Track which user added this to cache
+                    'created_at': 'now()',
+                    'updated_at': 'now()'
+                }
+                
+                # Add to translation cache
+                cache_response = supabase.table('translation_cache').insert(cache_data).execute()
+                logger.info(f"Added translation to cache with hash: {source_hash[:10]}...")
+            except Exception as cache_error:
+                # Don't fail the main operation if caching fails
+                logger.error(f"Error saving to translation cache: {str(cache_error)}")
+        
         return response.data[0]
     except Exception as e:
-        print(f"Error saving translation: {e}")
+        logger.error(f"Error saving translation: {str(e)}")
         return None
 
 def get_full_translation(user_id, translation_id):
