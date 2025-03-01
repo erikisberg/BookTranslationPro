@@ -91,12 +91,9 @@ def review_translation(text, openai_api_key, assistant_id):
 
         # Get the assistant's response
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        # Extract the text content from the first message (most recent)
-        first_message = messages.data[0]
-        # The content is a list of MessageContent objects, get the text content
         text_content = next(
             content.text.value
-            for content in first_message.content
+            for content in messages.data[0].content
             if hasattr(content, 'text')
         )
         logger.info("Translation successfully reviewed by OpenAI Assistant")
@@ -137,18 +134,19 @@ def create_pdf_with_text(text_content):
     return temp_output.name
 
 def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id, 
-               instructions=None, target_language='SV', review_style='balanced'):
+                instructions=None, target_language='SV', review_style='balanced',
+                return_segments=False):
     try:
         with open(input_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
-            translated_pages = []
+            translations = []
 
             for page_num in range(len(pdf_reader.pages)):
                 # Extract text from page
-                text = extract_text_from_page(pdf_reader, page_num)
+                original_text = extract_text_from_page(pdf_reader, page_num)
 
                 # Translate text
-                translated_text = translate_text(text, deepl_api_key, target_language)
+                translated_text = translate_text(original_text, deepl_api_key, target_language)
 
                 # Review translation
                 reviewed_text = review_translation(
@@ -157,13 +155,19 @@ def process_pdf(input_path, deepl_api_key, openai_api_key, assistant_id,
                     assistant_id
                 )
 
-                translated_pages.append(reviewed_text)
+                # Store both original and translated text
+                translations.append({
+                    'id': page_num,
+                    'original_text': original_text,
+                    'translated_text': reviewed_text
+                })
 
-            # Combine all pages into a single PDF
-            combined_text = '\n\n'.join(translated_pages)
-            output_path = create_pdf_with_text(combined_text)
-
-            return output_path
+            if return_segments:
+                return translations
+            else:
+                # Combine all pages into a single PDF
+                combined_text = '\n\n'.join(t['translated_text'] for t in translations)
+                return create_pdf_with_text(combined_text)
 
     except Exception as e:
         logger.error(f"PDF processing error: {str(e)}")

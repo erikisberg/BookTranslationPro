@@ -1,9 +1,9 @@
 import os
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
 from werkzeug.utils import secure_filename
 import tempfile
 import logging
-from utils import process_pdf, is_allowed_file, update_assistant_config
+from utils import process_pdf, is_allowed_file, update_assistant_config, create_pdf_with_text
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -73,6 +73,49 @@ def save_assistant_config():
         logger.error(f"Error saving configuration: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/review')
+def review():
+    translations = session.get('translations', [])
+    return render_template('review.html', translations=translations)
+
+@app.route('/save-reviews', methods=['POST'])
+def save_reviews():
+    translations = session.get('translations', [])
+
+    # Update translations with reviewed text
+    for i, translation in enumerate(translations):
+        key = f'translation_{i}'
+        if key in request.form:
+            translation['translated_text'] = request.form[key]
+
+    session['translations'] = translations
+    return redirect(url_for('review'))
+
+@app.route('/download-final')
+def download_final():
+    translations = session.get('translations', [])
+    if not translations:
+        return jsonify({'error': 'No translations available'}), 400
+
+    # Combine all reviewed translations
+    final_text = '\n\n'.join(t['translated_text'] for t in translations)
+
+    # Create final PDF
+    output_path = create_pdf_with_text(final_text)
+
+    try:
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name='final_translation.pdf'
+        )
+    finally:
+        # Cleanup
+        try:
+            os.remove(output_path)
+        except:
+            pass
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -95,23 +138,22 @@ def upload_file():
         target_language = os.environ.get('TARGET_LANGUAGE', 'SV')
         review_style = os.environ.get('REVIEW_STYLE', 'balanced')
 
-        # Process the PDF with configuration
-        output_path = process_pdf(
+        # Process the PDF and get translations
+        translations = process_pdf(
             filepath,
             DEEPL_API_KEY,
             OPENAI_API_KEY,
             OPENAI_ASSISTANT_ID,
             instructions,
             target_language,
-            review_style
+            review_style,
+            return_segments=True  # New parameter to return segments instead of PDF
         )
 
-        # Send the processed file
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name='translated_' + filename
-        )
+        # Store translations in session for review
+        session['translations'] = translations
+
+        return redirect(url_for('review'))
 
     except Exception as e:
         logger.error(f"Error processing file: {str(e)}")
@@ -122,11 +164,6 @@ def upload_file():
         if 'filepath' in locals():
             try:
                 os.remove(filepath)
-            except:
-                pass
-        if 'output_path' in locals():
-            try:
-                os.remove(output_path)
             except:
                 pass
 
