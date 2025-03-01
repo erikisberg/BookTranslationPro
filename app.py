@@ -1021,6 +1021,9 @@ def upload_file():
             try:
                 logger.info(f"Processing file {i+1}/{len(filepaths)}: {os.path.basename(filepath)}")
                 
+                # Get use_cache option from form
+                use_cache = request.form.get('useCache') != 'false'  # Default to True
+                
                 # Process this document
                 file_translations = process_document(
                     filepath,
@@ -1030,7 +1033,8 @@ def upload_file():
                     source_language=source_language,
                     target_language=target_language,
                     custom_instructions=custom_instructions,
-                    return_segments=True
+                    return_segments=True,
+                    use_cache=use_cache
                 )
                 
                 # Store original filename in each translation item for multi-file identification
@@ -1060,6 +1064,19 @@ def upload_file():
         session['original_filename'] = ", ".join(original_filenames) if len(original_filenames) > 1 else original_filenames[0]
         session['file_count'] = len(original_filenames)
 
+        # Gather cache stats
+        cache_hits = 0
+        cache_ratio = 0
+        
+        for t in all_translations:
+            # Check if translation contains cache metadata
+            if t.get('cache_metadata') and t.get('cache_metadata').get('source_hash'):
+                cache_hits += 1
+        
+        if total_sections > 0:
+            cache_ratio = (cache_hits / total_sections) * 100
+            logger.info(f"Cache statistics: {cache_hits}/{total_sections} segments from cache ({cache_ratio:.1f}%)")
+        
         # Track successful file upload and translation
         if posthog:
             posthog.capture(
@@ -1070,7 +1087,10 @@ def upload_file():
                     'file_count': len(original_filenames),
                     'skip_openai_review': skip_openai,
                     'total_sections': total_sections,
-                    'translation_id': translation_id
+                    'translation_id': translation_id,
+                    'cache_enabled': use_cache,
+                    'cache_hits': cache_hits,
+                    'cache_ratio': round(cache_ratio, 1)
                 }
             )
 
@@ -1161,8 +1181,44 @@ def save_reviews():
                 # Get export settings
                 settings = session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
                 
-                # Save to database
-                save_result = save_translation(user_id, original_filename, combined_text, settings)
+                # Check for cache metadata to store along with translations
+                cache_entries = []
+                for t in translations:
+                    if t.get('status') == 'success' and t.get('cache_metadata'):
+                        cache_entries.append(t.get('cache_metadata'))
+                
+                # Save to database with cache entries if available
+                if len(cache_entries) > 0:
+                    logger.info(f"Saving translation with {len(cache_entries)} cache entries")
+                    
+                    # Save primary translation entry
+                    save_result = save_translation(
+                        user_id, 
+                        original_filename, 
+                        combined_text, 
+                        settings
+                    )
+                    
+                    # Add cache entries
+                    for entry in cache_entries:
+                        if entry.get('source_text') and entry.get('source_hash') and entry.get('target_language'):
+                            try:
+                                from supabase_config import save_translation
+                                # Just save to cache without creating another translation entry
+                                save_translation(
+                                    user_id,
+                                    None,  # No filename needed for cache-only entries
+                                    None,  # No translation text (already saved in main entry)
+                                    None,  # No settings
+                                    source_text=entry.get('source_text'),
+                                    source_hash=entry.get('source_hash'),
+                                    target_language=entry.get('target_language')
+                                )
+                            except Exception as cache_error:
+                                logger.error(f"Error saving to cache: {str(cache_error)}")
+                else:
+                    # Standard save without cache entries
+                    save_result = save_translation(user_id, original_filename, combined_text, settings)
                 
                 # Track event
                 if posthog and save_result:

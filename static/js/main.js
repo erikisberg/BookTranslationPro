@@ -144,6 +144,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const skipOpenAI = document.getElementById('skipOpenAI').checked;
         formData.append('skipOpenAI', skipOpenAI);
         
+        // Add the useCache checkbox value
+        const useCache = document.getElementById('useCache').checked;
+        formData.append('useCache', useCache);
+        
         // Add language options
         const sourceLanguage = document.getElementById('sourceLanguage').value;
         const targetLanguage = document.getElementById('targetLanguage').value;

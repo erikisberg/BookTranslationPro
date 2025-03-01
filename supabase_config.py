@@ -101,6 +101,44 @@ def get_user_translations(user_id, limit=20, offset=0):
     except Exception as e:
         logger.error(f"Error fetching translations: {e}")
         return []
+        
+def generate_text_hash(text, target_language=''):
+    """Generate a hash for text caching based on content and target language"""
+    if not text:
+        return None
+        
+    # Create normalized text sample for hashing (first 1000 chars)
+    text_sample = text[:1000].strip().lower()
+    
+    # Create hash of text + target language
+    hash_content = f"{text_sample}_{target_language}"
+    hash_obj = hashlib.md5(hash_content.encode('utf-8'))
+    return hash_obj.hexdigest()
+    
+def check_translation_cache(text, target_language):
+    """Check if a translation exists in the cache"""
+    try:
+        if not text or not text.strip():
+            return None
+            
+        # Generate hash for lookup
+        text_hash = generate_text_hash(text, target_language)
+        if not text_hash:
+            return None
+            
+        # Look up in cache by hash
+        logger.debug(f"Checking translation cache for hash: {text_hash[:10]}...")
+        response = supabase.table('translation_cache').select('*').eq('source_hash', text_hash).eq('target_language', target_language).limit(1).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Cache hit for text with hash: {text_hash[:10]}...")
+            return response.data[0]['translated_text']
+            
+        logger.debug(f"Cache miss for text with hash: {text_hash[:10]}...")
+        return None
+    except Exception as e:
+        logger.error(f"Error checking translation cache: {str(e)}")
+        return None
 
 def save_translation(user_id, original_filename, translated_text, settings=None, source_text=None, source_hash=None, target_language=None):
     """Save a translation to the user's history and translation cache"""

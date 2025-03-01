@@ -447,11 +447,26 @@ def extract_text_from_page(pdf_reader, page_num):
         logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
         raise Exception(f"Failed to extract text from page {page_num + 1}: {str(e)}")
 
-def translate_text(text, deepl_api_key, target_language='SV', source_language='auto'):
-    """First step: Translate text using DeepL"""
+def translate_text(text, deepl_api_key, target_language='SV', source_language='auto', use_cache=True):
+    """First step: Translate text using DeepL with caching"""
     if not text or text.isspace():
         raise ValueError("Cannot translate empty text")
 
+    # Check cache first if enabled
+    if use_cache:
+        try:
+            from supabase_config import check_translation_cache, generate_text_hash
+            
+            # Look for an existing translation in cache
+            cached_translation = check_translation_cache(text, target_language)
+            if cached_translation:
+                logger.info("Translation found in cache, skipping DeepL API call")
+                return cached_translation, generate_text_hash(text, target_language), text
+        except Exception as cache_error:
+            # If cache check fails, log but continue with normal translation
+            logger.error(f"Error checking translation cache: {str(cache_error)}")
+
+    # No cache hit, use DeepL
     logger.info(f"DeepL API Key starting with: {deepl_api_key[:5]}...")
     logger.info(f"Source language: {source_language}, Target language: {target_language}")
     
@@ -471,7 +486,17 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
 
         logger.info("Text successfully translated with DeepL")
         logger.info(f"Translation sample: {result.text[:100]}...")
-        return result.text
+        
+        # Generate hash for caching if needed
+        text_hash = None
+        if use_cache:
+            try:
+                from supabase_config import generate_text_hash
+                text_hash = generate_text_hash(text, target_language)
+            except Exception as hash_error:
+                logger.error(f"Error generating hash for caching: {str(hash_error)}")
+        
+        return result.text, text_hash, text
 
     except Exception as e:
         logger.error(f"DeepL translation error: {str(e)}")
@@ -968,10 +993,11 @@ def create_html_with_text(text_content, font_family='helvetica', font_size=12,
         logger.error(f"Error creating HTML: {str(e)}")
         raise Exception(f"Failed to create HTML document: {str(e)}")
 
-def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False):
+def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True):
     """Process a document by extracting text, translating, and optionally reviewing with AI.
     
     Works with various file formats including PDF, DOCX, DOC, TXT, RTF, and ODT.
+    Uses translation caching to improve performance and reduce API calls.
     """
     try:
         # Extract text from the file using the appropriate method
@@ -988,6 +1014,7 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
         
         # Process each section
         translations = []
+        cache_hits = 0
         for i, section in enumerate(text_sections):
             try:
                 section_id = section['id']
@@ -1000,10 +1027,30 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                     logger.warning(f"Section {i+1} contains insufficient text, skipping")
                     continue
                 
-                # Step 1: Translate text using DeepL
+                # Step 1: Translate text using DeepL (with caching)
                 logger.info(f"Translating section {i+1} with DeepL")
+                text_hash = None
+                source_text_for_cache = None
+                
                 try:
-                    translated_text = translate_text(original_text, deepl_api_key, target_language, source_language)
+                    # The updated translate_text function returns (translation, hash, source) tuple
+                    translation_result = translate_text(
+                        original_text, 
+                        deepl_api_key, 
+                        target_language, 
+                        source_language, 
+                        use_cache=use_cache
+                    )
+                    
+                    # Handle tuple return or just the translation text
+                    if isinstance(translation_result, tuple):
+                        translated_text, text_hash, source_text_for_cache = translation_result
+                        # If we got translation from cache, increment counter
+                        if text_hash and source_text_for_cache == original_text:
+                            cache_hits += 1
+                    else:
+                        translated_text = translation_result
+                        
                     if not translated_text:
                         logger.error("Translation returned empty result")
                         translated_text = original_text
@@ -1031,12 +1078,22 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                 else:
                     logger.info(f"OpenAI review skipped for section {i+1} (using DeepL translation only)")
                 
+                # Prepare metadata for saving to cache (if this wasn't from cache already)
+                cache_metadata = {}
+                if use_cache and text_hash and source_text_for_cache:
+                    cache_metadata = {
+                        'source_text': source_text_for_cache,
+                        'source_hash': text_hash,
+                        'target_language': target_language
+                    }
+                
                 translations.append({
                     'id': section_id,
                     'original_text': original_text,
                     'translated_text': reviewed_text,
                     'status': 'success',
-                    'source': source_info
+                    'source': source_info,
+                    'cache_metadata': cache_metadata
                 })
                 logger.info(f"Successfully completed processing section {i+1}")
                 
@@ -1051,6 +1108,11 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                     'source': section.get('source', 'unknown') if 'section' in locals() else 'unknown'
                 })
                 continue
+        
+        # Report cache efficiency
+        if use_cache and total_sections > 0:
+            cache_rate = (cache_hits / total_sections) * 100
+            logger.info(f"Translation cache performance: {cache_hits}/{total_sections} sections from cache ({cache_rate:.1f}%)")
         
         # Sort translations by section ID to maintain document order
         translations.sort(key=lambda x: x['id'])
