@@ -182,40 +182,42 @@ def create_pdf_with_formatting(text_content, font_family='helvetica', font_size=
     """Create a PDF with the given text content using the specified formatting options"""
     try:
         logger.info(f"Creating PDF with settings: font={font_family}, size={font_size}, page={page_size}, orientation={orientation}")
-        pdf = FPDF(orientation=orientation[0], format=page_size)
+        
+        # Create a custom PDF class with header and footer methods to avoid recursion
+        class CustomPDF(FPDF):
+            def header(self):
+                if header_text:
+                    self.set_y(5)
+                    self.set_font(font_family, 'I', font_size - 2)
+                    self.cell(0, 10, header_text, 0, 1, 'C')
+                    self.set_y(margin)
+                    self.set_font(font_family, size=font_size)
+                    
+            def footer(self):
+                if footer_text or include_page_numbers:
+                    self.set_y(-15)
+                    self.set_font(font_family, 'I', font_size - 2)
+                    
+                    if footer_text and include_page_numbers:
+                        footer = f"{footer_text} | Sida {self.page_no()}"
+                    elif footer_text:
+                        footer = footer_text
+                    elif include_page_numbers:
+                        footer = f"Sida {self.page_no()}"
+                    else:
+                        return
+                        
+                    self.cell(0, 10, footer, 0, 0, 'C')
+        
+        pdf = CustomPDF(orientation=orientation[0], format=page_size)
         pdf.add_page()
         pdf.set_font(font_family, size=font_size)
         pdf.set_auto_page_break(auto=True, margin=margin)
         
         # Set margins
         pdf.set_margins(margin, margin, margin)
-    
-        # Add header if specified
-        if header_text:
-            pdf.set_y(5)
-            pdf.set_font(font_family, 'I', font_size - 2)
-            pdf.cell(0, 10, header_text, 0, 1, 'C')
-            pdf.set_y(margin)
-            pdf.set_font(font_family, size=font_size)
         
-        # Set footer if specified
-        if footer_text or include_page_numbers:
-            def add_footer():
-                pdf.set_y(-15)
-                pdf.set_font(font_family, 'I', font_size - 2)
-                
-                if footer_text and include_page_numbers:
-                    footer = f"{footer_text} | Sida {pdf.page_no()}"
-                elif footer_text:
-                    footer = footer_text
-                elif include_page_numbers:
-                    footer = f"Sida {pdf.page_no()}"
-                else:
-                    return
-                    
-                pdf.cell(0, 10, footer, 0, 0, 'C')
-                
-            pdf.accept_page_break = lambda: (add_footer() if pdf.page_no() > 1 else None, True)[1]
+        # Footer is now handled by the CustomPDF class
         
         # Set alignment
         align_dict = {
@@ -240,9 +242,7 @@ def create_pdf_with_formatting(text_content, font_family='helvetica', font_size=
             pdf.multi_cell(0, line_height, cleaned_text, 0, align)
             pdf.ln(font_size * 0.3)  # Small space between paragraphs
 
-        # Add footer to the first page
-        if (footer_text or include_page_numbers) and pdf.page_no() == 1:
-            add_footer()
+        # Footer is now handled by the CustomPDF class
 
         temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         pdf.output(temp_output.name)
