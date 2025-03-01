@@ -14,6 +14,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const buttonText = uploadButton ? uploadButton.querySelector('.button-text') : null;
     const spinner = uploadButton ? uploadButton.querySelector('.spinner-border') : null;
 
+    async function handleResponse(response) {
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server error: Invalid response format');
+        }
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Operation failed');
+        }
+        return data;
+    }
+
     uploadForm.addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -55,17 +69,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 body: formData,
                 headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
                 }
             });
 
             clearInterval(progressInterval);
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Upload failed');
-            }
+            const data = await handleResponse(response);
 
             // Handle successful response
             progressBar.style.width = '100%';
@@ -85,6 +95,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function showError(message) {
         errorContainer.textContent = message;
         errorContainer.classList.remove('d-none');
+        if (progressContainer) progressContainer.classList.add('d-none');
     }
 
     function resetForm() {
@@ -108,16 +119,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     method: 'POST',
                     body: new FormData(this),
                     headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
                     }
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to save reviews');
-                }
-
-                const data = await response.json();
+                const data = await handleResponse(response);
                 if (data.redirect) {
                     window.location.href = data.redirect;
                 }

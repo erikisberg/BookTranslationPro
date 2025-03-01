@@ -31,6 +31,14 @@ DEFAULT_INSTRUCTIONS = """Review and improve this translation while:
 4. Keeping technical terms accurate
 5. Adapting cultural references appropriately"""
 
+def json_response(data, status=200):
+    """Helper function to ensure consistent JSON responses"""
+    return jsonify(data), status, {'Content-Type': 'application/json'}
+
+def json_error(message, status=400):
+    """Helper function for JSON error responses"""
+    return json_response({'error': message}, status)
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -68,15 +76,14 @@ def save_assistant_config():
         os.environ['TARGET_LANGUAGE'] = target_language
         os.environ['REVIEW_STYLE'] = review_style
 
-        # Handle AJAX request differently than form submit
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'success': True})
+            return json_response({'success': True, 'redirect': url_for('assistant_config')})
         return redirect(url_for('assistant_config'))
 
     except Exception as e:
         logger.error(f"Error saving configuration: {str(e)}")
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'error': str(e)}), 500
+            return json_error(str(e), 500)
         return redirect(url_for('assistant_config'))
 
 @app.route('/review')
@@ -97,53 +104,63 @@ def save_reviews():
 
         session['translations'] = translations
 
-        # Handle AJAX request differently than form submit
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'success': True, 'redirect': url_for('review')})
+            return json_response({'success': True, 'redirect': url_for('review')})
         return redirect(url_for('review'))
 
     except Exception as e:
         logger.error(f"Error saving reviews: {str(e)}")
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'error': str(e)}), 500
+            return json_error(str(e), 500)
         return redirect(url_for('review'))
 
 @app.route('/download-final')
 def download_final():
     translations = session.get('translations', [])
     if not translations:
-        return jsonify({'error': 'No translations available'}), 400
-
-    # Combine all reviewed translations
-    final_text = '\n\n'.join(t['translated_text'] for t in translations)
-
-    # Create final PDF
-    output_path = create_pdf_with_text(final_text)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error('No translations available', 400)
+        return redirect(url_for('index'))
 
     try:
+        # Combine all reviewed translations
+        final_text = '\n\n'.join(t['translated_text'] for t in translations)
+
+        # Create final PDF
+        output_path = create_pdf_with_text(final_text)
+
         return send_file(
             output_path,
             as_attachment=True,
             download_name='final_translation.pdf'
         )
+    except Exception as e:
+        logger.error(f"Error creating final PDF: {str(e)}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error(str(e), 500)
+        return redirect(url_for('index'))
     finally:
         # Cleanup
-        try:
-            os.remove(output_path)
-        except:
-            pass
+        if 'output_path' in locals():
+            try:
+                os.remove(output_path)
+            except:
+                pass
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return redirect(url_for('index'))
+
     if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+        return json_error('No file provided')
 
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+        return json_error('No file selected')
 
     if not is_allowed_file(file.filename):
-        return jsonify({'error': 'Invalid file type. Please upload a PDF.'}), 400
+        return json_error('Invalid file type. Please upload a PDF.')
 
     try:
         filename = secure_filename(file.filename)
@@ -170,15 +187,14 @@ def upload_file():
         # Store translations in session for review
         session['translations'] = translations
 
-        # Return success response with redirect URL
-        return jsonify({
+        return json_response({
             'success': True,
             'redirect': url_for('review')
         })
 
     except Exception as e:
         logger.error(f"Error processing file: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return json_error(str(e), 500)
 
     finally:
         # Cleanup temporary files
@@ -187,6 +203,18 @@ def upload_file():
                 os.remove(filepath)
             except:
                 pass
+
+@app.errorhandler(404)
+def not_found_error(e):
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return json_error('Resource not found', 404)
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return json_error('Internal server error occurred', 500)
+    return render_template('500.html'), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
