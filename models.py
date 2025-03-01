@@ -1,11 +1,5 @@
 from datetime import datetime
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import DeclarativeBase
-
-class Base(DeclarativeBase):
-    pass
-
-db = SQLAlchemy(model_class=Base)
+from database import db
 
 class TranslationMemory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
