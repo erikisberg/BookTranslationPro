@@ -3300,12 +3300,14 @@ def setup_database():
                 # Try to create the documents bucket directly
                 try:
                     # Create bucket with public access and CORS enabled
+                    # Using the correct format for create_bucket
                     supabase.storage.create_bucket(
-                        "documents", 
-                        {"public": True, 
-                         "file_size_limit": 52428800,
-                         "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
-                                               "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                        id="documents", 
+                        options={
+                            "public": True,
+                            "file_size_limit": 52428800,
+                            "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
+                                                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
                         }
                     )
                     
@@ -3333,11 +3335,12 @@ def setup_database():
                         try:
                             # Update bucket to be public with proper configs
                             supabase.storage.update_bucket(
-                                "documents", 
-                                {"public": True,
-                                 "file_size_limit": 52428800,
-                                 "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
-                                                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                                id="documents", 
+                                options={
+                                    "public": True,
+                                    "file_size_limit": 52428800,
+                                    "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
+                                                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
                                 }
                             )
                             logger.info("Updated 'documents' bucket to be public with proper settings")
