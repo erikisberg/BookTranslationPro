@@ -312,6 +312,60 @@
     document.addEventListener('DOMContentLoaded', function() {
         console.log("DOM Content Loaded");
         
+        // Add an emergency folder creation button
+        const folderListContainer = document.querySelector('.folder-list');
+        if (folderListContainer) {
+            const emergencyButton = document.createElement('button');
+            emergencyButton.className = 'btn btn-success btn-sm mt-3 w-100';
+            emergencyButton.innerHTML = '<i class="bi bi-folder-plus"></i> Emergency Create Folder';
+            emergencyButton.onclick = function() {
+                // Direct folder creation via prompt
+                const folderName = prompt('Enter new folder name:');
+                if (folderName && folderName.trim()) {
+                    createFolderDirectly(folderName.trim());
+                }
+            };
+            folderListContainer.prepend(emergencyButton);
+        }
+        
+        // Direct folder creation function
+        function createFolderDirectly(name) {
+            fetch('/documents/folders', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    description: '',
+                    color: '#3498db'
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error("Response not OK:", response.status, text);
+                        throw new Error('Server error: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    alert('Folder created successfully!');
+                    window.location.reload();
+                } else {
+                    alert(data.message || 'Failed to create folder');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating folder:', error);
+                alert('Failed to create folder: ' + error.message);
+            });
+        }
+        
         // Check for Bootstrap
         console.log("Bootstrap available:", typeof bootstrap !== 'undefined');
         
@@ -799,6 +853,94 @@
                 console.error('Error deleting item:', error);
                 alert('Failed to delete item: ' + error.message);
             });
+        }
+        
+        // Add emergency document deletion buttons
+        try {
+            const documentCards = document.querySelectorAll('.document-card, .card-document');
+            console.log(`Found ${documentCards.length} document cards for emergency buttons`);
+            
+            documentCards.forEach(card => {
+                // Try to extract document ID from various sources
+                let documentId = null;
+                let documentTitle = "this document";
+                
+                // Try data attributes
+                if (card.dataset && card.dataset.id) {
+                    documentId = card.dataset.id;
+                }
+                
+                // Try href links
+                if (!documentId) {
+                    const links = card.querySelectorAll('a[href*="/documents/"]');
+                    links.forEach(link => {
+                        const href = link.getAttribute('href');
+                        const match = href.match(/\/documents\/([a-zA-Z0-9-]+)/);
+                        if (match && match[1]) {
+                            documentId = match[1];
+                        }
+                    });
+                }
+                
+                // Try to find title
+                const titleEl = card.querySelector('.card-title');
+                if (titleEl) {
+                    documentTitle = titleEl.textContent.trim();
+                }
+                
+                if (documentId) {
+                    console.log(`Adding emergency delete for document ${documentId}`);
+                    
+                    // Create emergency delete button
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-danger btn-sm mt-2';
+                    btn.innerHTML = '<i class="bi bi-trash"></i> Emergency Delete';
+                    btn.style.zIndex = "1000";
+                    btn.onclick = function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        if (confirm(`Are you sure you want to delete "${documentTitle}"? This cannot be undone.`)) {
+                            // Direct delete via fetch
+                            fetch(`/documents/${documentId}`, {
+                                method: 'DELETE',
+                                headers: {
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json'
+                                }
+                            })
+                            .then(response => {
+                                if (!response.ok) {
+                                    return response.text().then(text => {
+                                        console.error(`Delete response error: ${response.status}`, text);
+                                        throw new Error(`Server error: ${response.status}`);
+                                    });
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                alert('Document deleted successfully');
+                                window.location.reload();
+                            })
+                            .catch(error => {
+                                console.error('Error deleting document:', error);
+                                alert(`Failed to delete document: ${error.message}`);
+                            });
+                        }
+                    };
+                    
+                    // Find appropriate place to add button
+                    const cardBody = card.querySelector('.card-body, .card-footer');
+                    if (cardBody) {
+                        cardBody.appendChild(btn);
+                    } else {
+                        card.appendChild(btn);
+                    }
+                }
+            });
+        } catch (error) {
+            console.error("Error adding emergency delete buttons:", error);
         }
     });
 </script>
