@@ -462,7 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-<!-- Batch AI Review Modal -->
+<!-- Batch AI Review Form -->
 <div class="modal fade" id="batchAIReviewModal" tabindex="-1" aria-labelledby="batchAIReviewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -474,11 +474,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 <form id="batchAIReviewForm" action="{{ url_for('batch_ai_review', document_id=document.id) }}" method="POST">
                     <div class="mb-3">
                         <label class="form-label">Select Pages to Review</label>
-                        <div class="mb-2 d-flex gap-2">
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAllPagesAI" onclick="selectAllPagesAI()">Select All</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="selectIncompletePagesAI" onclick="selectIncompletePagesAI()">Select Incomplete</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="selectNoneAI" onclick="selectNonePagesAI()">Deselect All</button>
-                        </div>
+                        <p class="mb-2">
+                            <!-- Using simple input button type for maximum compatibility -->
+                            <input type="button" class="btn btn-outline-secondary btn-sm" value="Select All" 
+                                onclick="var checkboxes = document.querySelectorAll('.ai-page-checkbox'); for(var i=0; i<checkboxes.length; i++) { checkboxes[i].checked = true; }">
+                            
+                            <input type="button" class="btn btn-outline-secondary btn-sm" value="Select Incomplete" 
+                                onclick="var checkboxes = document.querySelectorAll('.ai-page-checkbox'); for(var i=0; i<checkboxes.length; i++) { checkboxes[i].checked = checkboxes[i].getAttribute('data-status') !== 'completed'; }">
+                            
+                            <input type="button" class="btn btn-outline-secondary btn-sm" value="Deselect All" 
+                                onclick="var checkboxes = document.querySelectorAll('.ai-page-checkbox'); for(var i=0; i<checkboxes.length; i++) { checkboxes[i].checked = false; }">
+                        </p>
+
                         <div class="page-selection-container border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                             {% if pages %}
                                 {% for page in pages %}
@@ -532,23 +539,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                   placeholder="Add specific instructions for the AI review..."></textarea>
                     </div>
                     
-                    <div class="progress d-none mb-3" id="batchProgressContainer">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar"
-                             role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
-                    </div>
-                    <div id="progressStatus" class="text-center mb-3"></div>
-                    
-                    <!-- Debug Info -->
-                    <div class="mt-3 small text-muted">
-                        <p>Document ID: {{ document.id }}<br>
-                        Pages: {{ pages|length if pages else 0 }}<br>
-                        Form Action: {{ url_for('batch_ai_review', document_id=document.id) }}</p>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary" id="startBatchReview">Start AI Review</button>
                     </div>
                 </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="startBatchReview" onclick="startBatchAIReview()">Start AI Review</button>
             </div>
         </div>
     </div>
@@ -558,68 +553,4 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% block scripts %}
 {{ super() }}
-<script>
-    // Define all functions directly - embedded in HTML
-    function selectAllPagesAI() {
-        document.querySelectorAll('.ai-page-checkbox').forEach(cb => cb.checked = true);
-    }
-    
-    function selectIncompletePagesAI() {
-        document.querySelectorAll('.ai-page-checkbox').forEach(cb => {
-            cb.checked = cb.dataset.status !== 'completed';
-        });
-    }
-    
-    function selectNonePagesAI() {
-        document.querySelectorAll('.ai-page-checkbox').forEach(cb => cb.checked = false);
-    }
-    
-    function startBatchAIReview() {
-        console.log("Start AI Review button clicked");
-        
-        var batchForm = document.getElementById('batchAIReviewForm');
-        var startBatchBtn = document.getElementById('startBatchReview');
-        var progressContainer = document.getElementById('batchProgressContainer');
-        var progressBar = document.getElementById('batchProgressBar');
-        var progressStatus = document.getElementById('progressStatus');
-        
-        // Validate form
-        var selectedPages = document.querySelectorAll('.ai-page-checkbox:checked');
-        console.log("Selected pages: " + selectedPages.length);
-        
-        if (selectedPages.length === 0) {
-            alert('Please select at least one page to review');
-            return;
-        }
-        
-        var assistantSelect = document.getElementById('aiAssistant');
-        if (!assistantSelect) {
-            console.log("WARNING: AI Assistant select not found");
-            alert('AI Assistant selection is missing');
-            return;
-        }
-        
-        var assistantId = assistantSelect.value;
-        console.log("Selected assistant ID: " + assistantId);
-        
-        if (!assistantId) {
-            alert('Please select an AI assistant');
-            return;
-        }
-        
-        // Update button text and appearance
-        startBatchBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-        startBatchBtn.disabled = true;
-        
-        // Show progress indicators
-        progressContainer.classList.remove('d-none');
-        progressStatus.textContent = 'Starting batch review...';
-        
-        // Prepare form data
-        var formData = new FormData(batchForm);
-        
-        // Submit form directly
-        batchForm.submit();
-    }
-</script>
 {% endblock %}
