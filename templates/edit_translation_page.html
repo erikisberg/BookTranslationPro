@@ -42,8 +42,14 @@
                             
                             <!-- Translation area -->
                             <div class="col-md-6">
-                                <h6>Översättning</h6>
-                                <textarea name="translated_content" class="form-control" style="font-family: 'Roboto Mono', monospace; height: 65vh; resize: none;">{{ page.translated_content }}</textarea>
+                                <h6>Översättning 
+                                {% if page.translated_content and page.source_content and page.translated_content == page.source_content %}
+                                <span class="badge bg-warning ms-1" title="Source and translation are identical - this may need manual review">
+                                    <i class="bi bi-exclamation-triangle"></i> Needs Translation
+                                </span>
+                                {% endif %}
+                                </h6>
+                                <textarea name="translated_content" class="form-control" style="font-family: 'Roboto Mono', monospace; height: 65vh; resize: none;">{% if page.translated_content %}{{ page.translated_content }}{% else %}{{ page.source_content }}{% endif %}</textarea>
                             </div>
                         </div>
                     </div>

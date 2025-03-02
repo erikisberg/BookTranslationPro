@@ -495,11 +495,15 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
         logger.warning(f"Invalid source language code: {source_language}, using AUTO")
         source_language = 'AUTO'  # Fallback to auto-detection
         
-    # Critical check: if source and target languages are the same, force source to AUTO
+    # Critical check: if source and target languages are the same or source is target language, force source to AUTO
     # This prevents issues where both source and target become the same text
-    if source_language == target_language and source_language != 'AUTO':
-        logger.warning(f"Source and target languages are the same ({source_language}). Forcing source to AUTO")
+    if source_language == target_language or source_language == 'EN' and target_language == 'SV':
+        logger.warning(f"Source language ({source_language}) and target language ({target_language}) need adjustment. Forcing source to AUTO")
         source_language = 'AUTO'
+        
+    # Log the language settings we're using
+    logger.info(f"Using source language: {source_language}")
+    logger.info(f"Using target language: {target_language}")
 
     # Default values for glossary stats
     glossary_hits = 0
@@ -573,10 +577,41 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
             logger.info(f"Sending {len(text)} characters to DeepL for translation")
             logger.info(f"Text sample: {text[:100]}...")
             
+            # Enhanced debugging
+            logger.info(f"Translation parameters - Source: {source_language}, Target: {target_language}")
+            
+            # If the text appears to be already in the target language, try to force different behavior
+            already_in_target = False
+            if target_language != 'EN':  # Skip for English which is hard to detect
+                # Take a quick sample and translate to English to verify source language
+                sample = text[:300] if len(text) > 300 else text
+                try:
+                    test_translation = translator.translate_text(sample, target_lang='EN')
+                    if hasattr(test_translation, 'detected_source_lang'):
+                        detected_lang = test_translation.detected_source_lang
+                        logger.info(f"Test detection for sample: Detected as {detected_lang}")
+                        
+                        # If the detected language matches our target, we might have an issue
+                        if detected_lang.upper() == target_language:
+                            already_in_target = True
+                            logger.warning(f"Text appears to be already in {target_language}!")
+                except Exception as e:
+                    logger.warning(f"Error during sample language detection: {str(e)}")
+            
             # Use source_language only if it's not auto-detect
-            if source_language == 'AUTO':
+            if already_in_target:
+                # We might need a special approach here - for now just set source to auto
+                logger.info("Text already appears to be in target language, using auto-detect")
+                source_language = 'AUTO'
                 result = translator.translate_text(text, target_lang=target_language)
+            elif source_language == 'AUTO':
+                logger.info("Using auto-detect for source language")
+                result = translator.translate_text(text, target_lang=target_language)
+                # Log what language was detected
+                if hasattr(result, 'detected_source_lang'):
+                    logger.info(f"DeepL detected source language: {result.detected_source_lang}")
             else:
+                logger.info(f"Using specified source language: {source_language}")
                 result = translator.translate_text(text, source_lang=source_language, target_lang=target_language)
 
             # Validate response
@@ -1564,12 +1599,12 @@ def process_document(filepath, deepl_api_key, openai_api_key=None, assistant_id=
                     logger.info(f"Section {i+1} complexity score: {complexity_score}")
                 
                 # Extra check: ensure translated_text is different from original_text
-                # If they're identical, log a warning and set translated_text to empty
+                # If they're identical, log a warning but keep the text
                 if translated_text and translated_text == original_text and source_language != target_language:
                     logger.warning(f"Translation for section {section_id} is identical to original. This may indicate an issue with the translation service.")
                     logger.warning(f"Source language: {source_language}, Target language: {target_language}")
-                    logger.warning(f"Setting translated text to empty for now - user can edit it manually")
-                    translated_text = ""
+                    logger.warning(f"Keeping text but marking for manual review")
+                    # Add a flag to indicate this needs manual review but don't clear the text
                 
                 translations.append({
                     'id': section_id,

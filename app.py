@@ -694,7 +694,11 @@ def translation_workspace(id):
                     if full_translation:
                         # Save as translated content
                         save_document_content(user_id, document['id'], full_translation, 'translated')
-                        save_document_content(user_id, document['id'], "", 'source')
+                        
+                        # For source content, use the same text rather than empty string
+                        # This ensures we always have content in both panels
+                        logger.info("Setting source content to same as translation - user can edit later")
+                        save_document_content(user_id, document['id'], full_translation, 'source')
                         
                         # Mark document as needing source setup
                         if document.get('settings'):
@@ -705,7 +709,8 @@ def translation_workspace(id):
                         logger.warning(f"Could only save translated content, source content is empty")
                     else:
                         # If we can't get any translation data, use what we have
-                        save_document_content(user_id, document['id'], "", 'source')
+                        # Use translation_text for both to ensure content is available
+                        save_document_content(user_id, document['id'], translation_text, 'source')
                         save_document_content(user_id, document['id'], translation_text, 'translated')
                         
                         # Update document settings to indicate source is missing
@@ -717,8 +722,8 @@ def translation_workspace(id):
                         logger.warning(f"Could not find original translation data, using available text")
             except Exception as source_error:
                 logger.warning(f"Error setting up content: {str(source_error)}")
-                # Fall back to using translation text for translated content only
-                save_document_content(user_id, document['id'], "", 'source')
+                # Fall back to using translation text for both sides
+                save_document_content(user_id, document['id'], translation_text, 'source')
                 save_document_content(user_id, document['id'], translation_text, 'translated')
     except Exception as e:
         logger.error(f"Error checking/creating document: {str(e)}")
@@ -741,14 +746,23 @@ def translation_workspace(id):
                 flash('Kunde inte dela upp innehållet i sidor', 'danger')
                 return redirect(url_for('view_translation', id=id))
             
-            # Try to get translated content
+            # Get both source and translated content
+            source_content = get_document_content(user_id, document['id'], 'source')
             translated_content = get_document_content(user_id, document['id'], 'translated')
-            if translated_content:
-                # If we have translated content, split it into pages as well
-                translated_pages = split_content_into_pages(translated_content)
+            
+            logger.info(f"Source content length: {len(source_content) if source_content else 0}")
+            logger.info(f"Translated content length: {len(translated_content) if translated_content else 0}")
+            
+            # Check if both are available and properly set
+            if source_content and translated_content and len(source_content.strip()) > 0 and len(translated_content.strip()) > 0:
+                logger.info("Creating pages with both source and translated content")
+                
+                # Split both into pages
+                source_pages = split_content_into_pages(source_content) if source_content else []
+                translated_pages = split_content_into_pages(translated_content) if translated_content else []
                 
                 # Create pages with both source and translated content
-                for i, source_page in enumerate(content_pages, 1):
+                for i, source_page in enumerate(source_pages, 1):
                     # Get corresponding translated page if available
                     translated_page = translated_pages[i-1] if i <= len(translated_pages) else ''
                     
@@ -761,8 +775,27 @@ def translation_workspace(id):
                         'completion_percentage': 50 if translated_page else 0  # Set initial progress
                     }
                     create_document_page(user_id, page_data)
+            # If we have at least translated content, use it
+            elif translated_content and len(translated_content.strip()) > 0:
+                logger.info("Creating pages with translated content only")
+                
+                # Split the translated content
+                translated_pages = split_content_into_pages(translated_content)
+                
+                # Create pages with translated content only
+                for i, translated_page in enumerate(translated_pages, 1):
+                    page_data = {
+                        'document_id': document['id'],  # Use the actual document ID
+                        'page_number': i,
+                        'source_content': '',  # Empty source
+                        'translated_content': translated_page,
+                        'status': 'in_progress',
+                        'completion_percentage': 50  # Some progress since we have translation
+                    }
+                    create_document_page(user_id, page_data)
+            # Fall back to using content_pages as source only
             else:
-                # No translated content available, initialize with source only
+                logger.info("Creating pages with content_pages as source")
                 for i, page_content in enumerate(content_pages, 1):
                     page_data = {
                         'document_id': document['id'],  # Use the actual document ID
@@ -1954,6 +1987,15 @@ def upload_file():
             translated_text = '\n\n'.join([t['translated_text'] for t in all_translations if t['status'] == 'success'])
             source_text = '\n\n'.join([t['original_text'] for t in all_translations if t['status'] == 'success'])
             
+            # Debug info to track what's happening
+            logger.info(f"Source text sample (first 100 chars): {source_text[:100]}...")
+            logger.info(f"Translated text sample (first 100 chars): {translated_text[:100]}...")
+            
+            # Verify source and translated text are different
+            if source_text == translated_text:
+                logger.warning("Source and translated text are identical - this might indicate a translation issue")
+                logger.warning(f"Source language: {source_language}, Target language: {target_language}")
+            
             # Create document data
             doc_data = {
                 'title': title,
@@ -1977,7 +2019,15 @@ def upload_file():
                     'smart_review_ratio': smart_review_ratio,
                     'glossary_hits': globals().get('glossary_hits', 0),
                     'glossary_ratio': globals().get('glossary_ratio', 0),
-                    'unique_terms_used': globals().get('unique_terms_used', 0)
+                    'unique_terms_used': globals().get('unique_terms_used', 0),
+                    # Store language information explicitly in settings
+                    'explicit_source_language': source_language,
+                    'explicit_target_language': target_language,
+                    'translation_info': {
+                        'source': source_language,
+                        'target': target_language,
+                        'date': datetime.now().isoformat()
+                    }
                 },
                 'source_content': source_text,
                 'translated_content': translated_text,
