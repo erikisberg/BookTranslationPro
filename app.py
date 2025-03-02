@@ -739,6 +739,35 @@ def translation_workspace(id):
     if not document:
         document = get_document(user_id, id)
     
+    # Check if we need to add stats data to existing document
+    if document and 'settings' in document:
+        settings = document.get('settings', {})
+        # If we don't have stats data in settings, add placeholder values for the template
+        if not settings.get('cache_hits') and not settings.get('smart_review_savings'):
+            # If this is an older document without stats, we'll show placeholders
+            document['settings']['cache_hits'] = 0
+            document['settings']['cache_ratio'] = 0
+            document['settings']['smart_review_savings'] = 0
+            document['settings']['smart_review_ratio'] = 0
+            document['settings']['glossary_hits'] = 0
+            document['settings']['glossary_ratio'] = 0
+            
+            # Add character count
+            if 'char_count' not in document['settings']:
+                # If either source or translated content is available, count characters
+                source_content = get_document_content(user_id, document_id, 'source')
+                if source_content:
+                    document['settings']['char_count'] = len(source_content)
+                else:
+                    translated_content = get_document_content(user_id, document_id, 'translated')
+                    if translated_content:
+                        document['settings']['char_count'] = len(translated_content)
+                    else:
+                        document['settings']['char_count'] = 0
+            
+            # Log that we're adding placeholder stats
+            logger.info(f"Adding placeholder stats for document {document['id']}")
+    
     return render_template('translation_workspace.html', 
                           translation_id=id, 
                           document=document,
@@ -1632,7 +1661,16 @@ def upload_file():
                 'settings': {
                     'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS),
                     'project_info': f"Project settings: {project_description}",
-                    'total_pages': len(source_text.split('\n\n'))
+                    'total_pages': len(source_text.split('\n\n')),
+                    # Add text statistics
+                    'char_count': len(source_text),
+                    # Add translation statistics
+                    'cache_hits': cache_hits,
+                    'cache_ratio': cache_ratio,
+                    'smart_review_savings': smart_review_savings,
+                    'smart_review_ratio': smart_review_ratio,
+                    'glossary_hits': 0,  # Placeholder - would need to track this in process_document
+                    'glossary_ratio': 0  # Placeholder - would need to track this in process_document
                 },
                 'source_content': source_text,
                 'translated_content': translated_text,
@@ -1696,7 +1734,16 @@ def upload_file():
                         'settings': {
                             'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS),
                             'project_info': f"Project settings: {project_description}",
-                            'total_pages': len(source_text.split('\n\n'))
+                            'total_pages': len(source_text.split('\n\n')),
+                            # Add text statistics
+                            'char_count': len(source_text),
+                            # Add translation statistics
+                            'cache_hits': cache_hits,
+                            'cache_ratio': cache_ratio,
+                            'smart_review_savings': smart_review_savings,
+                            'smart_review_ratio': smart_review_ratio,
+                            'glossary_hits': 0,  # Placeholder - would need to track this in process_document
+                            'glossary_ratio': 0  # Placeholder - would need to track this in process_document
                         },
                         'source_content': source_text,
                         'translated_content': translated_text,
