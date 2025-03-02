@@ -532,19 +532,41 @@ def history():
 @login_required
 def view_translation(id):
     user_id = get_user_id()
-    translation_text = get_full_translation(user_id, id)
     
-    if not translation_text:
-        # Check if this is a document ID
-        document = get_document(user_id, id)
-        if document:
-            # This is a document ID, redirect to workspace
-            return redirect(url_for('translation_workspace', id=id))
+    try:
+        translation_text = get_full_translation(user_id, id)
         
-        flash('Översättning kunde inte hittas', 'danger')
+        if not translation_text:
+            # Check if this is a document ID
+            document = get_document(user_id, id)
+            if document:
+                # This is a document ID, redirect to workspace
+                logger.info(f"Redirecting to workspace for document ID {id}")
+                return redirect(url_for('translation_workspace', id=id))
+            
+            # Try to repair the translation
+            logger.warning(f"Translation {id} not found, checking in document storage")
+            
+            # Check if there's a document with the same ID
+            document_content = None
+            try:
+                document_content = get_document_content(user_id, id, 'translated')
+            except Exception as doc_error:
+                logger.error(f"Error fetching document content: {str(doc_error)}")
+            
+            if document_content:
+                logger.info(f"Found document content, displaying that instead")
+                return render_template('view_translation.html', translation_text=document_content, id=id)
+            
+            logger.error(f"Translation {id} not found and no fallback available")
+            flash('Översättning kunde inte hittas', 'danger')
+            return redirect(url_for('history'))
+        
+        return render_template('view_translation.html', translation_text=translation_text, id=id)
+    except Exception as e:
+        logger.error(f"Error in view_translation: {str(e)}")
+        flash(f"Ett fel uppstod: {str(e)}", 'danger')
         return redirect(url_for('history'))
-    
-    return render_template('view_translation.html', translation_text=translation_text, id=id)
     
 @app.route('/view-translation/<id>/workspace')
 @login_required

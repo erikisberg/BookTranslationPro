@@ -52,6 +52,9 @@
                                         <a href="{{ url_for('download_translation', id=translation.id) }}" class="btn btn-outline-success">
                                             <i class="bi bi-download"></i> Ladda ner
                                         </a>
+                                        <a href="{{ url_for('translation_workspace', id=translation.id) }}" class="btn btn-outline-info">
+                                            <i class="bi bi-grid-1x2"></i> Arbetsyta
+                                        </a>
                                         <button type="button" class="btn btn-outline-danger delete-btn" 
                                                 data-bs-toggle="modal" data-bs-target="#deleteModal" 
                                                 data-id="{{ translation.id }}" data-name="{{ translation.original_filename }}">
