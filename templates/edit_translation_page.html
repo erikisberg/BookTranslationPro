@@ -264,7 +264,15 @@
             // Ctrl+S for save
             if (e.ctrlKey && e.key === 's') {
                 e.preventDefault();
-                document.querySelector('button[name="save"]').click();
+                
+                // Create and dispatch submit event with save button context
+                const saveBtn = document.querySelector('button[name="save"]');
+                if (saveBtn) {
+                    // Set active element for form submission
+                    document.activeElement = saveBtn;
+                    // Submit the form
+                    form.dispatchEvent(new Event('submit'));
+                }
             }
             
             // Alt+Right Arrow for next page
@@ -272,7 +280,10 @@
                 e.preventDefault();
                 const nextButton = document.querySelector('button[name="save_next"]');
                 if (nextButton) {
-                    nextButton.click();
+                    // Set active element for form submission
+                    document.activeElement = nextButton;
+                    // Submit the form
+                    form.dispatchEvent(new Event('submit'));
                 }
             }
             
@@ -281,7 +292,10 @@
                 e.preventDefault();
                 const prevButton = document.querySelector('button[name="save_prev"]');
                 if (prevButton) {
-                    prevButton.click();
+                    // Set active element for form submission
+                    document.activeElement = prevButton;
+                    // Submit the form
+                    form.dispatchEvent(new Event('submit'));
                 }
             }
         });

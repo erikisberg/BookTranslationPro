@@ -535,6 +535,12 @@ def view_translation(id):
     translation_text = get_full_translation(user_id, id)
     
     if not translation_text:
+        # Check if this is a document ID
+        document = get_document(user_id, id)
+        if document:
+            # This is a document ID, redirect to workspace
+            return redirect(url_for('translation_workspace', id=id))
+        
         flash('Översättning kunde inte hittas', 'danger')
         return redirect(url_for('history'))
     
