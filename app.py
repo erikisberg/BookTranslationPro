@@ -24,7 +24,9 @@ from supabase_config import (
     get_user_documents, get_document, create_document, update_document, delete_document,
     get_document_versions, get_document_content, save_document_content, fix_document_content,
     get_translation_memory_entries, get_translation_memory_entry, update_translation_memory_entry,
-    delete_translation_memory_entry, get_translation_memory_stats
+    delete_translation_memory_entry, get_translation_memory_stats,
+    get_document_pages, get_document_page, create_document_page, update_document_page,
+    split_content_into_pages, get_next_page, get_prev_page, update_document_progress
 )
 
 # Load environment variables from .env file
@@ -548,38 +550,95 @@ def translation_workspace(id):
         flash('Översättning kunde inte hittas', 'danger')
         return redirect(url_for('history'))
     
-    # Check if the translation has already been split into pages
-    pages = get_document_pages(user_id, id)
-    
-    # If no pages exist, create them
-    if not pages:
-        # Split the translation into pages
-        content_pages = split_content_into_pages(translation_text)
+    # First check if we have a document already created for this translation
+    try:
+        # Try to find a document with matching ID
+        document = get_document(user_id, id)
         
-        # Create pages in the database
-        for i, page_content in enumerate(content_pages, 1):
-            page_data = {
-                'document_id': id,
-                'page_number': i,
-                'source_content': page_content,
-                'translated_content': '',  # Start with empty translation
-                'status': 'in_progress',
-                'completion_percentage': 0
-            }
-            create_document_page(user_id, page_data)
+        # If no document found, create one
+        if not document:
+            logger.info(f"Creating document for translation {id}")
             
-        # Get the newly created pages
+            # Create a document from the translation
+            doc_data = {
+                'id': id,  # Use same ID for easy reference
+                'title': f"Translation {id}",
+                'description': "Created from translation workspace",
+                'source_language': 'auto',
+                'target_language': 'SV',
+                'status': 'in_progress',
+                'word_count': len(translation_text.split()),
+                'version': 1
+            }
+            
+            # Create the document
+            document = create_document(user_id, doc_data)
+            
+            if not document:
+                logger.error(f"Failed to create document for translation {id}")
+                flash('Kunde inte skapa arbetsdokument', 'danger')
+                return redirect(url_for('view_translation', id=id))
+                
+            # Save the translation text as document content
+            save_document_content(user_id, id, translation_text, 'source')
+    except Exception as e:
+        logger.error(f"Error checking/creating document: {str(e)}")
+        flash('Ett fel uppstod: ' + str(e), 'danger')
+        return redirect(url_for('view_translation', id=id))
+    
+    # Check if the translation has already been split into pages
+    try:
         pages = get_document_pages(user_id, id)
         
-        # Update document progress
-        update_document_progress(user_id, id)
+        # If no pages exist, create them
+        if not pages:
+            logger.info(f"Creating pages for document {id}")
+            
+            # Split the translation into pages
+            content_pages = split_content_into_pages(translation_text)
+            
+            if not content_pages:
+                logger.error(f"Failed to split content for document {id}")
+                flash('Kunde inte dela upp innehållet i sidor', 'danger')
+                return redirect(url_for('view_translation', id=id))
+            
+            # Create pages in the database
+            for i, page_content in enumerate(content_pages, 1):
+                page_data = {
+                    'document_id': id,
+                    'page_number': i,
+                    'source_content': page_content,
+                    'translated_content': '',  # Start with empty translation
+                    'status': 'in_progress',
+                    'completion_percentage': 0
+                }
+                create_document_page(user_id, page_data)
+                
+            # Get the newly created pages
+            pages = get_document_pages(user_id, id)
+            
+            if not pages:
+                logger.error(f"Failed to create pages for document {id}")
+                flash('Kunde inte skapa sidor', 'danger')
+                return redirect(url_for('view_translation', id=id))
+                
+            # Update document progress
+            update_document_progress(user_id, id)
+    except Exception as e:
+        logger.error(f"Error creating workspace pages: {str(e)}")
+        flash('Ett fel uppstod vid skapande av sidor: ' + str(e), 'danger')
+        return redirect(url_for('view_translation', id=id))
+    
+    # Calculate stats for template
+    completed_pages = sum(1 for page in pages if page.get('status') == 'completed')
+    overall_progress = int((completed_pages / len(pages) * 100) if pages else 0)
     
     return render_template('translation_workspace.html', 
                           translation_id=id, 
                           pages=pages, 
                           total_pages=len(pages),
-                          completed_pages=sum(1 for page in pages if page.get('status') == 'completed'),
-                          overall_progress=int((sum(1 for page in pages if page.get('status') == 'completed') / len(pages) * 100) if pages else 0))
+                          completed_pages=completed_pages,
+                          overall_progress=overall_progress)
                           
 @app.route('/view-translation/<document_id>/page/<page_id>', methods=['GET', 'POST'])
 @login_required

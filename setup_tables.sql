@@ -75,6 +75,21 @@ CREATE TABLE IF NOT EXISTS document_versions (
 -- Fix users table if needed (you might have a constraint issue)
 ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
+-- Document Pages for Translation Workspace
+CREATE TABLE IF NOT EXISTS document_pages (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    page_number INTEGER NOT NULL,
+    source_content TEXT,
+    translated_content TEXT,
+    status TEXT DEFAULT 'in_progress',
+    completion_percentage INTEGER DEFAULT 0,
+    last_edited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create storage buckets if they don't exist
 -- Note: This needs to be done through the Supabase interface or API
 -- Create a bucket called 'documents' for storing document content
