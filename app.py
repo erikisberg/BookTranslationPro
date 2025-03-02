@@ -2221,21 +2221,50 @@ def documents_folder(folder_id):
 
 @app.route('/documents/folders', methods=['POST'])
 @login_required
-def create_folder():
+def create_folder_route():
     """Create a new folder"""
     user_id = get_user_id()
     if not user_id:
-        return json_error('Unauthorized', 401)
+        if request.content_type and 'application/json' in request.content_type:
+            return json_error('Unauthorized', 401)
+        else:
+            flash('Unauthorized', 'error')
+            return redirect(url_for('documents'))
     
     # Get folder data from request
-    data = request.json
-    if not data or not data.get('name'):
-        return json_error('Folder name is required', 400)
+    if request.content_type and 'application/json' in request.content_type:
+        # JSON request (API/Ajax)
+        data = request.json
+        if not data or not data.get('name'):
+            return json_error('Folder name is required', 400)
+    else:
+        # Form submission
+        data = {
+            'name': request.form.get('name', ''),
+            'description': request.form.get('description', ''),
+            'color': request.form.get('color', '#3498db')
+        }
+        
+        if not data['name']:
+            flash('Folder name is required', 'error')
+            return redirect(url_for('documents'))
     
     # Create folder
-    result = create_folder(user_id, data)
-    if not result:
-        return json_error('Failed to create folder', 500)
+    try:
+        result = create_folder(user_id, data)
+        if not result:
+            if request.content_type and 'application/json' in request.content_type:
+                return json_error('Failed to create folder', 500)
+            else:
+                flash('Failed to create folder', 'error')
+                return redirect(url_for('documents'))
+    except Exception as e:
+        logging.error(f"Error creating folder: {str(e)}")
+        if request.content_type and 'application/json' in request.content_type:
+            return json_error(f'Failed to create folder: {str(e)}', 500)
+        else:
+            flash(f'Failed to create folder: {str(e)}', 'error')
+            return redirect(url_for('documents'))
     
     # Track in analytics
     if posthog:
@@ -2251,11 +2280,20 @@ def create_folder():
         except Exception as e:
             logger.error(f"Error tracking folder creation: {str(e)}")
     
-    return json_response({
-        'success': True,
-        'message': 'Folder created successfully',
-        'folder': result
-    })
+    # Return appropriate response based on request type
+    if request.content_type and 'application/json' in request.content_type:
+        return json_response({
+            'success': True,
+            'message': 'Folder created successfully',
+            'folder': result
+        })
+    else:
+        # Form submission - redirect to the new folder
+        flash('Folder created successfully', 'success')
+        if result and result.get('id'):
+            return redirect(url_for('documents_folder', folder_id=result['id']))
+        else:
+            return redirect(url_for('documents'))
 
 @app.route('/documents/folders/<folder_id>', methods=['PUT'])
 @login_required
