@@ -709,7 +709,7 @@ def create_document(user_id, document_data):
             return None
             
         data = {
-            'id': str(uuid.uuid4()),
+            'id': document_data.get('id', str(uuid.uuid4())),  # Use provided ID if available
             'user_id': user_id,
             'title': document_data.get('title'),
             'description': document_data.get('description', ''),
@@ -719,7 +719,7 @@ def create_document(user_id, document_data):
             'source_language': document_data.get('source_language', ''),
             'target_language': document_data.get('target_language', ''),
             'word_count': document_data.get('word_count', 0),
-            'version': 1,  # Initial version
+            'version': document_data.get('version', 1),  # Initial version
             'tags': document_data.get('tags', []),
             'status': document_data.get('status', 'completed'),
             'settings': document_data.get('settings', {}),

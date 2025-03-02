@@ -572,11 +572,26 @@ def view_translation(id):
 @login_required
 def translation_workspace(id):
     user_id = get_user_id()
-    translation_text = get_full_translation(user_id, id)
     
-    if not translation_text:
-        flash('Översättning kunde inte hittas', 'danger')
-        return redirect(url_for('history'))
+    # First check if this is a document ID
+    document = get_document(user_id, id)
+    if document:
+        # We already have a document, we can skip the translation lookup
+        # Get document content to use as source
+        translation_text = get_document_content(user_id, id, 'source')
+        if not translation_text:
+            # If no source content, try to get translated content
+            translation_text = get_document_content(user_id, id, 'translated')
+            if not translation_text:
+                translation_text = "No content available for this document."
+    else:
+        # Try to get translation text
+        translation_text = get_full_translation(user_id, id)
+        
+        if not translation_text:
+            logger.error(f"Neither document nor translation found for ID {id}")
+            flash('Varken översättning eller dokument kunde hittas', 'danger')
+            return redirect(url_for('history'))
     
     # First check if we have a document already created for this translation
     try:
@@ -587,20 +602,35 @@ def translation_workspace(id):
         if not document:
             logger.info(f"Creating document for translation {id}")
             
-            # Create a document from the translation
-            doc_data = {
-                'id': id,  # Use same ID for easy reference
-                'title': f"Translation {id}",
-                'description': "Created from translation workspace",
-                'source_language': 'auto',
-                'target_language': 'SV',
-                'status': 'in_progress',
-                'word_count': len(translation_text.split()),
-                'version': 1
-            }
+            # Check first if a document already exists in the database with a different ID
+            # but created from this translation
+            existing_documents = get_user_documents(user_id)
+            existing_doc = None
             
-            # Create the document
-            document = create_document(user_id, doc_data)
+            for doc in existing_documents:
+                if doc.get('description') == f"Created from translation {id}":
+                    existing_doc = doc
+                    logger.info(f"Found existing document {doc['id']} for translation {id}")
+                    break
+            
+            if existing_doc:
+                document = existing_doc
+            else:
+                # Create a document from the translation with the translation ID
+                # Force the ID to be the same as the translation ID
+                doc_data = {
+                    'id': id,  # Use same ID for easy reference
+                    'title': f"Translation {id}",
+                    'description': f"Created from translation {id}",
+                    'source_language': 'auto',
+                    'target_language': 'SV',
+                    'status': 'in_progress',
+                    'word_count': len(translation_text.split()),
+                    'version': 1
+                }
+                
+                # Create the document
+                document = create_document(user_id, doc_data)
             
             if not document:
                 logger.error(f"Failed to create document for translation {id}")
