@@ -1,16 +1,25 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Export Settings</h2>
+    <div>
+        <a href="{{ url_for('translation_workspace', id=document_id) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Workspace
+        </a>
+    </div>
+</div>
 <div class="row justify-content-center">
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title text-center">Exportinställningar</h2>
+                <h2 class="card-title text-center">Export Settings</h2>
             </div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('save_export_settings') }}">
+                    <input type="hidden" name="document_id" value="{{ document_id }}"">
                     <div class="mb-4">
-                        <h4>Filformat</h4>
+                        <h4>File Format</h4>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="form-check mb-2">
@@ -48,11 +57,11 @@
                     </div>
 
                     <div class="mb-4">
-                        <h4>Sidformatering</h4>
+                        <h4>Page Formatting</h4>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="pageSize" class="form-label">Sidstorlek</label>
+                                    <label for="pageSize" class="form-label">Page Size</label>
                                     <select class="form-select" id="pageSize" name="page_size">
                                         <option value="A4" {% if page_size == 'A4' %}selected{% endif %}>A4</option>
                                         <option value="Letter" {% if page_size == 'Letter' %}selected{% endif %}>Letter</option>
@@ -62,10 +71,10 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="orientation" class="form-label">Orientering</label>
+                                    <label for="orientation" class="form-label">Orientation</label>
                                     <select class="form-select" id="orientation" name="orientation">
-                                        <option value="portrait" {% if orientation == 'portrait' %}selected{% endif %}>Stående</option>
-                                        <option value="landscape" {% if orientation == 'landscape' %}selected{% endif %}>Liggande</option>
+                                        <option value="portrait" {% if orientation == 'portrait' %}selected{% endif %}>Portrait</option>
+                                        <option value="landscape" {% if orientation == 'landscape' %}selected{% endif %}>Landscape</option>
                                     </select>
                                 </div>
                             </div>
@@ -73,11 +82,11 @@
                     </div>
 
                     <div class="mb-4">
-                        <h4>Textformatering</h4>
+                        <h4>Text Formatting</h4>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="fontFamily" class="form-label">Typsnitt</label>
+                                    <label for="fontFamily" class="form-label">Font Family</label>
                                     <select class="form-select" id="fontFamily" name="font_family">
                                         <option value="helvetica" {% if font_family == 'helvetica' %}selected{% endif %}>Helvetica</option>
                                         <option value="times" {% if font_family == 'times' %}selected{% endif %}>Times New Roman</option>
@@ -85,7 +94,7 @@
                                     </select>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="fontSize" class="form-label">Teckenstorlek</label>
+                                    <label for="fontSize" class="form-label">Font Size</label>
                                     <select class="form-select" id="fontSize" name="font_size">
                                         {% for size in range(8, 17) %}
                                         <option value="{{size}}" {% if font_size == size %}selected{% endif %}>{{size}} pt</option>
@@ -95,21 +104,21 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="lineSpacing" class="form-label">Radavstånd</label>
+                                    <label for="lineSpacing" class="form-label">Line Spacing</label>
                                     <select class="form-select" id="lineSpacing" name="line_spacing">
-                                        <option value="1.0" {% if line_spacing == '1.0' %}selected{% endif %}>Enkel (1.0)</option>
+                                        <option value="1.0" {% if line_spacing == '1.0' %}selected{% endif %}>Single (1.0)</option>
                                         <option value="1.15" {% if line_spacing == '1.15' %}selected{% endif %}>1.15</option>
                                         <option value="1.5" {% if line_spacing == '1.5' %}selected{% endif %}>1.5</option>
-                                        <option value="2.0" {% if line_spacing == '2.0' %}selected{% endif %}>Dubbel (2.0)</option>
+                                        <option value="2.0" {% if line_spacing == '2.0' %}selected{% endif %}>Double (2.0)</option>
                                     </select>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="alignment" class="form-label">Textjustering</label>
+                                    <label for="alignment" class="form-label">Text Alignment</label>
                                     <select class="form-select" id="alignment" name="alignment">
-                                        <option value="left" {% if alignment == 'left' %}selected{% endif %}>Vänsterjusterad</option>
-                                        <option value="center" {% if alignment == 'center' %}selected{% endif %}>Centrerad</option>
-                                        <option value="right" {% if alignment == 'right' %}selected{% endif %}>Högerjusterad</option>
-                                        <option value="justified" {% if alignment == 'justified' %}selected{% endif %}>Marginaljustering</option>
+                                        <option value="left" {% if alignment == 'left' %}selected{% endif %}>Left</option>
+                                        <option value="center" {% if alignment == 'center' %}selected{% endif %}>Center</option>
+                                        <option value="right" {% if alignment == 'right' %}selected{% endif %}>Right</option>
+                                        <option value="justified" {% if alignment == 'justified' %}selected{% endif %}>Justified</option>
                                     </select>
                                 </div>
                             </div>
@@ -117,11 +126,11 @@
                     </div>
 
                     <div class="mb-4">
-                        <h4>Utseende</h4>
+                        <h4>Appearance</h4>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="marginSize" class="form-label">Marginaler (mm)</label>
+                                    <label for="marginSize" class="form-label">Margins (mm)</label>
                                     <input type="number" class="form-control" id="marginSize" name="margin_size" 
                                            value="{{ margin_size }}" min="5" max="50">
                                 </div>
@@ -129,18 +138,18 @@
                                     <input class="form-check-input" type="checkbox" id="includePageNumbers" name="include_page_numbers" 
                                            {% if include_page_numbers %}checked{% endif %}>
                                     <label class="form-check-label" for="includePageNumbers">
-                                        Inkludera sidnummer
+                                        Include Page Numbers
                                     </label>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="headerText" class="form-label">Sidhuvud (valfritt)</label>
+                                    <label for="headerText" class="form-label">Header Text (optional)</label>
                                     <input type="text" class="form-control" id="headerText" name="header_text" 
                                            value="{{ header_text }}">
                                 </div>
                                 <div class="mb-3">
-                                    <label for="footerText" class="form-label">Sidfot (valfritt)</label>
+                                    <label for="footerText" class="form-label">Footer Text (optional)</label>
                                     <input type="text" class="form-control" id="footerText" name="footer_text" 
                                            value="{{ footer_text }}">
                                 </div>
@@ -152,12 +161,12 @@
                         <input class="form-check-input" type="checkbox" id="includeBothLanguages" name="include_both_languages" 
                                {% if include_both_languages %}checked{% endif %}>
                         <label class="form-check-label" for="includeBothLanguages">
-                            Inkludera originaltext tillsammans med översättningen
+                            Include original text along with the translation
                         </label>
                     </div>
 
                     <div class="d-grid gap-2 col-md-6 mx-auto">
-                        <button type="submit" class="btn btn-primary">Spara inställningar</button>
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
                     </div>
                 </form>
             </div>

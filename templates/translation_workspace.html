@@ -28,12 +28,26 @@
                 {% endif %}
             </div>
             
-            <!-- Progress bar -->
+            <!-- Progress bar and action buttons -->
             <div class="card mb-4">
                 <div class="card-body">
                     <div class="d-flex justify-content-between mb-2">
                         <h5 class="card-title">Overall Progress</h5>
-                        <span>{{ completed_pages }}/{{ total_pages }} pages ({{ overall_progress }}%)</span>
+                        <div>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="bi bi-download"></i> Export
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="{{ url_for('export_document', document_id=document.id, format='pdf') }}">Export as PDF</a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('export_document', document_id=document.id, format='docx') }}">Export as Word (DOCX)</a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('export_document', document_id=document.id, format='txt') }}">Export as Text (TXT)</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('export_settings', document_id=document.id) }}">Export Settings</a></li>
+                                </ul>
+                            </div>
+                            <span class="ms-2">{{ completed_pages }}/{{ total_pages }} pages ({{ overall_progress }}%)</span>
+                        </div>
                     </div>
                     <div class="progress" style="height: 25px;">
                         <div class="progress-bar bg-success" role="progressbar" style="width: {{ overall_progress }}%;" 
@@ -44,10 +58,24 @@
                 </div>
             </div>
             
-            <!-- Page list -->
+            <!-- Page list with action buttons -->
             <div class="card">
-                <div class="card-header">
-                    <h5>Book Pages</h5>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Book Pages</h5>
+                    <div>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="bi bi-gear"></i> Actions
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" id="markAllCompleted"><i class="bi bi-check-all"></i> Mark All Completed</a></li>
+                                <li><a class="dropdown-item" href="#" id="markAllInProgress"><i class="bi bi-hourglass-split"></i> Mark All In Progress</a></li>
+                                <li><a class="dropdown-item" href="#" id="markAllNeedsReview"><i class="bi bi-exclamation-triangle"></i> Mark All Needs Review</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#exportSelectModal"><i class="bi bi-file-earmark-zip"></i> Export Selected Pages</a></li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
                 <div class="list-group list-group-flush">
                     {% for page in pages %}
@@ -87,4 +115,167 @@
         </div>
     </div>
 </div>
+
+<!-- Export Select Modal -->
+<div class="modal fade" id="exportSelectModal" tabindex="-1" aria-labelledby="exportSelectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exportSelectModalLabel">Export Selected Pages</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="exportSelectForm" action="{{ url_for('export_selected_pages', document_id=document.id) }}" method="post">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label">Select Pages to Export</label>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllPages">Select All</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="deselectAllPages">Deselect All</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="selectCompletedPages">Select Completed</button>
+                            </div>
+                        </div>
+                        <div class="form-check form-check-inline page-selection-wrapper" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+                            {% for page in pages %}
+                            <div class="form-check mb-2">
+                                <input class="form-check-input page-checkbox" type="checkbox" name="selected_pages" id="page{{ page.id }}" value="{{ page.id }}">
+                                <label class="form-check-label" for="page{{ page.id }}">
+                                    Page {{ page.page_number }} 
+                                    {% if page.status == 'completed' %}
+                                        <span class="badge bg-success">Completed</span>
+                                    {% elif page.status == 'needs_review' %}
+                                        <span class="badge bg-warning">Needs Review</span>
+                                    {% else %}
+                                        <span class="badge bg-primary">In Progress</span>
+                                    {% endif %}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Export Format</label>
+                                <select class="form-select" name="format">
+                                    <option value="pdf">PDF</option>
+                                    <option value="docx">Word (DOCX)</option>
+                                    <option value="txt">Text (TXT)</option>
+                                    <option value="html">HTML</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Content to Include</label>
+                                <select class="form-select" name="content_type">
+                                    <option value="translated">Translated Text Only</option>
+                                    <option value="source">Source Text Only</option>
+                                    <option value="both">Both Source and Translation</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Additional Options</label>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="include_page_numbers" id="includePageNumbers" checked>
+                            <label class="form-check-label" for="includePageNumbers">
+                                Include Page Numbers
+                            </label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="include_title" id="includeTitle" checked>
+                            <label class="form-check-label" for="includeTitle">
+                                Include Book Title and Project Info
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="create_toc" id="createTOC" checked>
+                            <label class="form-check-label" for="createTOC">
+                                Create Table of Contents
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="exportSelectForm" class="btn btn-primary">Export Selected Pages</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for the export select modal -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Select/deselect all pages
+    document.getElementById('selectAllPages').addEventListener('click', function() {
+        document.querySelectorAll('.page-checkbox').forEach(checkbox => {
+            checkbox.checked = true;
+        });
+    });
+    
+    document.getElementById('deselectAllPages').addEventListener('click', function() {
+        document.querySelectorAll('.page-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    });
+    
+    document.getElementById('selectCompletedPages').addEventListener('click', function() {
+        document.querySelectorAll('.page-checkbox').forEach(checkbox => {
+            const label = checkbox.nextElementSibling;
+            checkbox.checked = label.textContent.includes('Completed');
+        });
+    });
+    
+    // Batch actions for marking pages
+    document.getElementById('markAllCompleted').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (confirm('Are you sure you want to mark all pages as completed?')) {
+            updateAllPagesStatus('completed');
+        }
+    });
+    
+    document.getElementById('markAllInProgress').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (confirm('Are you sure you want to mark all pages as in progress?')) {
+            updateAllPagesStatus('in_progress');
+        }
+    });
+    
+    document.getElementById('markAllNeedsReview').addEventListener('click', function(e) {
+        e.preventDefault();
+        if (confirm('Are you sure you want to mark all pages as needs review?')) {
+            updateAllPagesStatus('needs_review');
+        }
+    });
+    
+    function updateAllPagesStatus(status) {
+        fetch(`/documents/{{ document.id }}/update-all-pages-status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ status: status })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert(data.message || 'Failed to update pages');
+            }
+        })
+        .catch(error => {
+            console.error('Error updating pages:', error);
+            alert('Failed to update pages: ' + error.message);
+        });
+    }
+});
+</script>
 {% endblock %}

@@ -1246,8 +1246,40 @@ def delete_assistant_route(assistant_id):
 @app.route('/export_settings', methods=['GET'])
 @login_required
 def export_settings():
-    # Redirect to the combined settings page
-    return redirect(url_for('assistant_config'))
+    user_id = get_user_id()
+    document_id = request.args.get('document_id')
+    
+    if not document_id:
+        flash('Document ID is required', 'warning')
+        return redirect(url_for('documents'))
+    
+    # Get document to verify ownership
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get current export settings, either from document or user defaults
+    document_settings = document.get('settings', {})
+    export_settings = document_settings.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+    
+    # Extract settings for the template
+    return render_template(
+        'export_settings.html',
+        document_id=document_id,
+        export_format=export_settings.get('export_format', 'pdf'),
+        page_size=export_settings.get('page_size', 'A4'),
+        orientation=export_settings.get('orientation', 'portrait'),
+        font_family=export_settings.get('font_family', 'helvetica'),
+        font_size=export_settings.get('font_size', 12),
+        line_spacing=export_settings.get('line_spacing', '1.5'),
+        alignment=export_settings.get('alignment', 'left'),
+        margin_size=export_settings.get('margin_size', 15),
+        include_page_numbers=export_settings.get('include_page_numbers', True),
+        header_text=export_settings.get('header_text', ''),
+        footer_text=export_settings.get('footer_text', ''),
+        include_both_languages=export_settings.get('include_both_languages', False)
+    )
 
 @app.route('/help')
 def help_page():
@@ -1323,6 +1355,9 @@ def save_export_settings():
             'include_both_languages': 'include_both_languages' in request.form
         }
         
+        # Check if we're updating document-specific settings
+        document_id = request.form.get('document_id')
+        
         # Store in session with debug logging
         logger.info(f"Saving export settings: {settings}")
         session['export_settings'] = settings
@@ -1337,16 +1372,33 @@ def save_export_settings():
             }
             save_user_data(user_id, user_data)
             save_user_settings(user_id, {'export_settings': settings})
+            
+            # If document ID provided, update document-specific settings
+            if document_id:
+                document = get_document(user_id, document_id)
+                if document:
+                    document_settings = document.get('settings', {})
+                    document_settings['export_settings'] = settings
+                    update_data = {'settings': document_settings}
+                    update_document(user_id, document_id, update_data)
+                    flash('Export settings saved for this project', 'success')
+                    return redirect(url_for('translation_workspace', id=document_id))
         
         # Display success message and redirect
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        flash('Export settings saved successfully', 'success')
+        if document_id:
+            return redirect(url_for('translation_workspace', id=document_id))
+        elif request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return json_response({'success': True, 'redirect': url_for('export_settings')})
         return redirect(url_for('export_settings'))
         
     except Exception as e:
         logger.error(f"Error saving export settings: {str(e)}")
+        flash(f'Error saving settings: {str(e)}', 'danger')
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return json_error(str(e), 500)
+        if document_id:
+            return redirect(url_for('translation_workspace', id=document_id))
         return redirect(url_for('export_settings'))
 
 @app.route('/upload', methods=['POST'])
@@ -2454,6 +2506,320 @@ def import_glossary_entries(glossary_id):
     except Exception as e:
         logger.error(f"Error importing glossary entries: {str(e)}")
         return json_error(f'Error importing glossary entries: {str(e)}', 500)
+
+# Document Export Functions
+
+@app.route('/export/<document_id>', methods=['GET'])
+@login_required
+def export_document(document_id):
+    user_id = get_user_id()
+    export_format = request.args.get('format', 'pdf')
+    
+    # Get document to verify ownership
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get document content
+    translated_content = get_document_content(user_id, document_id, 'translated')
+    source_content = get_document_content(user_id, document_id, 'source')
+    
+    if not translated_content:
+        flash('No content to export', 'warning')
+        return redirect(url_for('translation_workspace', id=document_id))
+    
+    # Get export settings
+    document_settings = document.get('settings', {})
+    export_settings = document_settings.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+    
+    # Extract needed settings
+    font_family = export_settings.get('font_family', 'helvetica')
+    font_size = export_settings.get('font_size', 12)
+    page_size = export_settings.get('page_size', 'A4')
+    orientation = export_settings.get('orientation', 'portrait')
+    margin_size = export_settings.get('margin_size', 15)
+    line_spacing = float(export_settings.get('line_spacing', 1.5))
+    alignment = export_settings.get('alignment', 'left')
+    include_page_numbers = export_settings.get('include_page_numbers', True)
+    header_text = export_settings.get('header_text', '')
+    footer_text = export_settings.get('footer_text', '')
+    include_both_languages = export_settings.get('include_both_languages', False)
+    
+    # Prepare content based on settings
+    if include_both_languages and source_content:
+        final_content = ""
+        source_paragraphs = source_content.split('\n\n')
+        translated_paragraphs = translated_content.split('\n\n')
+        
+        # Use the shorter of the two to avoid issues
+        min_length = min(len(source_paragraphs), len(translated_paragraphs))
+        
+        for i in range(min_length):
+            final_content += f"{source_paragraphs[i]}\n\n"
+            final_content += f"{translated_paragraphs[i]}\n\n"
+            final_content += "---\n\n"  # Separator between sections
+    else:
+        final_content = translated_content
+    
+    # Add document title as header if not set
+    if not header_text and document.get('title'):
+        header_text = document.get('title')
+        
+    # Generate the document based on format
+    try:
+        if export_format == 'pdf':
+            output_file = utils.create_pdf_with_formatting(
+                final_content, font_family, font_size, page_size, 
+                orientation, margin_size, line_spacing, alignment,
+                include_page_numbers, header_text, footer_text
+            )
+            mimetype = 'application/pdf'
+        elif export_format == 'docx':
+            output_file = utils.create_docx_with_text(
+                final_content, font_family, font_size, page_size,
+                orientation, margin_size, line_spacing, alignment,
+                include_page_numbers, header_text, footer_text
+            )
+            mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif export_format == 'html':
+            output_file = utils.create_html_with_text(
+                final_content, font_family, font_size, line_spacing, 
+                alignment, include_page_numbers, header_text, footer_text
+            )
+            mimetype = 'text/html'
+        else:  # Default to txt
+            # For text, just write to a file
+            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_output.name, 'w', encoding='utf-8') as f:
+                f.write(final_content)
+            output_file = temp_output.name
+            mimetype = 'text/plain'
+        
+        # Create a filename with document title and format
+        safe_title = re.sub(r'[^\w\-_\. ]', '_', document.get('title', 'document'))
+        filename = f"{safe_title}.{export_format}"
+        
+        # Track export in analytics
+        if posthog:
+            posthog.capture(
+                distinct_id=user_id,
+                event='document_exported',
+                properties={
+                    'document_id': document_id,
+                    'format': export_format,
+                    'include_both_languages': include_both_languages,
+                    'document_title': document.get('title')
+                }
+            )
+        
+        return send_file(
+            output_file, 
+            as_attachment=True,
+            download_name=filename,
+            mimetype=mimetype
+        )
+    except Exception as e:
+        logger.error(f"Error exporting document: {str(e)}")
+        flash(f'Error exporting document: {str(e)}', 'danger')
+        return redirect(url_for('translation_workspace', id=document_id))
+
+@app.route('/export-selected-pages/<document_id>', methods=['POST'])
+@login_required
+def export_selected_pages(document_id):
+    user_id = get_user_id()
+    
+    # Get document to verify ownership
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'danger')
+        return redirect(url_for('documents'))
+    
+    # Get selected pages
+    selected_page_ids = request.form.getlist('selected_pages')
+    if not selected_page_ids:
+        flash('No pages selected', 'warning')
+        return redirect(url_for('translation_workspace', id=document_id))
+    
+    # Get export settings
+    export_format = request.form.get('format', 'pdf')
+    content_type = request.form.get('content_type', 'translated')
+    include_page_numbers = 'include_page_numbers' in request.form
+    include_title = 'include_title' in request.form
+    create_toc = 'create_toc' in request.form
+    
+    # Get document settings for formatting
+    document_settings = document.get('settings', {})
+    export_settings = document_settings.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+    
+    # Extract needed settings
+    font_family = export_settings.get('font_family', 'helvetica')
+    font_size = export_settings.get('font_size', 12)
+    page_size = export_settings.get('page_size', 'A4')
+    orientation = export_settings.get('orientation', 'portrait')
+    margin_size = export_settings.get('margin_size', 15)
+    line_spacing = float(export_settings.get('line_spacing', 1.5))
+    alignment = export_settings.get('alignment', 'left')
+    
+    # Collect content from selected pages
+    final_content = ""
+    toc_entries = []
+    
+    # Add title if requested
+    if include_title and document.get('title'):
+        final_content += f"# {document.get('title')}\n\n"
+        if document.get('description'):
+            final_content += f"{document.get('description')}\n\n"
+        final_content += f"Languages: {document.get('source_language')} → {document.get('target_language')}\n\n"
+        final_content += "---\n\n"
+    
+    # Collect all the pages first to sort them
+    pages_data = []
+    for page_id in selected_page_ids:
+        page = get_document_page(user_id, page_id)
+        if page and page.get('document_id') == document_id:
+            pages_data.append(page)
+    
+    # Sort pages by page number
+    pages_data.sort(key=lambda x: x.get('page_number', 0))
+    
+    # Now build the content
+    for i, page in enumerate(pages_data):
+        page_number = page.get('page_number', i+1)
+        page_title = f"Page {page_number}"
+        toc_entries.append((page_title, page_number))
+        
+        # Add page header
+        final_content += f"## {page_title}\n\n"
+        
+        # Select content based on user's choice
+        if content_type == 'source':
+            page_content = page.get('source_content', '')
+        elif content_type == 'translated':
+            page_content = page.get('translated_content', '')
+        else:  # Both
+            source = page.get('source_content', '')
+            translated = page.get('translated_content', '')
+            page_content = f"### Original\n\n{source}\n\n### Translation\n\n{translated}"
+        
+        final_content += f"{page_content}\n\n"
+        final_content += "---\n\n"  # Page separator
+    
+    # Insert table of contents if requested
+    if create_toc and toc_entries:
+        toc_content = "## Table of Contents\n\n"
+        for title, number in toc_entries:
+            toc_content += f"* [{title}](#page-{number})\n"
+        toc_content += "\n---\n\n"
+        final_content = toc_content + final_content
+    
+    # Generate header and footer text
+    header_text = document.get('title', '') if include_title else ''
+    footer_text = ''
+    
+    # Generate the document based on format
+    try:
+        if export_format == 'pdf':
+            output_file = utils.create_pdf_with_formatting(
+                final_content, font_family, font_size, page_size, 
+                orientation, margin_size, line_spacing, alignment,
+                include_page_numbers, header_text, footer_text
+            )
+            mimetype = 'application/pdf'
+        elif export_format == 'docx':
+            output_file = utils.create_docx_with_text(
+                final_content, font_family, font_size, page_size,
+                orientation, margin_size, line_spacing, alignment,
+                include_page_numbers, header_text, footer_text
+            )
+            mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif export_format == 'html':
+            output_file = utils.create_html_with_text(
+                final_content, font_family, font_size, line_spacing, 
+                alignment, include_page_numbers, header_text, footer_text
+            )
+            mimetype = 'text/html'
+        else:  # Default to txt
+            # For text, just write to a file
+            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            with open(temp_output.name, 'w', encoding='utf-8') as f:
+                f.write(final_content)
+            output_file = temp_output.name
+            mimetype = 'text/plain'
+        
+        # Create a filename with document title and format
+        safe_title = re.sub(r'[^\w\-_\. ]', '_', document.get('title', 'document'))
+        filename = f"{safe_title}_selected_pages.{export_format}"
+        
+        # Track export in analytics
+        if posthog:
+            posthog.capture(
+                distinct_id=user_id,
+                event='selected_pages_exported',
+                properties={
+                    'document_id': document_id,
+                    'format': export_format,
+                    'page_count': len(pages_data),
+                    'content_type': content_type,
+                    'document_title': document.get('title')
+                }
+            )
+        
+        return send_file(
+            output_file, 
+            as_attachment=True,
+            download_name=filename,
+            mimetype=mimetype
+        )
+    except Exception as e:
+        logger.error(f"Error exporting selected pages: {str(e)}")
+        flash(f'Error exporting pages: {str(e)}', 'danger')
+        return redirect(url_for('translation_workspace', id=document_id))
+
+@app.route('/documents/<document_id>/update-all-pages-status', methods=['POST'])
+@login_required
+def update_all_pages_status(document_id):
+    """Update the status of all pages in a document"""
+    user_id = get_user_id()
+    
+    # Get document to verify ownership
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Get the new status from request
+    data = request.json or {}
+    new_status = data.get('status')
+    
+    if not new_status or new_status not in ['in_progress', 'completed', 'needs_review']:
+        return json_error('Invalid status', 400)
+    
+    try:
+        # Get all pages for this document
+        pages = get_document_pages(user_id, document_id)
+        
+        # Update each page's status
+        for page in pages:
+            # Set completion percentage based on status
+            completion_percentage = 100 if new_status == 'completed' else 50 if new_status == 'needs_review' else 25
+            
+            # Update page data
+            page_data = {
+                'status': new_status,
+                'completion_percentage': completion_percentage
+            }
+            update_document_page(user_id, page['id'], page_data)
+        
+        # Update document progress
+        update_document_progress(user_id, document_id)
+        
+        return json_response({
+            'success': True,
+            'message': f'Updated {len(pages)} pages to status: {new_status}'
+        })
+    except Exception as e:
+        logger.error(f"Error updating page statuses: {str(e)}")
+        return json_error(f'Error updating page statuses: {str(e)}', 500)
 
 @app.route('/glossary/<glossary_id>/export', methods=['GET'])
 @login_required
