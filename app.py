@@ -10,7 +10,12 @@ import time
 from datetime import datetime
 from functools import wraps
 from dotenv import load_dotenv
-from posthog import Posthog
+# Make PostHog optional to avoid import errors
+try:
+    from posthog import Posthog
+    posthog_available = True
+except ImportError:
+    posthog_available = False
 from utils import (
     process_document, process_pdf, is_allowed_file, create_pdf_with_text, create_pdf_with_formatting, 
     create_pdf_with_text_basic, create_docx_with_text, create_html_with_text
@@ -115,8 +120,8 @@ def before_request():
                 session['next'] = request.url
                 return redirect(url_for('login'))
 
-    # Only track if PostHog is initialized
-    if posthog:
+    # Only track if PostHog is initialized and available
+    if posthog_available and posthog:
         try:
             user_id = get_user_id()
             # Capture page view
@@ -233,9 +238,9 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # This section has been moved above to initialize variables before they are used
 
-# Initialize PostHog if API key is available
+# Initialize PostHog if API key is available and the module is installed
 posthog = None
-if POSTHOG_API_KEY:
+if POSTHOG_API_KEY and posthog_available:
     try:
         posthog = Posthog(
             project_api_key=POSTHOG_API_KEY,
@@ -257,7 +262,7 @@ if POSTHOG_API_KEY:
         logger.error(f"Failed to initialize PostHog: {str(e)}")
         posthog = None
 else:
-    logger.info("PostHog API key not provided, analytics disabled")
+    logger.info("PostHog API key not provided or module not available, analytics disabled")
 
 # Log API key info for debugging
 logger.info(f"DEEPL_API_KEY present: {'Yes' if DEEPL_API_KEY else 'No'}")
@@ -322,7 +327,7 @@ def login():
         response = sign_in(email, password)
         if not response:
             # Track failed login attempt
-            if posthog:
+            if posthog_available and posthog:
                 posthog.capture(
                     distinct_id=email,
                     event='login_failed',
@@ -359,7 +364,7 @@ def login():
                 session['user_assistants'] = user_settings['assistants']
         
         # Track successful login
-        if posthog:
+        if posthog_available and posthog:
             posthog.capture(
                 distinct_id=response.user.id,
                 event='login_successful',
@@ -396,7 +401,7 @@ def signup():
         if password != password_confirm:
             flash('Lösenorden matchar inte', 'danger')
             # Track validation error
-            if posthog:
+            if posthog_available and posthog:
                 posthog.capture(
                     distinct_id=email or session.get('anonymous_id', 'unknown'),
                     event='signup_validation_error',
@@ -414,7 +419,7 @@ def signup():
         if not response:
             flash('Registrering misslyckades. Prova en annan e-postadress.', 'danger')
             # Track signup failure
-            if posthog:
+            if posthog_available and posthog:
                 posthog.capture(
                     distinct_id=email,
                     event='signup_failed',
@@ -433,7 +438,7 @@ def signup():
             save_user_data(response.user.id, user_data)
         
         # Track successful signup
-        if posthog:
+        if posthog_available and posthog:
             if response.user and response.user.id:
                 posthog.capture(
                     distinct_id=response.user.id,
@@ -457,7 +462,7 @@ def signup():
 @app.route('/logout')
 def logout():
     # Track logout event
-    if posthog:
+    if posthog_available and posthog:
         user_id = get_user_id()
         if user_id:
             posthog.capture(
@@ -1652,7 +1657,7 @@ def upload_file():
     
     if invalid_files:
         # Track invalid file type upload attempt
-        if posthog:
+        if posthog_available and posthog:
             posthog.capture(
                 distinct_id=get_user_id(),
                 event='file_upload_error',
@@ -2154,7 +2159,7 @@ def upload_file():
                 logger.info(f"Glossary ratio: {globals()['glossary_ratio']:.2f} replacements per 1000 characters")
         
         # Track successful file upload and translation
-        if posthog:
+        if posthog_available and posthog:
             posthog.capture(
                 distinct_id=get_user_id(),
                 event='files_translated',
@@ -2411,7 +2416,7 @@ def download_final():
             save_translation(user_id, original_filename, final_text, settings)
             
             # Track download event with PostHog
-            if posthog:
+            if posthog_available and posthog:
                 posthog.capture(
                     distinct_id=user_id,
                     event='translation_downloaded',
@@ -2611,7 +2616,7 @@ def create_new_glossary():
         logger.info(f"Glossary created successfully with ID: {result['id']}")
         
         # Track in analytics
-        if posthog:
+        if posthog_available and posthog:
             try:
                 # Get user data for better analytics
                 user_data = get_user_data(user_id)
@@ -2721,7 +2726,7 @@ def delete_glossary_by_id(glossary_id):
         return json_error('Failed to delete glossary', 500)
     
     # Track in analytics
-    if posthog:
+    if posthog_available and posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -2909,7 +2914,7 @@ def import_glossary_entries(glossary_id):
                 success_count += 1
         
         # Track in analytics
-        if posthog:
+        if posthog_available and posthog:
             try:
                 posthog.capture(
                     distinct_id=user_id,
@@ -3030,7 +3035,7 @@ def export_document(document_id):
         filename = f"{safe_title}.{export_format}"
         
         # Track export in analytics
-        if posthog:
+        if posthog_available and posthog:
             posthog.capture(
                 distinct_id=user_id,
                 event='document_exported',
@@ -3184,7 +3189,7 @@ def export_selected_pages(document_id):
         filename = f"{safe_title}_selected_pages.{export_format}"
         
         # Track export in analytics
-        if posthog:
+        if posthog_available and posthog:
             posthog.capture(
                 distinct_id=user_id,
                 event='selected_pages_exported',
@@ -3295,7 +3300,7 @@ def export_glossary_entries(glossary_id):
         output.seek(0)
         
         # Track in analytics
-        if posthog:
+        if posthog_available and posthog:
             try:
                 posthog.capture(
                     distinct_id=user_id,
@@ -3639,7 +3644,7 @@ def create_folder_route():
             return redirect(url_for('documents'))
     
     # Track in analytics
-    if posthog:
+    if posthog_available and posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -3739,7 +3744,7 @@ def delete_folder_route(folder_id):
         return json_error('Failed to delete folder', 500)
     
     # Track in analytics
-    if posthog:
+    if posthog_available and posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -3922,7 +3927,7 @@ def restore_document_version(document_id, version_id):
         return json_error('Failed to restore version', 500)
     
     # Track in analytics
-    if posthog:
+    if posthog_available and posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -3971,7 +3976,7 @@ def create_document_version(document_id):
         return json_error('Failed to create new version', 500)
     
     # Track in analytics
-    if posthog:
+    if posthog_available and posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -4296,7 +4301,7 @@ def delete_document_route(document_id):
         return json_error('Failed to delete document', 500)
     
     # Track in analytics
-    if posthog:
+    if posthog_available and posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
