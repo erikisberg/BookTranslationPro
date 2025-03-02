@@ -561,6 +561,8 @@ document.addEventListener('DOMContentLoaded', function() {
 {% block scripts %}
 {{ super() }}
 <script>
+    console.log("LOADING BATCH AI REVIEW SCRIPT");
+    
     // Debug function to help identify issues
     function debug(msg) {
         console.log("DEBUG: " + msg);
@@ -611,7 +613,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 pageCheckboxesAI.forEach(cb => cb.checked = false);
             });
         } else {
-            debug("WARNING: Deselect All button not found");
+            debug("WARNING: Select Deselect All button not found");
         }
         
         // Batch AI Review processing
