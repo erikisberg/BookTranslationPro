@@ -16,6 +16,28 @@
 </div>
 {% endif %}
 
+<!-- DIRECT ACTION BUTTONS -->
+<div class="container mb-4">
+    <div class="card bg-light">
+        <div class="card-body">
+            <h5 class="card-title">Direct Actions</h5>
+            <p class="card-text">Use these buttons if the normal UI is not responding</p>
+            <button onclick="createDirectFolder()" class="btn btn-success me-2">
+                <i class="bi bi-folder-plus"></i> Create New Folder
+            </button>
+            <button onclick="showDirectDeleteOptions()" class="btn btn-danger">
+                <i class="bi bi-trash"></i> Show Delete Options
+            </button>
+            <div id="documentDeleteOptions" class="mt-3 d-none">
+                <h6>Select a document to delete:</h6>
+                <div id="documentDeleteList" class="list-group mb-3">
+                    <!-- Will be populated with JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="container-fluid my-4">
     <div class="row">
         <!-- Sidebar for Folders -->
@@ -854,6 +876,175 @@
                 alert('Failed to delete item: ' + error.message);
             });
         }
+        
+        // Global direct action functions
+        window.createDirectFolder = function() {
+            const folderName = prompt('Enter new folder name:');
+            if (folderName && folderName.trim()) {
+                // Show creating message
+                alert('Creating folder "' + folderName + '"...');
+                
+                fetch('/documents/folders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: folderName.trim(),
+                        description: '',
+                        color: '#3498db'
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            console.error("Response not OK:", response.status, text);
+                            throw new Error('Server error: ' + response.status);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        alert('Folder created successfully!');
+                        window.location.reload();
+                    } else {
+                        alert(data.message || 'Failed to create folder');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error creating folder:', error);
+                    alert('Failed to create folder: ' + error.message);
+                });
+            }
+        };
+        
+        window.showDirectDeleteOptions = function() {
+            const deleteOptions = document.getElementById('documentDeleteOptions');
+            const deleteList = document.getElementById('documentDeleteList');
+            
+            if (deleteOptions && deleteList) {
+                // Toggle visibility
+                if (deleteOptions.classList.contains('d-none')) {
+                    // Show options and populate list
+                    deleteOptions.classList.remove('d-none');
+                    deleteList.innerHTML = ''; // Clear previous entries
+                    
+                    // Find all documents
+                    const documents = [];
+                    
+                    // Add from main documents list
+                    document.querySelectorAll('.document-card, .card-document').forEach(card => {
+                        let documentId = null;
+                        let documentTitle = null;
+                        
+                        // Try data attributes
+                        if (card.dataset && card.dataset.id) {
+                            documentId = card.dataset.id;
+                        }
+                        
+                        // Try href links
+                        if (!documentId) {
+                            const links = card.querySelectorAll('a[href*="/documents/"]');
+                            links.forEach(link => {
+                                const href = link.getAttribute('href');
+                                const match = href.match(/\/documents\/([a-zA-Z0-9-]+)/);
+                                if (match && match[1]) {
+                                    documentId = match[1];
+                                }
+                            });
+                        }
+                        
+                        // Try to find title
+                        const titleEl = card.querySelector('.card-title, h5, h4');
+                        if (titleEl) {
+                            documentTitle = titleEl.textContent.trim();
+                        }
+                        
+                        if (documentId && documentTitle) {
+                            documents.push({ id: documentId, title: documentTitle });
+                        }
+                    });
+                    
+                    // Add from document rows if any
+                    document.querySelectorAll('tr[data-document-id]').forEach(row => {
+                        const documentId = row.dataset.documentId;
+                        let documentTitle = "Unknown document";
+                        
+                        // Try to find title
+                        const titleEl = row.querySelector('.document-title, td:first-child');
+                        if (titleEl) {
+                            documentTitle = titleEl.textContent.trim();
+                        }
+                        
+                        if (documentId) {
+                            documents.push({ id: documentId, title: documentTitle });
+                        }
+                    });
+                    
+                    // If still no documents, get all links to documents
+                    if (documents.length === 0) {
+                        document.querySelectorAll('a[href*="/documents/"]').forEach(link => {
+                            const href = link.getAttribute('href');
+                            const match = href.match(/^\/documents\/([a-zA-Z0-9-]+)$/);
+                            if (match && match[1]) {
+                                const documentId = match[1];
+                                const documentTitle = link.textContent.trim() || "Document";
+                                
+                                documents.push({ id: documentId, title: documentTitle });
+                            }
+                        });
+                    }
+                    
+                    // Create delete buttons
+                    if (documents.length > 0) {
+                        documents.forEach(doc => {
+                            const item = document.createElement('button');
+                            item.className = 'list-group-item list-group-item-action';
+                            item.innerHTML = `<strong>${doc.title}</strong> <span class="badge bg-danger float-end">Delete</span>`;
+                            item.onclick = function() {
+                                if (confirm(`Are you sure you want to delete "${doc.title}"? This cannot be undone.`)) {
+                                    // Direct delete via fetch
+                                    fetch(`/documents/${doc.id}`, {
+                                        method: 'DELETE',
+                                        headers: {
+                                            'X-Requested-With': 'XMLHttpRequest',
+                                            'Content-Type': 'application/json',
+                                            'Accept': 'application/json'
+                                        }
+                                    })
+                                    .then(response => {
+                                        if (!response.ok) {
+                                            return response.text().then(text => {
+                                                console.error(`Delete response error: ${response.status}`, text);
+                                                throw new Error(`Server error: ${response.status}`);
+                                            });
+                                        }
+                                        return response.json();
+                                    })
+                                    .then(data => {
+                                        alert('Document deleted successfully');
+                                        window.location.reload();
+                                    })
+                                    .catch(error => {
+                                        console.error('Error deleting document:', error);
+                                        alert(`Failed to delete document: ${error.message}`);
+                                    });
+                                }
+                            };
+                            deleteList.appendChild(item);
+                        });
+                    } else {
+                        deleteList.innerHTML = '<div class="alert alert-warning">No documents found</div>';
+                    }
+                } else {
+                    // Hide options
+                    deleteOptions.classList.add('d-none');
+                }
+            }
+        };
         
         // Add emergency document deletion buttons
         try {
