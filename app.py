@@ -1542,9 +1542,13 @@ def upload_file():
             project_title = request.form.get('projectTitle', '')
             project_description = request.form.get('projectDescription', '')
             
-            # Store project title in session for later use
+            # Store project title and description in session for later use
             if project_title:
                 session['last_project_title'] = project_title
+                session.modified = True
+            
+            if project_description:
+                session['last_project_description'] = project_description
                 session.modified = True
             
             original_filename = os.path.basename(filepaths[0])
@@ -1565,7 +1569,9 @@ def upload_file():
                 'word_count': len(translated_text.split()),
                 'status': 'in_progress',  # Changed from 'completed' to 'in_progress'
                 'settings': {
-                    'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+                    'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS),
+                    'project_info': f"Project settings: {project_description}",
+                    'total_pages': len(source_text.split('\n\n'))
                 },
                 'source_content': source_text,
                 'translated_content': translated_text,
@@ -1603,9 +1609,13 @@ def upload_file():
                     project_title = request.form.get('projectTitle', '')
                     project_description = request.form.get('projectDescription', '')
                     
-                    # Store project title in session for later use if not already stored
+                    # Store project title and description in session for later use if not already stored
                     if project_title and 'last_project_title' not in session:
                         session['last_project_title'] = project_title
+                        session.modified = True
+                    
+                    if project_description and 'last_project_description' not in session:
+                        session['last_project_description'] = project_description
                         session.modified = True
                     
                     # For batch chapters, name them as chapters
@@ -1622,7 +1632,9 @@ def upload_file():
                         'word_count': len(translated_text.split()),
                         'status': 'in_progress',
                         'settings': {
-                            'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
+                            'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS),
+                            'project_info': f"Project settings: {project_description}",
+                            'total_pages': len(source_text.split('\n\n'))
                         },
                         'source_content': source_text,
                         'translated_content': translated_text,

@@ -18,6 +18,7 @@
                         Project: <strong>{{ document.title }}</strong> &middot;
                         {% if document.description %} {{ document.description }} &middot; {% endif %}
                         Languages: {{ document.source_language }} → {{ document.target_language }} &middot;
+                        {% if document.settings and document.settings.total_pages %}Pages: {{ document.settings.total_pages }} &middot;{% endif %}
                         Created: {{ document.created_at|datetime }}
                     </div>
                 {% else %}
