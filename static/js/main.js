@@ -643,6 +643,11 @@ document.addEventListener('DOMContentLoaded', function() {
         initDocumentManagement();
     }
     
+    // Initialize glossary management page if relevant
+    if (window.location.pathname.includes('/glossary')) {
+        initGlossaryManagement();
+    }
+    
     /**
      * Initialize document management functionality
      */
@@ -1154,5 +1159,865 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error deleting item:', error);
             showNotification('Failed to delete item: ' + error.message, 'danger');
         });
+    }
+    
+    /**
+     * Initialize glossary management functionality
+     */
+    function initGlossaryManagement() {
+        console.log("Initializing glossary management");
+        
+        let currentGlossaryId = null;
+        let deleteItemType = null;
+        let deleteItemId = null;
+        
+        try {
+            // Initialize Bootstrap modals
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const entryModalEl = document.getElementById('entryModal');
+                const importModalEl = document.getElementById('importModal');
+                const deleteConfirmModalEl = document.getElementById('deleteConfirmModal');
+                
+                if (entryModalEl) {
+                    window.entryModal = new bootstrap.Modal(entryModalEl);
+                }
+                
+                if (importModalEl) {
+                    window.importModal = new bootstrap.Modal(importModalEl);
+                }
+                
+                if (deleteConfirmModalEl) {
+                    window.deleteConfirmModal = new bootstrap.Modal(deleteConfirmModalEl);
+                }
+            }
+            
+            // Initialize glossary list
+            initGlossaryList();
+            
+            // Initialize form handlers
+            initGlossaryFormHandlers();
+            
+        } catch (error) {
+            console.error("Error initializing glossary management:", error);
+        }
+        
+        /**
+         * Initialize glossary list functionality
+         */
+        function initGlossaryList() {
+            document.querySelectorAll('#glossaryList .list-group-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    // Update selected state
+                    document.querySelectorAll('#glossaryList .list-group-item').forEach(el => {
+                        el.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    // Get glossary details
+                    const glossaryId = this.dataset.id;
+                    const name = this.dataset.name;
+                    const description = this.dataset.description;
+                    const sourceLang = this.dataset.sourceLang;
+                    const targetLang = this.dataset.targetLang;
+                    
+                    // Populate form
+                    document.getElementById('glossaryId').value = glossaryId;
+                    document.getElementById('glossaryName').value = name;
+                    document.getElementById('glossaryDescription').value = description;
+                    
+                    const sourceLanguage = document.getElementById('sourceLanguage');
+                    if (sourceLanguage) sourceLanguage.value = sourceLang;
+                    
+                    const targetLanguage = document.getElementById('targetLanguage');
+                    if (targetLanguage) targetLanguage.value = targetLang;
+                    
+                    // Update current glossary context
+                    currentGlossaryId = glossaryId;
+                    
+                    const currentGlossaryName = document.getElementById('currentGlossaryName');
+                    if (currentGlossaryName) currentGlossaryName.textContent = name;
+                    
+                    // Enable entry buttons
+                    const addEntryBtn = document.getElementById('addEntryBtn');
+                    if (addEntryBtn) addEntryBtn.disabled = false;
+                    
+                    const importBtn = document.getElementById('importBtn');
+                    if (importBtn) importBtn.disabled = false;
+                    
+                    const exportBtn = document.getElementById('exportBtn');
+                    if (exportBtn) exportBtn.disabled = false;
+                    
+                    // Show entries
+                    loadGlossaryEntries(glossaryId);
+                });
+            });
+        }
+        
+        /**
+         * Initialize form handlers
+         */
+        function initGlossaryFormHandlers() {
+            // New glossary button
+            const createGlossaryBtn = document.getElementById('createGlossaryBtn');
+            if (createGlossaryBtn) {
+                createGlossaryBtn.addEventListener('click', function() {
+                    console.log("Create glossary button clicked");
+                    
+                    // Clear form
+                    const glossaryForm = document.getElementById('glossaryForm');
+                    if (glossaryForm) glossaryForm.reset();
+                    
+                    const glossaryId = document.getElementById('glossaryId');
+                    if (glossaryId) glossaryId.value = '';
+                    
+                    // Remove selection
+                    document.querySelectorAll('#glossaryList .list-group-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    
+                    // Hide entries
+                    const entriesContainer = document.getElementById('entriesContainer');
+                    if (entriesContainer) entriesContainer.classList.add('d-none');
+                    
+                    const entriesPlaceholder = document.getElementById('entriesPlaceholder');
+                    if (entriesPlaceholder) entriesPlaceholder.classList.remove('d-none');
+                    
+                    const currentGlossaryName = document.getElementById('currentGlossaryName');
+                    if (currentGlossaryName) currentGlossaryName.textContent = 'Välj en ordlista';
+                    
+                    // Disable entry buttons
+                    const addEntryBtn = document.getElementById('addEntryBtn');
+                    if (addEntryBtn) addEntryBtn.disabled = true;
+                    
+                    const importBtn = document.getElementById('importBtn');
+                    if (importBtn) importBtn.disabled = true;
+                    
+                    const exportBtn = document.getElementById('exportBtn');
+                    if (exportBtn) exportBtn.disabled = true;
+                    
+                    // Show alternate submit option
+                    const alternateSubmitContainer = document.getElementById('alternateSubmitContainer');
+                    if (alternateSubmitContainer) alternateSubmitContainer.style.display = 'block';
+                    
+                    currentGlossaryId = null;
+                });
+            }
+            
+            // Glossary form
+            const glossaryForm = document.getElementById('glossaryForm');
+            if (glossaryForm) {
+                glossaryForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    saveGlossary();
+                });
+            }
+            
+            // Save glossary button
+            const saveGlossaryBtn = document.getElementById('saveGlossaryBtn');
+            if (saveGlossaryBtn) {
+                saveGlossaryBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    saveGlossary();
+                });
+            }
+            
+            // Alternate submit button
+            const alternateSubmitBtn = document.getElementById('alternateSubmitBtn');
+            if (alternateSubmitBtn) {
+                alternateSubmitBtn.addEventListener('click', function() {
+                    // Get form values
+                    const name = document.getElementById('glossaryName').value;
+                    const description = document.getElementById('glossaryDescription').value;
+                    const sourceLang = document.getElementById('sourceLanguage').value;
+                    const targetLang = document.getElementById('targetLanguage').value;
+                    
+                    if (!name) {
+                        showNotification('Glossary name is required', 'warning');
+                        return;
+                    }
+                    
+                    // Populate hidden form
+                    const directName = document.getElementById('directName');
+                    if (directName) directName.value = name;
+                    
+                    const directDescription = document.getElementById('directDescription');
+                    if (directDescription) directDescription.value = description;
+                    
+                    const directSourceLanguage = document.getElementById('directSourceLanguage');
+                    if (directSourceLanguage) directSourceLanguage.value = sourceLang;
+                    
+                    const directTargetLanguage = document.getElementById('directTargetLanguage');
+                    if (directTargetLanguage) directTargetLanguage.value = targetLang;
+                    
+                    // Submit the direct form
+                    const directGlossaryForm = document.getElementById('directGlossaryForm');
+                    if (directGlossaryForm) directGlossaryForm.submit();
+                });
+            }
+            
+            // Delete glossary button
+            const deleteGlossaryBtn = document.getElementById('deleteGlossaryBtn');
+            if (deleteGlossaryBtn) {
+                deleteGlossaryBtn.addEventListener('click', function() {
+                    const glossaryId = document.getElementById('glossaryId').value;
+                    if (!glossaryId) return;
+                    
+                    deleteItemType = 'glossary';
+                    deleteItemId = glossaryId;
+                    const glossaryName = document.getElementById('glossaryName').value;
+                    
+                    const deleteConfirmMessage = document.getElementById('deleteConfirmMessage');
+                    if (deleteConfirmMessage) {
+                        deleteConfirmMessage.textContent = 
+                            `Är du säker på att du vill ta bort ordlistan "${glossaryName}"? Detta kommer permanent ta bort alla termer i denna ordlista.`;
+                    }
+                    
+                    if (window.deleteConfirmModal) {
+                        window.deleteConfirmModal.show();
+                    } else {
+                        // Fallback if modal fails
+                        if (confirm(`Är du säker på att du vill ta bort ordlistan "${glossaryName}"?`)) {
+                            deleteGlossary(deleteItemId);
+                        }
+                    }
+                });
+            }
+            
+            // Add entry button
+            const addEntryBtn = document.getElementById('addEntryBtn');
+            if (addEntryBtn) {
+                addEntryBtn.addEventListener('click', function() {
+                    // Clear form
+                    const entryForm = document.getElementById('entryForm');
+                    if (entryForm) entryForm.reset();
+                    
+                    const entryId = document.getElementById('entryId');
+                    if (entryId) entryId.value = '';
+                    
+                    // Update modal title
+                    const entryModalLabel = document.getElementById('entryModalLabel');
+                    if (entryModalLabel) entryModalLabel.textContent = 'Lägg till ny term';
+                    
+                    // Show modal
+                    if (window.entryModal) {
+                        window.entryModal.show();
+                    } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const entryModalEl = document.getElementById('entryModal');
+                        if (entryModalEl) {
+                            const entryModal = new bootstrap.Modal(entryModalEl);
+                            entryModal.show();
+                        }
+                    }
+                });
+            }
+            
+            // Save entry button
+            const saveEntryBtn = document.getElementById('saveEntryBtn');
+            if (saveEntryBtn) {
+                saveEntryBtn.addEventListener('click', function() {
+                    if (!validateEntryForm()) return;
+                    saveEntry();
+                });
+            }
+            
+            // Import button
+            const importBtn = document.getElementById('importBtn');
+            if (importBtn) {
+                importBtn.addEventListener('click', function() {
+                    // Clear form
+                    const importForm = document.getElementById('importForm');
+                    if (importForm) importForm.reset();
+                    
+                    // Show modal
+                    if (window.importModal) {
+                        window.importModal.show();
+                    } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const importModalEl = document.getElementById('importModal');
+                        if (importModalEl) {
+                            const importModal = new bootstrap.Modal(importModalEl);
+                            importModal.show();
+                        }
+                    }
+                });
+            }
+            
+            // Submit import button
+            const submitImportBtn = document.getElementById('submitImportBtn');
+            if (submitImportBtn) {
+                submitImportBtn.addEventListener('click', function() {
+                    const importFile = document.getElementById('importFile');
+                    if (!importFile || !importFile.files.length) {
+                        showNotification('Vänligen välj en fil att importera', 'warning');
+                        return;
+                    }
+                    importTerms();
+                });
+            }
+            
+            // Export button
+            const exportBtn = document.getElementById('exportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    if (!currentGlossaryId) return;
+                    exportTerms(currentGlossaryId);
+                });
+            }
+            
+            // Delete confirmation button
+            const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+            if (confirmDeleteBtn) {
+                confirmDeleteBtn.addEventListener('click', function() {
+                    if (deleteItemType === 'glossary') {
+                        deleteGlossary(deleteItemId);
+                    } else if (deleteItemType === 'entry') {
+                        deleteEntry(deleteItemId);
+                    }
+                    
+                    // Close modal
+                    if (window.deleteConfirmModal) {
+                        window.deleteConfirmModal.hide();
+                    } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const deleteConfirmModalEl = document.getElementById('deleteConfirmModal');
+                        if (deleteConfirmModalEl) {
+                            const deleteConfirmModal = bootstrap.Modal.getInstance(deleteConfirmModalEl);
+                            if (deleteConfirmModal) deleteConfirmModal.hide();
+                        }
+                    }
+                });
+            }
+        }
+        
+        /**
+         * Save glossary
+         */
+        function saveGlossary() {
+            const glossaryId = document.getElementById('glossaryId').value;
+            const name = document.getElementById('glossaryName').value;
+            const description = document.getElementById('glossaryDescription').value;
+            const sourceLang = document.getElementById('sourceLanguage').value;
+            const targetLang = document.getElementById('targetLanguage').value;
+            
+            if (!name) {
+                showNotification('Glossary name is required', 'warning');
+                return;
+            }
+            
+            const data = {
+                name: name,
+                description: description,
+                source_language: sourceLang,
+                target_language: targetLang
+            };
+            
+            const url = glossaryId ? `/glossary/${glossaryId}` : '/glossary';
+            const method = glossaryId ? 'PUT' : 'POST';
+            
+            console.log("Sending request to:", url, "Method:", method);
+            
+            // For new glossaries, use traditional form submission
+            if (method === 'POST') {
+                // Submit a hidden form to avoid AJAX issues
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = url;
+                
+                // Add fields
+                for (const key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = data[key];
+                        form.appendChild(input);
+                    }
+                }
+                
+                // Add to document and submit
+                document.body.appendChild(form);
+                form.submit();
+                return; // Exit since we're doing a form submit
+            }
+            
+            // For updates, try AJAX first
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error("Response not OK:", response.status, text);
+                        throw new Error('Server error: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message || 'Glossary saved successfully', 'success');
+                    window.location.reload();
+                } else {
+                    showNotification(data.message || 'Failed to save glossary', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving glossary:', error);
+                
+                // Fallback to form submission for updates as well
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = url;
+                
+                // Add method override field for PUT
+                const methodField = document.createElement('input');
+                methodField.type = 'hidden';
+                methodField.name = '_method';
+                methodField.value = 'PUT';
+                form.appendChild(methodField);
+                
+                // Add data fields
+                for (const key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = data[key];
+                        form.appendChild(input);
+                    }
+                }
+                
+                // Add to document and submit
+                document.body.appendChild(form);
+                form.submit();
+            });
+        }
+        
+        /**
+         * Delete glossary
+         */
+        function deleteGlossary(glossaryId) {
+            // Try direct form submission first for reliable operation
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/glossary/${glossaryId}`;
+            
+            // Add method override field for DELETE
+            const methodField = document.createElement('input');
+            methodField.type = 'hidden';
+            methodField.name = '_method';
+            methodField.value = 'DELETE';
+            form.appendChild(methodField);
+            
+            // Add to document and submit
+            document.body.appendChild(form);
+            form.submit();
+        }
+        
+        /**
+         * Load glossary entries
+         */
+        function loadGlossaryEntries(glossaryId) {
+            fetch(`/glossary/${glossaryId}/entries`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error("Response not OK:", response.status, text);
+                        throw new Error('Server error: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Show entries container, hide placeholder
+                const entriesPlaceholder = document.getElementById('entriesPlaceholder');
+                if (entriesPlaceholder) entriesPlaceholder.classList.add('d-none');
+                
+                const entriesContainer = document.getElementById('entriesContainer');
+                if (entriesContainer) entriesContainer.classList.remove('d-none');
+                
+                // Populate entries table
+                const tableBody = document.getElementById('entriesTableBody');
+                if (!tableBody) return;
+                
+                tableBody.innerHTML = '';
+                
+                if (data.entries && data.entries.length > 0) {
+                    const noEntriesMessage = document.getElementById('noEntriesMessage');
+                    if (noEntriesMessage) noEntriesMessage.classList.add('d-none');
+                    
+                    data.entries.forEach(entry => {
+                        const row = document.createElement('tr');
+                        row.dataset.id = entry.id;
+                        
+                        // Source term cell
+                        const sourceCell = document.createElement('td');
+                        sourceCell.textContent = entry.source_term;
+                        
+                        // Target term cell
+                        const targetCell = document.createElement('td');
+                        targetCell.textContent = entry.target_term;
+                        
+                        // Actions cell
+                        const actionsCell = document.createElement('td');
+                        
+                        // Edit button
+                        const editBtn = document.createElement('button');
+                        editBtn.className = 'btn btn-sm btn-outline-primary me-1';
+                        editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+                        editBtn.addEventListener('click', function() {
+                            loadEntryForEdit(entry);
+                        });
+                        
+                        // Delete button
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                        deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                        deleteBtn.addEventListener('click', function() {
+                            confirmDeleteEntry(entry.id);
+                        });
+                        
+                        actionsCell.appendChild(editBtn);
+                        actionsCell.appendChild(deleteBtn);
+                        
+                        // Add cells to row
+                        row.appendChild(sourceCell);
+                        row.appendChild(targetCell);
+                        row.appendChild(actionsCell);
+                        
+                        // Add row to table
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    const noEntriesMessage = document.getElementById('noEntriesMessage');
+                    if (noEntriesMessage) noEntriesMessage.classList.remove('d-none');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading glossary entries:', error);
+                showNotification('Failed to load glossary entries', 'danger');
+            });
+        }
+        
+        /**
+         * Load entry for editing
+         */
+        function loadEntryForEdit(entry) {
+            // Populate form
+            const entryId = document.getElementById('entryId');
+            if (entryId) entryId.value = entry.id;
+            
+            const sourceTerm = document.getElementById('sourceTerm');
+            if (sourceTerm) sourceTerm.value = entry.source_term;
+            
+            const targetTerm = document.getElementById('targetTerm');
+            if (targetTerm) targetTerm.value = entry.target_term;
+            
+            const context = document.getElementById('context');
+            if (context) context.value = entry.context || '';
+            
+            const notes = document.getElementById('notes');
+            if (notes) notes.value = entry.notes || '';
+            
+            // Update modal title
+            const entryModalLabel = document.getElementById('entryModalLabel');
+            if (entryModalLabel) entryModalLabel.textContent = 'Redigera term';
+            
+            // Show modal
+            if (window.entryModal) {
+                window.entryModal.show();
+            } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const entryModalEl = document.getElementById('entryModal');
+                if (entryModalEl) {
+                    const entryModal = new bootstrap.Modal(entryModalEl);
+                    entryModal.show();
+                }
+            }
+        }
+        
+        /**
+         * Save entry
+         */
+        function saveEntry() {
+            const entryId = document.getElementById('entryId').value;
+            const sourceTerm = document.getElementById('sourceTerm').value;
+            const targetTerm = document.getElementById('targetTerm').value;
+            const context = document.getElementById('context').value;
+            const notes = document.getElementById('notes').value;
+            
+            if (!currentGlossaryId) {
+                showNotification('Ingen ordlista vald', 'warning');
+                return;
+            }
+            
+            const data = {
+                source_term: sourceTerm,
+                target_term: targetTerm,
+                context: context,
+                notes: notes
+            };
+            
+            const url = entryId 
+                ? `/glossary/${currentGlossaryId}/entries/${entryId}`
+                : `/glossary/${currentGlossaryId}/entries`;
+                
+            const method = entryId ? 'PUT' : 'POST';
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error("Response not OK:", response.status, text);
+                        throw new Error('Server error: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message || 'Term saved successfully', 'success');
+                    
+                    // Close modal
+                    if (window.entryModal) {
+                        window.entryModal.hide();
+                    } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const entryModalEl = document.getElementById('entryModal');
+                        if (entryModalEl) {
+                            const entryModal = bootstrap.Modal.getInstance(entryModalEl);
+                            if (entryModal) entryModal.hide();
+                        }
+                    }
+                    
+                    // Reload entries
+                    loadGlossaryEntries(currentGlossaryId);
+                } else {
+                    showNotification(data.message || 'Failed to save term', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving entry:', error);
+                showNotification('Failed to save term: ' + error.message, 'danger');
+                
+                // Fallback to form submission
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = url;
+                
+                // Add method override field for PUT if needed
+                if (method === 'PUT') {
+                    const methodField = document.createElement('input');
+                    methodField.type = 'hidden';
+                    methodField.name = '_method';
+                    methodField.value = 'PUT';
+                    form.appendChild(methodField);
+                }
+                
+                // Add data fields
+                for (const key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = data[key];
+                        form.appendChild(input);
+                    }
+                }
+                
+                // Add to document and submit
+                document.body.appendChild(form);
+                form.submit();
+            });
+        }
+        
+        /**
+         * Confirm delete entry
+         */
+        function confirmDeleteEntry(entryId) {
+            deleteItemType = 'entry';
+            deleteItemId = entryId;
+            
+            const deleteConfirmMessage = document.getElementById('deleteConfirmMessage');
+            if (deleteConfirmMessage) {
+                deleteConfirmMessage.textContent = 'Är du säker på att du vill ta bort denna term? Denna åtgärd kan inte ångras.';
+            }
+            
+            if (window.deleteConfirmModal) {
+                window.deleteConfirmModal.show();
+            } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const deleteConfirmModalEl = document.getElementById('deleteConfirmModal');
+                if (deleteConfirmModalEl) {
+                    const deleteConfirmModal = new bootstrap.Modal(deleteConfirmModalEl);
+                    deleteConfirmModal.show();
+                }
+            } else {
+                // Fallback if modal fails
+                if (confirm('Är du säker på att du vill ta bort denna term? Denna åtgärd kan inte ångras.')) {
+                    deleteEntry(entryId);
+                }
+            }
+        }
+        
+        /**
+         * Delete entry
+         */
+        function deleteEntry(entryId) {
+            fetch(`/glossary/${currentGlossaryId}/entries/${entryId}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error("Response not OK:", response.status, text);
+                        throw new Error('Server error: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message || 'Term deleted successfully', 'success');
+                    
+                    // Reload entries
+                    loadGlossaryEntries(currentGlossaryId);
+                } else {
+                    showNotification(data.message || 'Failed to delete term', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting entry:', error);
+                showNotification('Failed to delete term: ' + error.message, 'danger');
+                
+                // Fallback to form submission
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/glossary/${currentGlossaryId}/entries/${entryId}`;
+                
+                // Add method override field for DELETE
+                const methodField = document.createElement('input');
+                methodField.type = 'hidden';
+                methodField.name = '_method';
+                methodField.value = 'DELETE';
+                form.appendChild(methodField);
+                
+                // Add to document and submit
+                document.body.appendChild(form);
+                form.submit();
+            });
+        }
+        
+        /**
+         * Import terms
+         */
+        function importTerms() {
+            const importFile = document.getElementById('importFile');
+            if (!importFile || !importFile.files.length || !currentGlossaryId) return;
+            
+            const file = importFile.files[0];
+            const hasHeader = document.getElementById('hasHeader').checked;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('has_header', hasHeader ? 'true' : 'false');
+            
+            fetch(`/glossary/${currentGlossaryId}/import`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error("Response not OK:", response.status, text);
+                        throw new Error('Server error: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message || `Imported ${data.count} terms successfully`, 'success');
+                    
+                    // Close modal
+                    if (window.importModal) {
+                        window.importModal.hide();
+                    } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const importModalEl = document.getElementById('importModal');
+                        if (importModalEl) {
+                            const importModal = bootstrap.Modal.getInstance(importModalEl);
+                            if (importModal) importModal.hide();
+                        }
+                    }
+                    
+                    // Reload entries
+                    loadGlossaryEntries(currentGlossaryId);
+                } else {
+                    showNotification(data.message || 'Failed to import terms', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error importing terms:', error);
+                showNotification('Failed to import terms: ' + error.message, 'danger');
+                
+                // Try traditional form submission as fallback
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/glossary/${currentGlossaryId}/import`;
+                form.enctype = 'multipart/form-data';
+                
+                // Clone the file input and add to form
+                const fileInput = importFile.cloneNode(true);
+                form.appendChild(fileInput);
+                
+                // Add has_header field
+                const hasHeaderInput = document.createElement('input');
+                hasHeaderInput.type = 'hidden';
+                hasHeaderInput.name = 'has_header';
+                hasHeaderInput.value = hasHeader ? 'true' : 'false';
+                form.appendChild(hasHeaderInput);
+                
+                // Add to document and submit
+                document.body.appendChild(form);
+                form.submit();
+            });
+        }
+        
+        /**
+         * Export terms
+         */
+        function exportTerms(glossaryId) {
+            window.location.href = `/glossary/${glossaryId}/export`;
+        }
+        
+        /**
+         * Validate entry form
+         */
+        function validateEntryForm() {
+            const sourceTerm = document.getElementById('sourceTerm');
+            const targetTerm = document.getElementById('targetTerm');
+            
+            if (!sourceTerm || !sourceTerm.value.trim()) {
+                showNotification('Källterm krävs', 'warning');
+                return false;
+            }
+            
+            if (!targetTerm || !targetTerm.value.trim()) {
+                showNotification('Målterm krävs', 'warning');
+                return false;
+            }
+            
+            return true;
+        }
     }
 });
