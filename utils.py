@@ -560,8 +560,8 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
     
     while retry_count < max_retries:
         try:
-            # Create translator with timeout
-            translator = deepl.Translator(deepl_api_key, timeout=timeout)
+            # Create translator
+            translator = deepl.Translator(deepl_api_key)
             
             # Validate API key by checking usage
             try:
