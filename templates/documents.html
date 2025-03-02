@@ -310,10 +310,25 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        console.log("DOM Content Loaded");
+        
+        // Check for Bootstrap
+        console.log("Bootstrap available:", typeof bootstrap !== 'undefined');
+        
+        // Check for elements
+        const folderModalEl = document.getElementById('folderModal');
+        console.log("Folder modal element:", folderModalEl);
+        
         // Initialize modals with error handling
         let folderModal, moveDocumentModal, deleteConfirmModal;
         try {
-            folderModal = new bootstrap.Modal(document.getElementById('folderModal'));
+            if (folderModalEl) {
+                folderModal = new bootstrap.Modal(folderModalEl);
+                console.log("Folder modal initialized");
+            } else {
+                console.error("Folder modal element not found");
+            }
+            
             moveDocumentModal = new bootstrap.Modal(document.getElementById('moveDocumentModal'));
             deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
             console.log("Modals initialized successfully");
@@ -325,23 +340,56 @@
         const createFolderBtn = document.getElementById('createFolderBtn');
         console.log("Create folder button:", createFolderBtn);
         
-        createFolderBtn.addEventListener('click', function() {
-            console.log("Create folder button clicked");
-            try {
-                document.getElementById('newFolderForm').reset();
-                document.getElementById('folderModalLabel').textContent = 'Create New Folder';
-                folderModal.show();
-            } catch (error) {
-                console.error("Error showing folder modal:", error);
-                alert('Failed to open folder creation dialog');
-            }
-        });
+        if (createFolderBtn) {
+            createFolderBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                console.log("Create folder button clicked");
+                
+                try {
+                    const formEl = document.getElementById('newFolderForm');
+                    if (formEl) {
+                        formEl.reset();
+                    } else {
+                        console.error("New folder form not found");
+                    }
+                    
+                    const modalLabelEl = document.getElementById('folderModalLabel');
+                    if (modalLabelEl) {
+                        modalLabelEl.textContent = 'Create New Folder';
+                    } else {
+                        console.error("Folder modal label not found");
+                    }
+                    
+                    if (folderModal) {
+                        folderModal.show();
+                        console.log("Folder modal shown");
+                    } else {
+                        console.error("Folder modal not initialized");
+                        // Fallback approach: trigger modal manually
+                        const modalEl = document.getElementById('folderModal');
+                        if (modalEl && typeof bootstrap !== 'undefined') {
+                            console.log("Trying to create modal on demand");
+                            const modal = new bootstrap.Modal(modalEl);
+                            modal.show();
+                        } else {
+                            alert('Could not open folder dialog. Please reload the page and try again.');
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error showing folder modal:", error);
+                    alert('Failed to open folder creation dialog: ' + error.message);
+                }
+            });
+        } else {
+            console.error("Create folder button not found");
+        }
         
         // Create folder form submission
         const createNewFolderBtn = document.getElementById('createNewFolderBtn');
         console.log("Create new folder submit button:", createNewFolderBtn);
         
-        createNewFolderBtn.addEventListener('click', function() {
+        if (createNewFolderBtn) {
+            createNewFolderBtn.addEventListener('click', function() {
             console.log("Create new folder submission initiated");
             
             const name = document.getElementById('newFolderName').value.trim();
@@ -396,6 +444,7 @@
                 console.error('Error creating folder:', error);
                 alert('Failed to create folder: ' + error.message);
             });
+        }
         });
         
         // Update folder form submission
