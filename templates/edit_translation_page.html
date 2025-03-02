@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Översätta Sida {{ page.page_number }}</h2>
+                <div>
+                    <a href="{{ url_for('translation_workspace', id=document_id) }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Tillbaka till sidöversikten
+                    </a>
+                </div>
+            </div>
+            
+            <form method="POST">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>Översättningsarbetsyta</h5>
+                        <div class="d-flex align-items-center">
+                            <label for="statusSelect" class="me-2">Status:</label>
+                            <select name="status" id="statusSelect" class="form-select form-select-sm" style="width: auto;">
+                                <option value="in_progress" {% if page.status == 'in_progress' %}selected{% endif %}>Pågående</option>
+                                <option value="needs_review" {% if page.status == 'needs_review' %}selected{% endif %}>Behöver granskning</option>
+                                <option value="completed" {% if page.status == 'completed' %}selected{% endif %}>Slutförd</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- Source text -->
+                            <div class="col-md-6 border-end">
+                                <h6>Källtext</h6>
+                                <div class="source-content bg-light p-3" style="white-space: pre-wrap; font-family: 'Roboto Mono', monospace; height: 65vh; overflow-y: auto;">
+                                    {{ page.source_content }}
+                                </div>
+                            </div>
+                            
+                            <!-- Translation area -->
+                            <div class="col-md-6">
+                                <h6>Översättning</h6>
+                                <textarea name="translated_content" class="form-control" style="font-family: 'Roboto Mono', monospace; height: 65vh; resize: none;">{{ page.translated_content }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer d-flex justify-content-between align-items-center">
+                        <div>
+                            {% if page.status == 'completed' %}
+                                <span class="badge rounded-pill bg-success">Slutförd</span>
+                            {% elif page.status == 'needs_review' %}
+                                <span class="badge rounded-pill bg-warning">Behöver granskning</span>
+                            {% else %}
+                                <span class="badge rounded-pill bg-primary">Pågående</span>
+                            {% endif %}
+                            <div class="progress d-inline-block ms-2 align-middle" style="width: 100px; height: 10px;">
+                                <div class="progress-bar {{ 'bg-success' if page.status == 'completed' else 'bg-warning' if page.status == 'needs_review' else 'bg-primary' }}" 
+                                     role="progressbar" 
+                                     style="width: {{ page.completion_percentage }}%;" 
+                                     aria-valuenow="{{ page.completion_percentage }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                </div>
+                            </div>
+                            <span class="ms-1">{{ page.completion_percentage }}%</span>
+                            {% if page.last_edited_at %}
+                                <small class="ms-3 text-muted">Senast redigerad: {{ page.last_edited_at }}</small>
+                            {% endif %}
+                        </div>
+                        <div class="btn-group">
+                            {% if has_prev %}
+                                <button type="submit" class="btn btn-outline-primary" name="save_prev">
+                                    <i class="bi bi-arrow-left"></i> Spara & Föregående
+                                </button>
+                            {% endif %}
+                            <button type="submit" class="btn btn-primary" name="save">
+                                <i class="bi bi-save"></i> Spara
+                            </button>
+                            {% if has_next %}
+                                <button type="submit" class="btn btn-outline-primary" name="save_next">
+                                    Spara & Nästa <i class="bi bi-arrow-right"></i>
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </form>
+            
+            <!-- Navigation buttons -->
+            <div class="d-flex justify-content-between mb-4">
+                <div>
+                    {% if has_prev %}
+                        <a href="{{ url_for('edit_translation_page', document_id=document_id, page_id=prev_page_id) }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Föregående sida
+                        </a>
+                    {% endif %}
+                </div>
+                <div>
+                    <span class="mx-3">Sida {{ page.page_number }}</span>
+                </div>
+                <div>
+                    {% if has_next %}
+                        <a href="{{ url_for('edit_translation_page', document_id=document_id, page_id=next_page_id) }}" class="btn btn-outline-secondary">
+                            Nästa sida <i class="bi bi-arrow-right"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Keyboard shortcuts help -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Tangentbordsgenvägar</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <kbd>Ctrl</kbd> + <kbd>S</kbd> - Spara
+                        </div>
+                        <div class="col-md-4">
+                            <kbd>Alt</kbd> + <kbd>→</kbd> - Nästa sida
+                        </div>
+                        <div class="col-md-4">
+                            <kbd>Alt</kbd> + <kbd>←</kbd> - Föregående sida
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Auto-save functionality (every 60 seconds)
+        const form = document.querySelector('form');
+        const textarea = document.querySelector('textarea[name="translated_content"]');
+        const statusSelect = document.getElementById('statusSelect');
+        let autoSaveInterval = null;
+        
+        // Start auto-save when user modifies content
+        textarea.addEventListener('input', function() {
+            if (!autoSaveInterval) {
+                autoSaveInterval = setInterval(autoSave, 60000); // 60 seconds
+                console.log('Auto-save activated');
+            }
+        });
+        
+        function autoSave() {
+            // Only auto-save if there are changes
+            if (textarea.value !== textarea.defaultValue) {
+                console.log('Auto-saving...');
+                
+                const formData = new FormData(form);
+                
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (response.ok) {
+                        console.log('Auto-saved successfully');
+                        // Update the default value to track changes
+                        textarea.defaultValue = textarea.value;
+                    } else {
+                        console.error('Auto-save failed');
+                    }
+                })
+                .catch(error => {
+                    console.error('Auto-save error:', error);
+                });
+            }
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+S for save
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                document.querySelector('button[name="save"]').click();
+            }
+            
+            // Alt+Right Arrow for next page
+            if (e.altKey && e.key === 'ArrowRight') {
+                e.preventDefault();
+                const nextButton = document.querySelector('button[name="save_next"]');
+                if (nextButton) {
+                    nextButton.click();
+                }
+            }
+            
+            // Alt+Left Arrow for previous page
+            if (e.altKey && e.key === 'ArrowLeft') {
+                e.preventDefault();
+                const prevButton = document.querySelector('button[name="save_prev"]');
+                if (prevButton) {
+                    prevButton.click();
+                }
+            }
+        });
+        
+        // Confirmation before leaving if there are unsaved changes
+        window.addEventListener('beforeunload', function(e) {
+            if (textarea.value !== textarea.defaultValue) {
+                e.preventDefault();
+                e.returnValue = 'Du har osparade ändringar. Är du säker på att du vill lämna sidan?';
+                return e.returnValue;
+            }
+        });
+    });
+</script>
+{% endblock %}

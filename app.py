@@ -67,8 +67,25 @@ def inject_user():
             # Add user settings to context
             user_settings = get_user_settings(user_id) or {}
             context['user_settings'] = user_settings
-            
+    
     return context
+
+# Custom filters
+@app.template_filter('datetime')
+def format_datetime(value):
+    if not value:
+        return ''
+    
+    try:
+        # Handle if value is already a datetime object
+        if isinstance(value, datetime):
+            return value.strftime('%Y-%m-%d %H:%M')
+            
+        # Try to parse as ISO format
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M')
+    except (ValueError, AttributeError):
+        return value
 
 # Middleware to capture request data for PostHog and enforce login for main pages
 @app.before_request
@@ -520,6 +537,116 @@ def view_translation(id):
         return redirect(url_for('history'))
     
     return render_template('view_translation.html', translation_text=translation_text, id=id)
+    
+@app.route('/view-translation/<id>/workspace')
+@login_required
+def translation_workspace(id):
+    user_id = get_user_id()
+    translation_text = get_full_translation(user_id, id)
+    
+    if not translation_text:
+        flash('Översättning kunde inte hittas', 'danger')
+        return redirect(url_for('history'))
+    
+    # Check if the translation has already been split into pages
+    pages = get_document_pages(user_id, id)
+    
+    # If no pages exist, create them
+    if not pages:
+        # Split the translation into pages
+        content_pages = split_content_into_pages(translation_text)
+        
+        # Create pages in the database
+        for i, page_content in enumerate(content_pages, 1):
+            page_data = {
+                'document_id': id,
+                'page_number': i,
+                'source_content': page_content,
+                'translated_content': '',  # Start with empty translation
+                'status': 'in_progress',
+                'completion_percentage': 0
+            }
+            create_document_page(user_id, page_data)
+            
+        # Get the newly created pages
+        pages = get_document_pages(user_id, id)
+        
+        # Update document progress
+        update_document_progress(user_id, id)
+    
+    return render_template('translation_workspace.html', 
+                          translation_id=id, 
+                          pages=pages, 
+                          total_pages=len(pages),
+                          completed_pages=sum(1 for page in pages if page.get('status') == 'completed'),
+                          overall_progress=int((sum(1 for page in pages if page.get('status') == 'completed') / len(pages) * 100) if pages else 0))
+                          
+@app.route('/view-translation/<document_id>/page/<page_id>', methods=['GET', 'POST'])
+@login_required
+def edit_translation_page(document_id, page_id):
+    user_id = get_user_id()
+    
+    # Get the page data
+    page = get_document_page(user_id, page_id)
+    if not page:
+        flash('Sidan kunde inte hittas', 'danger')
+        return redirect(url_for('translation_workspace', id=document_id))
+    
+    if request.method == 'POST':
+        # Update the page with the new content
+        translated_content = request.form.get('translated_content', '')
+        status = request.form.get('status', 'in_progress')
+        
+        # Calculate completion percentage
+        if status == 'completed':
+            completion_percentage = 100
+        elif status == 'in_progress' and translated_content:
+            # Approximate completion based on content length ratio
+            src_length = len(page.get('source_content', ''))
+            if src_length > 0:
+                ratio = min(len(translated_content) / src_length, 0.99)  # Cap at 99% until marked completed
+                completion_percentage = int(ratio * 100)
+            else:
+                completion_percentage = 0
+        else:
+            completion_percentage = 0
+            
+        # Update the page
+        update_data = {
+            'translated_content': translated_content,
+            'status': status,
+            'completion_percentage': completion_percentage,
+            'last_edited_at': datetime.now().isoformat()
+        }
+        update_document_page(user_id, page_id, update_data)
+        
+        # Update overall document progress
+        update_document_progress(user_id, document_id)
+        
+        # Handle redirections
+        if 'save_next' in request.form:
+            next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
+            if next_page:
+                return redirect(url_for('edit_translation_page', document_id=document_id, page_id=next_page.get('id')))
+        elif 'save_prev' in request.form:
+            prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
+            if prev_page:
+                return redirect(url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id')))
+        
+        flash('Sidan har sparats', 'success')
+        return redirect(url_for('edit_translation_page', document_id=document_id, page_id=page_id))
+    
+    # Get next and previous pages for navigation
+    next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
+    prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
+    
+    return render_template('edit_translation_page.html', 
+                          document_id=document_id, 
+                          page=page,
+                          has_next=next_page is not None,
+                          has_prev=prev_page is not None,
+                          next_page_id=next_page.get('id') if next_page else None,
+                          prev_page_id=prev_page.get('id') if prev_page else None)
 
 @app.route('/download-translation/<id>')
 @login_required

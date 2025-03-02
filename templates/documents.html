@@ -7,10 +7,10 @@
 {% if not documents and not folders %}
 <div class="container mt-3">
     <div class="alert alert-warning">
-        <h5><i class="bi bi-exclamation-triangle-fill"></i> Database Setup Required</h5>
-        <p>The document management feature requires database tables to be set up. If you're an administrator, please run the database setup first.</p>
+        <h5><i class="bi bi-exclamation-triangle-fill"></i> Databasinställning krävs</h5>
+        <p>Dokumenthanteringsfunktionen kräver att databastabeller är inställda. Om du är administratör, vänligen kör databasinställningen först.</p>
         <a href="{{ url_for('setup_database') }}" class="btn btn-primary">
-            <i class="bi bi-database-gear"></i> Run Database Setup
+            <i class="bi bi-database-gear"></i> Kör databasinställning
         </a>
     </div>
 </div>
@@ -19,38 +19,6 @@
 <!-- DIRECT ACTION BUTTONS -->
 <div class="container mb-4">
 
-    <div class="card bg-light">
-        <div class="card-body">
-            <h5 class="card-title">Direct Actions</h5>
-            <p class="card-text">Use these buttons if the normal UI is not responding</p>
-            
-            <!-- Diagnostic Section -->
-            <div class="alert alert-info">
-                <h6>Diagnostic Tools</h6>
-                <button class="btn btn-primary mb-2" id="runDiagnosticsBtn">Run Diagnostics</button>
-                <div id="diagnosticOutput" class="mt-2 p-2 bg-dark text-white" style="max-height: 200px; overflow-y: auto;">
-                    <div>Waiting for diagnostics to run...</div>
-                </div>
-            </div>
-            
-            <!-- Actions with form submission fallback -->
-            <h6>Create Folder (Form Submit)</h6>
-            <form id="directFolderForm" method="POST" action="/documents/folders">
-                <div class="input-group mb-3">
-                    <input type="text" name="name" class="form-control" placeholder="Folder name" required>
-                    <input type="hidden" name="color" value="#3498db">
-                    <button class="btn btn-success" type="submit">Create Folder</button>
-                </div>
-                <div class="small text-muted">This will directly create a folder without using JavaScript</div>
-            </form>
-            
-            <!-- Delete Document Section -->
-            <h6 class="mt-3">Document Actions</h6>
-            <div id="documentsList">
-                <p>Loading document list...</p>
-            </div>
-        </div>
-    </div>
 </div>
 
 <div class="container-fluid my-4">
@@ -95,7 +63,7 @@
                     
                     {% if not folders %}
                         <div class="text-center text-muted mt-3">
-                            <p>No folders created yet</p>
+                            <p>Inga mappar skapade än</p>
                         </div>
                     {% endif %}
                 </div>
@@ -105,26 +73,26 @@
             {% if current_folder %}
                 <div class="card" id="folderDetails">
                     <div class="card-header">
-                        <h5 class="mb-0">Folder Details</h5>
+                        <h5 class="mb-0">Mappdetaljer</h5>
                     </div>
                     <div class="card-body">
                         <form id="folderForm">
                             <input type="hidden" id="folderId" value="{{ current_folder.id }}">
                             <div class="mb-3">
-                                <label for="folderName" class="form-label">Name</label>
+                                <label for="folderName" class="form-label">Namn</label>
                                 <input type="text" class="form-control" id="folderName" value="{{ current_folder.name }}" required>
                             </div>
                             <div class="mb-3">
-                                <label for="folderDescription" class="form-label">Description</label>
+                                <label for="folderDescription" class="form-label">Beskrivning</label>
                                 <textarea class="form-control" id="folderDescription" rows="2">{{ current_folder.description }}</textarea>
                             </div>
                             <div class="mb-3">
-                                <label for="folderColor" class="form-label">Color</label>
-                                <input type="color" class="form-control form-control-color" id="folderColor" value="{{ current_folder.color }}" title="Choose folder color">
+                                <label for="folderColor" class="form-label">Färg</label>
+                                <input type="color" class="form-control form-control-color" id="folderColor" value="{{ current_folder.color }}" title="Välj mappfärg">
                             </div>
                             <div class="d-flex justify-content-between">
-                                <button type="submit" class="btn btn-primary" id="saveFolderBtn">Save Changes</button>
-                                <button type="button" class="btn btn-outline-danger" id="deleteFolderBtn">Delete Folder</button>
+                                <button type="submit" class="btn btn-primary" id="saveFolderBtn">Spara ändringar</button>
+                                <button type="button" class="btn btn-outline-danger" id="deleteFolderBtn">Radera mapp</button>
                             </div>
                         </form>
                     </div>
@@ -141,22 +109,22 @@
                             <i class="bi bi-folder-fill" style="color: {{ current_folder.color }};"></i>
                             {{ current_folder.name }}
                         {% else %}
-                            <i class="bi bi-files"></i> All Documents
+                            <i class="bi bi-files"></i> Alla dokument
                         {% endif %}
                     </h5>
                     <div>
                         <button class="btn btn-sm btn-outline-secondary me-2" id="importBtn">
-                            <i class="bi bi-upload"></i> Import
+                            <i class="bi bi-upload"></i> Importera
                         </button>
                         <a href="{{ url_for('index') }}" class="btn btn-sm btn-primary">
-                            <i class="bi bi-plus"></i> New Translation
+                            <i class="bi bi-plus"></i> Ny översättning
                         </a>
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
                         <div class="input-group">
-                            <input type="text" class="form-control" id="searchDocuments" placeholder="Search documents...">
+                            <input type="text" class="form-control" id="searchDocuments" placeholder="Sök dokument...">
                             <button class="btn btn-outline-secondary" type="button" id="searchBtn">
                                 <i class="bi bi-search"></i>
                             </button>
@@ -169,11 +137,11 @@
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Title</th>
-                                        <th>Languages</th>
-                                        <th>Created</th>
+                                        <th>Titel</th>
+                                        <th>Språk</th>
+                                        <th>Skapad</th>
                                         <th>Version</th>
-                                        <th>Actions</th>
+                                        <th>Åtgärder</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -199,17 +167,17 @@
                                             <td>
                                                 <div class="btn-group">
                                                     <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                                        Actions
+                                                        Åtgärder
                                                     </button>
                                                     <ul class="dropdown-menu">
-                                                        <li><a class="dropdown-item" href="{{ url_for('view_document', document_id=doc.id) }}"><i class="bi bi-eye"></i> View</a></li>
-                                                        <li><a class="dropdown-item" href="{{ url_for('edit_document', document_id=doc.id) }}"><i class="bi bi-pencil"></i> Edit</a></li>
-                                                        <li><a class="dropdown-item" href="{{ url_for('document_versions', document_id=doc.id) }}"><i class="bi bi-clock-history"></i> Versions</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('view_document', document_id=doc.id) }}"><i class="bi bi-eye"></i> Visa</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('edit_document', document_id=doc.id) }}"><i class="bi bi-pencil"></i> Redigera</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('document_versions', document_id=doc.id) }}"><i class="bi bi-clock-history"></i> Versioner</a></li>
                                                         <li><hr class="dropdown-divider"></li>
-                                                        <li><a class="dropdown-item" href="{{ url_for('download_document', document_id=doc.id) }}"><i class="bi bi-download"></i> Download</a></li>
-                                                        <li><a class="dropdown-item move-document-btn" href="#" data-id="{{ doc.id }}"><i class="bi bi-folder-symlink"></i> Move</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('download_document', document_id=doc.id) }}"><i class="bi bi-download"></i> Ladda ner</a></li>
+                                                        <li><a class="dropdown-item move-document-btn" href="#" data-id="{{ doc.id }}"><i class="bi bi-folder-symlink"></i> Flytta</a></li>
                                                         <li><hr class="dropdown-divider"></li>
-                                                        <li><a class="dropdown-item text-danger delete-document-btn" href="#" data-id="{{ doc.id }}"><i class="bi bi-trash"></i> Delete</a></li>
+                                                        <li><a class="dropdown-item text-danger delete-document-btn" href="#" data-id="{{ doc.id }}"><i class="bi bi-trash"></i> Radera</a></li>
                                                     </ul>
                                                 </div>
                                             </td>
@@ -224,7 +192,7 @@
                             <nav aria-label="Document pagination">
                                 <ul class="pagination justify-content-center">
                                     <li class="page-item {{ 'disabled' if page == 1 else '' }}">
-                                        <a class="page-link" href="{{ url_for('documents_folder', folder_id=current_folder.id, page=page-1) if current_folder else url_for('documents', page=page-1) }}">Previous</a>
+                                        <a class="page-link" href="{{ url_for('documents_folder', folder_id=current_folder.id, page=page-1) if current_folder else url_for('documents', page=page-1) }}">Föregående</a>
                                     </li>
                                     
                                     {% for p in range(1, total_pages + 1) %}
@@ -234,7 +202,7 @@
                                     {% endfor %}
                                     
                                     <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
-                                        <a class="page-link" href="{{ url_for('documents_folder', folder_id=current_folder.id, page=page+1) if current_folder else url_for('documents', page=page+1) }}">Next</a>
+                                        <a class="page-link" href="{{ url_for('documents_folder', folder_id=current_folder.id, page=page+1) if current_folder else url_for('documents', page=page+1) }}">Nästa</a>
                                     </li>
                                 </ul>
                             </nav>
@@ -243,14 +211,14 @@
                     {% else %}
                         <div class="text-center py-5">
                             <i class="bi bi-journal-text display-1 text-muted mb-3"></i>
-                            <h4 class="text-muted">No documents found</h4>
+                            <h4 class="text-muted">Inga dokument hittades</h4>
                             {% if current_folder %}
-                                <p class="text-muted">This folder is empty. Start by translating documents and moving them here.</p>
+                                <p class="text-muted">Denna mapp är tom. Börja med att översätta dokument och flytta dem hit.</p>
                             {% else %}
-                                <p class="text-muted">You haven't translated any documents yet. Get started with a new translation.</p>
+                                <p class="text-muted">Du har inte översatt några dokument än. Kom igång med en ny översättning.</p>
                             {% endif %}
                             <a href="{{ url_for('index') }}" class="btn btn-primary mt-3">
-                                <i class="bi bi-plus"></i> New Translation
+                                <i class="bi bi-plus"></i> Ny översättning
                             </a>
                         </div>
                     {% endif %}
@@ -297,16 +265,16 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="moveDocumentModalLabel">Move Document</h5>
+                <h5 class="modal-title" id="moveDocumentModalLabel">Flytta dokument</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="moveDocumentForm">
                     <input type="hidden" id="moveDocumentId">
                     <div class="mb-3">
-                        <label for="targetFolder" class="form-label">Select Destination Folder</label>
+                        <label for="targetFolder" class="form-label">Välj destinationsmapp</label>
                         <select class="form-select" id="targetFolder">
-                            <option value="">No Folder (Root)</option>
+                            <option value="">Ingen mapp (Rot)</option>
                             {% if folders %}
                                 {% for folder in folders %}
                                     <option value="{{ folder.id }}">
@@ -319,8 +287,8 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="moveDocumentConfirmBtn">Move</button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Avbryt</button>
+                <button type="button" class="btn btn-primary" id="moveDocumentConfirmBtn">Flytta</button>
             </div>
         </div>
     </div>

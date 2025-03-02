@@ -1139,3 +1139,175 @@ def get_translation_memory_stats(user_id):
     except Exception as e:
         logger.error(f"Error fetching translation memory stats: {e}")
         return {'total_entries': 0, 'languages': [], 'recent_activity': []}
+        
+# Document Pages Management Functions
+
+def split_content_into_pages(content, page_size=1500):
+    """Split content into pages of roughly equal size"""
+    if not content:
+        return []
+        
+    # Split by paragraphs first
+    paragraphs = content.split('\n\n')
+    
+    pages = []
+    current_page = []
+    current_length = 0
+    
+    for paragraph in paragraphs:
+        # If adding this paragraph would exceed page size and we already have content,
+        # finish the current page and start a new one
+        if current_length + len(paragraph) > page_size and current_page:
+            pages.append('\n\n'.join(current_page))
+            current_page = []
+            current_length = 0
+            
+        # Handle very long paragraphs that exceed page size on their own
+        if len(paragraph) > page_size:
+            # If we have content waiting, add it to pages first
+            if current_page:
+                pages.append('\n\n'.join(current_page))
+                current_page = []
+                
+            # Split the long paragraph at reasonable points (sentences)
+            sentences = paragraph.replace('. ', '.\n').split('\n')
+            temp_page = []
+            temp_length = 0
+            
+            for sentence in sentences:
+                if temp_length + len(sentence) > page_size and temp_page:
+                    pages.append('\n'.join(temp_page))
+                    temp_page = []
+                    temp_length = 0
+                    
+                temp_page.append(sentence)
+                temp_length += len(sentence)
+                
+            # Add any remaining content from the long paragraph
+            if temp_page:
+                pages.append('\n'.join(temp_page))
+        else:
+            # Normal case - add paragraph to current page
+            current_page.append(paragraph)
+            current_length += len(paragraph)
+    
+    # Add the last page if there's anything left
+    if current_page:
+        pages.append('\n\n'.join(current_page))
+        
+    return pages
+
+def get_document_pages(user_id, document_id):
+    """Get all pages for a document"""
+    try:
+        response = supabase.table('document_pages').select('*').eq('document_id', document_id).eq('user_id', user_id).order('page_number').execute()
+        if hasattr(response, 'data'):
+            return response.data
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching document pages: {e}")
+        return []
+        
+def get_document_page(user_id, page_id):
+    """Get a specific page"""
+    try:
+        response = supabase.table('document_pages').select('*').eq('id', page_id).eq('user_id', user_id).limit(1).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching document page: {e}")
+        return None
+        
+def create_document_page(user_id, page_data):
+    """Create a document page"""
+    try:
+        # Ensure required fields
+        if 'document_id' not in page_data or 'page_number' not in page_data:
+            logger.error("Missing required fields for document page")
+            return None
+            
+        page_data['user_id'] = user_id
+        page_data['created_at'] = datetime.now().isoformat()
+        page_data['updated_at'] = datetime.now().isoformat()
+        
+        # Generate a unique ID if not provided
+        if 'id' not in page_data:
+            page_data['id'] = str(uuid.uuid4())
+            
+        response = supabase.table('document_pages').insert(page_data).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error creating document page: {e}")
+        return None
+        
+def update_document_page(user_id, page_id, data):
+    """Update a document page"""
+    try:
+        data['updated_at'] = datetime.now().isoformat()
+        response = supabase.table('document_pages').update(data).eq('id', page_id).eq('user_id', user_id).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error updating document page: {e}")
+        return None
+        
+def delete_document_page(user_id, page_id):
+    """Delete a document page"""
+    try:
+        response = supabase.table('document_pages').delete().eq('id', page_id).eq('user_id', user_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting document page: {e}")
+        return False
+        
+def get_next_page(user_id, document_id, current_page_number):
+    """Get the next page in sequence"""
+    try:
+        response = supabase.table('document_pages').select('*').eq('document_id', document_id).eq('user_id', user_id).gt('page_number', current_page_number).order('page_number').limit(1).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching next page: {e}")
+        return None
+        
+def get_prev_page(user_id, document_id, current_page_number):
+    """Get the previous page in sequence"""
+    try:
+        response = supabase.table('document_pages').select('*').eq('document_id', document_id).eq('user_id', user_id).lt('page_number', current_page_number).order('page_number', desc=True).limit(1).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching previous page: {e}")
+        return None
+        
+def update_document_progress(user_id, document_id):
+    """Update document progress based on page status"""
+    try:
+        # Get all pages for the document
+        pages = get_document_pages(user_id, document_id)
+        if not pages:
+            return False
+            
+        total_pages = len(pages)
+        completed_pages = sum(1 for page in pages if page.get('status') == 'completed')
+        overall_progress = int((completed_pages / total_pages) * 100) if total_pages > 0 else 0
+        
+        # Update document
+        update_data = {
+            'total_pages': total_pages,
+            'completed_pages': completed_pages,
+            'overall_progress': overall_progress,
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        return update_document(user_id, document_id, update_data)
+    except Exception as e:
+        logger.error(f"Error updating document progress: {e}")
+        return False
