@@ -143,6 +143,20 @@ document.addEventListener('DOMContentLoaded', function() {
             // Create the FormData with all files
             const formData = new FormData();
             
+            // Add project title and description
+            const projectTitle = document.getElementById('projectTitle');
+            const projectDescription = document.getElementById('projectDescription');
+            
+            if (projectTitle) {
+                formData.append('projectTitle', projectTitle.value);
+                console.log("Adding project title:", projectTitle.value);
+            }
+            
+            if (projectDescription) {
+                formData.append('projectDescription', projectDescription.value);
+                console.log("Adding project description:", projectDescription.value);
+            }
+            
             // Show a batch indicator if multiple files
             if (files.length > 1) {
                 statusText.textContent = `Förbereder ${files.length} filer för översättning...`;

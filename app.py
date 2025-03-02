@@ -1,4 +1,5 @@
 import os
+import re
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort, Response
 from werkzeug.utils import secure_filename
 import tempfile
@@ -1410,6 +1411,13 @@ def upload_file():
     # Check for files - both single file and batch mode
     files = []
     
+    # Get project metadata
+    project_title = request.form.get('projectTitle', '')
+    project_description = request.form.get('projectDescription', '')
+    
+    # Log for debugging
+    logger.info(f"Received project title: '{project_title}', description: '{project_description}'")
+    
     # Check for batch mode (files[])
     if 'files[]' in request.files:
         files = request.files.getlist('files[]')
@@ -2512,6 +2520,7 @@ def import_glossary_entries(glossary_id):
 @app.route('/export/<document_id>', methods=['GET'])
 @login_required
 def export_document(document_id):
+    import re
     from utils import create_pdf_with_formatting, create_docx_with_text, create_html_with_text
     
     user_id = get_user_id()
@@ -2629,6 +2638,7 @@ def export_document(document_id):
 @app.route('/export-selected-pages/<document_id>', methods=['POST'])
 @login_required
 def export_selected_pages(document_id):
+    import re
     from utils import create_pdf_with_formatting, create_docx_with_text, create_html_with_text
     
     user_id = get_user_id()
