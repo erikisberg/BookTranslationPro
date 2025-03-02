@@ -645,67 +645,128 @@ def translation_workspace(id):
 def edit_translation_page(document_id, page_id):
     user_id = get_user_id()
     
-    # Get the page data
-    page = get_document_page(user_id, page_id)
-    if not page:
-        flash('Sidan kunde inte hittas', 'danger')
-        return redirect(url_for('translation_workspace', id=document_id))
-    
-    if request.method == 'POST':
-        # Update the page with the new content
-        translated_content = request.form.get('translated_content', '')
-        status = request.form.get('status', 'in_progress')
+    try:
+        # Get the document first to verify it exists
+        document = get_document(user_id, document_id)
+        if not document:
+            logger.warning(f"Document {document_id} not found for user {user_id}")
+            flash('Dokumentet kunde inte hittas', 'danger')
+            return redirect(url_for('view_translation', id=document_id))
         
-        # Calculate completion percentage
-        if status == 'completed':
-            completion_percentage = 100
-        elif status == 'in_progress' and translated_content:
-            # Approximate completion based on content length ratio
-            src_length = len(page.get('source_content', ''))
-            if src_length > 0:
-                ratio = min(len(translated_content) / src_length, 0.99)  # Cap at 99% until marked completed
-                completion_percentage = int(ratio * 100)
-            else:
-                completion_percentage = 0
-        else:
-            completion_percentage = 0
-            
-        # Update the page
-        update_data = {
-            'translated_content': translated_content,
-            'status': status,
-            'completion_percentage': completion_percentage,
-            'last_edited_at': datetime.now().isoformat()
-        }
-        update_document_page(user_id, page_id, update_data)
+        # Get the page data
+        page = get_document_page(user_id, page_id)
+        if not page:
+            logger.warning(f"Page {page_id} not found for user {user_id}")
+            flash('Sidan kunde inte hittas', 'danger')
+            return redirect(url_for('translation_workspace', id=document_id))
         
-        # Update overall document progress
-        update_document_progress(user_id, document_id)
+        # Verify page belongs to the correct document
+        if page.get('document_id') != document_id:
+            logger.warning(f"Page {page_id} belongs to document {page.get('document_id')}, not {document_id}")
+            flash('Sidan tillhör inte detta dokument', 'danger')
+            return redirect(url_for('translation_workspace', id=document_id))
         
-        # Handle redirections
-        if 'save_next' in request.form:
-            next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
-            if next_page:
-                return redirect(url_for('edit_translation_page', document_id=document_id, page_id=next_page.get('id')))
-        elif 'save_prev' in request.form:
-            prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
-            if prev_page:
-                return redirect(url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id')))
+        # Handle form submission
+        if request.method == 'POST':
+            try:
+                # Update the page with the new content
+                translated_content = request.form.get('translated_content', '')
+                status = request.form.get('status', 'in_progress')
+                
+                # Calculate completion percentage
+                if status == 'completed':
+                    completion_percentage = 100
+                elif status == 'in_progress' and translated_content:
+                    # Approximate completion based on content length ratio
+                    src_length = len(page.get('source_content', ''))
+                    if src_length > 0:
+                        ratio = min(len(translated_content) / src_length, 0.99)  # Cap at 99% until marked completed
+                        completion_percentage = int(ratio * 100)
+                    else:
+                        completion_percentage = 0
+                else:
+                    completion_percentage = 0
+                    
+                # Update the page
+                update_data = {
+                    'translated_content': translated_content,
+                    'status': status,
+                    'completion_percentage': completion_percentage
+                    # Don't set last_edited_at, let database handle it
+                }
+                
+                # Log update attempt
+                logger.info(f"Updating page {page_id} with status {status} and completion {completion_percentage}%")
+                
+                # Update the page
+                result = update_document_page(user_id, page_id, update_data)
+                if not result:
+                    logger.error(f"Failed to update page {page_id}")
+                    flash('Kunde inte spara ändringar', 'danger')
+                    # Return early, don't redirect
+                    return render_template('edit_translation_page.html', 
+                                          document_id=document_id, 
+                                          page=page,
+                                          has_next=False,
+                                          has_prev=False)
+                
+                # Update overall document progress
+                update_document_progress(user_id, document['id'])
+                
+                # Check if this is an AJAX request
+                is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+                
+                # Handle redirections for different button types
+                if 'save_next' in request.form:
+                    next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
+                    if next_page:
+                        if is_ajax:
+                            return json_response({'success': True, 'redirect': url_for('edit_translation_page', document_id=document_id, page_id=next_page.get('id'))})
+                        return redirect(url_for('edit_translation_page', document_id=document_id, page_id=next_page.get('id')))
+                elif 'save_prev' in request.form:
+                    prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
+                    if prev_page:
+                        if is_ajax:
+                            return json_response({'success': True, 'redirect': url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id'))})
+                        return redirect(url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id')))
+                elif 'save' in request.form:
+                    # Regular save button
+                    if is_ajax:
+                        return json_response({'success': True, 'message': 'Sidan har sparats'})
+                    flash('Sidan har sparats', 'success')
+                    # Stay on same page
+                    return redirect(url_for('edit_translation_page', document_id=document_id, page_id=page_id))
+                
+                # Default case if no specific button was pressed
+                if is_ajax:
+                    return json_response({'success': True, 'message': 'Sidan har sparats'})
+                flash('Sidan har sparats', 'success')
+                return redirect(url_for('edit_translation_page', document_id=document_id, page_id=page_id))
+                
+            except Exception as e:
+                logger.error(f"Error updating page: {str(e)}")
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return json_error(f'Ett fel uppstod: {str(e)}', 500)
+                flash(f'Ett fel uppstod: {str(e)}', 'danger')
+                return redirect(url_for('edit_translation_page', document_id=document_id, page_id=page_id))
         
-        flash('Sidan har sparats', 'success')
-        return redirect(url_for('edit_translation_page', document_id=document_id, page_id=page_id))
-    
-    # Get next and previous pages for navigation
-    next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
-    prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
-    
-    return render_template('edit_translation_page.html', 
-                          document_id=document_id, 
-                          page=page,
-                          has_next=next_page is not None,
-                          has_prev=prev_page is not None,
-                          next_page_id=next_page.get('id') if next_page else None,
-                          prev_page_id=prev_page.get('id') if prev_page else None)
+        # For GET requests, fetch necessary data for the template
+        # Get next and previous pages for navigation
+        next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
+        prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
+        
+        return render_template('edit_translation_page.html', 
+                              document_id=document_id, 
+                              page=page,
+                              has_next=next_page is not None,
+                              has_prev=prev_page is not None,
+                              next_page_id=next_page.get('id') if next_page else None,
+                              prev_page_id=prev_page.get('id') if prev_page else None)
+                              
+    except Exception as e:
+        logger.error(f"Error in edit_translation_page: {str(e)}")
+        flash(f'Ett fel uppstod: {str(e)}', 'danger')
+        return redirect(url_for('view_translation', id=document_id))
 
 @app.route('/download-translation/<id>')
 @login_required

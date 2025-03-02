@@ -145,24 +145,112 @@
             }
         });
         
+        // Enhance form submission to use AJAX
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Show saving indicator
+            const saveBtn = document.querySelector('button[name="save"]');
+            const originalText = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<i class="bi bi-hourglass"></i> Sparar...';
+            saveBtn.disabled = true;
+            
+            // Get which button was clicked
+            const submitButtonName = document.activeElement.name || 'save';
+            
+            const formData = new FormData(form);
+            // Add the button name to the form data
+            formData.append(submitButtonName, 'true');
+            
+            // Make the AJAX request
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Saved successfully');
+                    
+                    // Show success indicator briefly
+                    saveBtn.innerHTML = '<i class="bi bi-check"></i> Sparad!';
+                    
+                    // Update the status display
+                    const statusBadge = document.querySelector('.badge.rounded-pill');
+                    const progressBar = document.querySelector('.progress-bar');
+                    
+                    if (statusSelect.value === 'completed') {
+                        statusBadge.className = 'badge rounded-pill bg-success';
+                        statusBadge.textContent = 'Slutförd';
+                        progressBar.className = 'progress-bar bg-success';
+                        progressBar.style.width = '100%';
+                        document.querySelector('.ms-1').textContent = '100%';
+                    } else if (statusSelect.value === 'needs_review') {
+                        statusBadge.className = 'badge rounded-pill bg-warning';
+                        statusBadge.textContent = 'Behöver granskning';
+                        progressBar.className = 'progress-bar bg-warning';
+                    } else {
+                        statusBadge.className = 'badge rounded-pill bg-primary';
+                        statusBadge.textContent = 'Pågående';
+                        progressBar.className = 'progress-bar bg-primary';
+                    }
+                    
+                    // Update the default value to track changes
+                    textarea.defaultValue = textarea.value;
+                    
+                    // If there's a redirect, follow it after a short delay
+                    if (data.redirect) {
+                        setTimeout(() => {
+                            window.location.href = data.redirect;
+                        }, 300);
+                    } else {
+                        // Reset button after 1 second
+                        setTimeout(() => {
+                            saveBtn.innerHTML = originalText;
+                            saveBtn.disabled = false;
+                        }, 1000);
+                    }
+                } else {
+                    console.error('Save failed:', data.error);
+                    alert('Kunde inte spara ändringar: ' + (data.error || 'Okänt fel'));
+                    saveBtn.innerHTML = originalText;
+                    saveBtn.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Save error:', error);
+                alert('Ett fel uppstod vid sparande');
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false;
+            });
+        });
+        
         function autoSave() {
             // Only auto-save if there are changes
             if (textarea.value !== textarea.defaultValue) {
                 console.log('Auto-saving...');
                 
                 const formData = new FormData(form);
+                formData.append('save', 'true');  // Indicate this is a save action
                 
                 fetch(window.location.href, {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
                 })
-                .then(response => {
-                    if (response.ok) {
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
                         console.log('Auto-saved successfully');
                         // Update the default value to track changes
                         textarea.defaultValue = textarea.value;
                     } else {
-                        console.error('Auto-save failed');
+                        console.error('Auto-save failed:', data.error);
                     }
                 })
                 .catch(error => {
