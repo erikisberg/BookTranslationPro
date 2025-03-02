@@ -814,6 +814,73 @@ def edit_translation_page(document_id, page_id):
                 translated_content = request.form.get('translated_content', '')
                 status = request.form.get('status', 'in_progress')
                 
+                # Check if AI review was requested
+                if 'ai_review' in request.form:
+                    # Get the API keys and assistant ID
+                    user_settings = get_user_settings(user_id) or {}
+                    openai_api_key = user_settings.get('api_keys', {}).get('openai_api_key', OPENAI_API_KEY)
+                    
+                    # Get the assistant ID to use
+                    assistant_id = None
+                    if 'assistant_id' in request.form and request.form['assistant_id']:
+                        assistant_id = request.form['assistant_id']
+                    elif document.get('settings') and document['settings'].get('assistant_id'):
+                        assistant_id = document['settings']['assistant_id']
+                    else:
+                        # Use the first available assistant or the default
+                        user_assistants = get_user_assistants(user_id)
+                        if user_assistants:
+                            assistant_id = user_assistants[0]['id']
+                        else:
+                            assistant_id = OPENAI_ASSISTANT_ID
+                    
+                    # Get custom instructions if provided
+                    custom_instructions = request.form.get('ai_instructions', None)
+                    
+                    if openai_api_key and assistant_id:
+                        try:
+                            from utils import review_page_translation
+                            
+                            # Run the review process
+                            reviewed_text, success, error_msg = review_page_translation(
+                                translated_content, 
+                                openai_api_key, 
+                                assistant_id, 
+                                custom_instructions
+                            )
+                            
+                            if success:
+                                # Update the translated text with the reviewed version
+                                translated_content = reviewed_text
+                                
+                                # Mark as AI reviewed and completed
+                                status = 'completed'
+                                
+                                # Track AI review stats in document settings
+                                if document.get('settings'):
+                                    settings = document.get('settings', {})
+                                    if not isinstance(settings, dict):
+                                        settings = {}
+                                        
+                                    # Initialize stats if needed
+                                    if 'ai_review_count' not in settings:
+                                        settings['ai_review_count'] = 0
+                                        
+                                    # Increment count
+                                    settings['ai_review_count'] = settings.get('ai_review_count', 0) + 1
+                                    
+                                    # Update document settings
+                                    update_document(user_id, document_id, {'settings': settings})
+                                
+                                flash('AI-granskning slutförd!', 'success')
+                            else:
+                                flash(f'AI-granskning misslyckades: {error_msg}', 'warning')
+                        except Exception as e:
+                            logger.error(f"Error reviewing page: {str(e)}")
+                            flash(f'Fel vid AI-granskning: {str(e)}', 'danger')
+                    else:
+                        flash('OpenAI API-nyckel eller assistent-ID saknas', 'warning')
+                
                 # Calculate completion percentage
                 if status == 'completed':
                     completion_percentage = 100
@@ -832,7 +899,8 @@ def edit_translation_page(document_id, page_id):
                 update_data = {
                     'translated_content': translated_content,
                     'status': status,
-                    'completion_percentage': completion_percentage
+                    'completion_percentage': completion_percentage,
+                    'reviewed_by_ai': 'ai_review' in request.form
                     # Don't set last_edited_at, let database handle it
                 }
                 
@@ -870,8 +938,8 @@ def edit_translation_page(document_id, page_id):
                         if is_ajax:
                             return json_response({'success': True, 'redirect': url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id'))})
                         return redirect(url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id')))
-                elif 'save' in request.form:
-                    # Regular save button
+                elif 'save' in request.form and 'ai_review' not in request.form:
+                    # Regular save button (only show message if not after AI review)
                     if is_ajax:
                         return json_response({'success': True, 'message': 'Sidan har sparats'})
                     flash('Sidan har sparats', 'success')
@@ -881,7 +949,11 @@ def edit_translation_page(document_id, page_id):
                 # Default case if no specific button was pressed
                 if is_ajax:
                     return json_response({'success': True, 'message': 'Sidan har sparats'})
-                flash('Sidan har sparats', 'success')
+                
+                # Only show this message if not already showing AI review message
+                if 'ai_review' not in request.form:
+                    flash('Sidan har sparats', 'success')
+                    
                 return redirect(url_for('edit_translation_page', document_id=document_id, page_id=page_id))
                 
             except Exception as e:
@@ -896,13 +968,20 @@ def edit_translation_page(document_id, page_id):
         next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
         prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
         
+        # Get user assistants for AI review dropdown
+        user_assistants = get_user_assistants(user_id)
+        if not user_assistants and OPENAI_ASSISTANT_ID:
+            # Add the default assistant if available
+            user_assistants = [{'id': OPENAI_ASSISTANT_ID, 'name': 'Standardassistent'}]
+        
         return render_template('edit_translation_page.html', 
                               document_id=document_id, 
                               page=page,
                               has_next=next_page is not None,
                               has_prev=prev_page is not None,
                               next_page_id=next_page.get('id') if next_page else None,
-                              prev_page_id=prev_page.get('id') if prev_page else None)
+                              prev_page_id=prev_page.get('id') if prev_page else None,
+                              user_assistants=user_assistants)
                               
     except Exception as e:
         logger.error(f"Error in edit_translation_page: {str(e)}")

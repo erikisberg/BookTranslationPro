@@ -1442,18 +1442,18 @@ def analyze_complexity(text):
     
     return complexity_score, features
 
-def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True, smart_review=True, complexity_threshold=40, glossary_id=None):
-    """Process a document by extracting text, translating, and optionally reviewing with AI.
+def process_document(filepath, deepl_api_key, openai_api_key=None, assistant_id=None, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True, smart_review=False, complexity_threshold=40, glossary_id=None):
+    """Process a document by extracting text, translating with DeepL.
     
     Works with various file formats including PDF, DOCX, DOC, TXT, RTF, and ODT.
     Uses translation caching to improve performance and reduce API calls.
-    With smart_review enabled, only complex segments will be sent for OpenAI review.
     With glossary_id, applies custom glossary terms to translations.
+    
+    The OpenAI review step has been separated into an optional post-processing step.
     
     Returns a tuple containing:
     1. Either the processed pdf bytes, or the list of translation segments
-    2. Stats dictionary with cache_hits, cache_ratio, smart_review_savings, smart_review_ratio,
-       glossary_hits, glossary_ratio, and unique_terms_used
+    2. Stats dictionary with cache_hits, cache_ratio, glossary_hits, glossary_ratio, and unique_terms_used
     """
     try:
         # Extract text from the file using the appropriate method
@@ -1540,42 +1540,6 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                 except Exception as e:
                     logger.error(f"DeepL translation error for section {i+1}: {str(e)}")
                     translated_text = original_text  # Fallback to original text
-                    
-                # Step 2: Review translation using OpenAI (if enabled)
-                reviewed_text = translated_text  # Default to DeepL translation
-                complexity_score = 0
-                complexity_features = {}
-                needs_review = True
-                
-                # Determine if this text needs review (for smart review mode)
-                if smart_review and openai_api_key and assistant_id:
-                    # Analyze complexity to decide if OpenAI review is needed
-                    complexity_score, complexity_features = analyze_complexity(original_text)
-                    needs_review = complexity_score >= complexity_threshold
-                    
-                    if needs_review:
-                        logger.info(f"Section {i+1} complexity: {complexity_score} (above threshold, sending for review)")
-                    else:
-                        logger.info(f"Section {i+1} complexity: {complexity_score} (below threshold, skipping review)")
-                
-                # Perform OpenAI review if needed
-                if openai_api_key and assistant_id and (not smart_review or needs_review):
-                    logger.info(f"Reviewing translation for section {i+1} with OpenAI")
-                    try:
-                        reviewed_text = review_translation(
-                            translated_text,
-                            openai_api_key,
-                            assistant_id,
-                            instructions=custom_instructions
-                        )
-                    except Exception as e:
-                        logger.error(f"OpenAI review error for section {i+1}: {str(e)}")
-                        # Keep using the DeepL translation (no need to raise an error)
-                        logger.info(f"Using DeepL translation without OpenAI review for section {i+1}")
-                elif openai_api_key and assistant_id and smart_review and not needs_review:
-                    logger.info(f"OpenAI review skipped for section {i+1} (simple text, using DeepL only)")
-                else:
-                    logger.info(f"OpenAI review skipped for section {i+1} (using DeepL translation only)")
                 
                 # Prepare metadata for saving to cache (if this wasn't from cache already)
                 cache_metadata = {}
@@ -1586,16 +1550,22 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                         'target_language': target_language
                     }
                 
+                # Calculate complexity score for information purposes
+                complexity_score = 0
+                complexity_features = {}
+                if openai_api_key and assistant_id:
+                    complexity_score, complexity_features = analyze_complexity(original_text)
+                    logger.info(f"Section {i+1} complexity score: {complexity_score}")
+                
                 translations.append({
                     'id': section_id,
                     'original_text': original_text,
-                    'translated_text': reviewed_text,
+                    'translated_text': translated_text,
                     'status': 'success',
                     'source': source_info,
                     'cache_metadata': cache_metadata,
                     'complexity_score': complexity_score,
-                    'reviewed_by_ai': openai_api_key and assistant_id and (not smart_review or needs_review),
-                    'review_skipped_reason': 'low_complexity' if (smart_review and not needs_review and openai_api_key and assistant_id) else None,
+                    'reviewed_by_ai': False,  # AI review is now a separate step
                     'glossary_applied': glossary_id is not None,
                     'glossary_hits': section_glossary_hits,
                     'glossary_terms': section_glossary_terms
@@ -1623,19 +1593,6 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
                 stats['cache_hits'] = cache_hits
                 stats['cache_ratio'] = cache_rate
                 logger.info(f"Translation cache performance: {cache_hits}/{total_sections} sections from cache ({cache_rate:.1f}%)")
-            
-            # Smart review statistics
-            if smart_review and openai_api_key and assistant_id:
-                reviewed_sections = sum(1 for t in translations if t.get('reviewed_by_ai', False))
-                skipped_sections = sum(1 for t in translations if t.get('review_skipped_reason') == 'low_complexity')
-                review_rate = (reviewed_sections / total_sections) * 100
-                skip_rate = (skipped_sections / total_sections) * 100
-                
-                stats['smart_review_savings'] = skipped_sections
-                stats['smart_review_ratio'] = skip_rate
-                
-                logger.info(f"Smart review performance: {reviewed_sections}/{total_sections} sections reviewed ({review_rate:.1f}%)")
-                logger.info(f"Smart review savings: {skipped_sections}/{total_sections} sections skipped ({skip_rate:.1f}%)")
             
             # Glossary statistics
             if glossary_id:
@@ -1669,6 +1626,56 @@ def process_document(filepath, deepl_api_key, openai_api_key, assistant_id, sour
     except Exception as e:
         logger.error(f"Document processing error: {str(e)}")
         raise Exception(f"Document processing failed: {str(e)}")
+
+def review_page_translation(page_content, openai_api_key, assistant_id, custom_instructions=None):
+    """Review a single page translation using OpenAI assistant.
+    
+    This function sends the translated text to OpenAI for review and returns
+    the reviewed translation. It is meant to be called on a page-by-page basis.
+    
+    Args:
+        page_content: The translated text to review
+        openai_api_key: OpenAI API key
+        assistant_id: ID of the assistant to use
+        custom_instructions: Custom instructions for the review (optional)
+        
+    Returns:
+        tuple: (reviewed_text, success_flag, error_message)
+            - reviewed_text: The text after AI review, or original if review failed
+            - success_flag: True if review was successful, False otherwise
+            - error_message: Error message if review failed, None otherwise
+    """
+    if not page_content or not openai_api_key or not assistant_id:
+        return page_content, False, "Missing required parameters"
+    
+    try:
+        logger.info(f"Reviewing page translation with OpenAI (content length: {len(page_content)})")
+        
+        # Calculate complexity score for information
+        complexity_score, _ = analyze_complexity(page_content)
+        logger.info(f"Page complexity score: {complexity_score}")
+        
+        # Send to review_translation
+        reviewed_text = review_translation(
+            page_content,
+            openai_api_key,
+            assistant_id,
+            instructions=custom_instructions
+        )
+        
+        if reviewed_text and reviewed_text != page_content:
+            logger.info("Successfully reviewed page translation")
+            return reviewed_text, True, None
+        elif reviewed_text:
+            logger.info("Review returned unchanged text")
+            return reviewed_text, True, None
+        else:
+            logger.warning("Review returned empty text")
+            return page_content, False, "Review returned empty text"
+            
+    except Exception as e:
+        logger.error(f"Error reviewing page translation: {str(e)}")
+        return page_content, False, str(e)
 
 # For backward compatibility
 def process_pdf(filepath, deepl_api_key, openai_api_key, assistant_id, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False):

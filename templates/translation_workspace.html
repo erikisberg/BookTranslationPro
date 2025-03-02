@@ -165,24 +165,28 @@
                                         <i class="bi bi-robot"></i> AI Review
                                     </div>
                                     <div class="card-body">
-                                        {% if document.settings and document.settings.smart_review_ratio is defined %}
+                                        {% if document.settings and document.settings.ai_review_count is defined and document.settings.ai_review_count > 0 %}
                                             <div class="d-flex align-items-center mb-2">
                                                 <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                                                    {% set ai_review_ratio = (document.settings.ai_review_count / total_pages * 100) if total_pages > 0 else 0 %}
                                                     <div class="progress-bar bg-success" role="progressbar" 
-                                                        style="width: {{ document.settings.smart_review_ratio|default(0) }}%;" 
-                                                        aria-valuenow="{{ document.settings.smart_review_ratio|default(0) }}" 
+                                                        style="width: {{ ai_review_ratio|round(1) }}%;" 
+                                                        aria-valuenow="{{ ai_review_ratio|round(1) }}" 
                                                         aria-valuemin="0" 
                                                         aria-valuemax="100">
-                                                        {{ document.settings.smart_review_ratio|default(0)|round|int }}%
+                                                        {{ ai_review_ratio|round|int }}%
                                                     </div>
                                                 </div>
                                             </div>
                                             <p class="card-text">
-                                                <small>{{ document.settings.smart_review_savings|default(0) }} segments optimized</small>
+                                                <small>{{ document.settings.ai_review_count }} pages AI reviewed</small>
                                             </p>
                                         {% else %}
                                             <p class="text-center text-muted pt-2">
                                                 <em>No AI review data available</em>
+                                            </p>
+                                            <p class="text-center">
+                                                <small>Use the AI Review button on each page to improve translations.</small>
                                             </p>
                                         {% endif %}
                                     </div>
@@ -265,6 +269,12 @@
                                 <span class="badge rounded-pill bg-warning me-2">Needs Review</span>
                             {% else %}
                                 <span class="badge rounded-pill bg-primary me-2">In Progress</span>
+                            {% endif %}
+                            
+                            {% if page.reviewed_by_ai %}
+                                <span class="badge rounded-pill bg-info me-2" title="AI reviewed">
+                                    <i class="bi bi-robot"></i>
+                                </span>
                             {% endif %}
                             <div class="progress" style="width: 100px; height: 10px;">
                                 <div class="progress-bar {{ 'bg-success' if page.status == 'completed' else 'bg-warning' if page.status == 'needs_review' else 'bg-primary' }}" 

@@ -52,6 +52,12 @@
                             {% else %}
                                 <span class="badge rounded-pill bg-primary">Pågående</span>
                             {% endif %}
+                            
+                            {% if page.reviewed_by_ai %}
+                                <span class="badge rounded-pill bg-info ms-1">
+                                    <i class="bi bi-robot"></i> AI-granskad
+                                </span>
+                            {% endif %}
                             <div class="progress d-inline-block ms-2 align-middle" style="width: 100px; height: 10px;">
                                 <div class="progress-bar {{ 'bg-success' if page.status == 'completed' else 'bg-warning' if page.status == 'needs_review' else 'bg-primary' }}" 
                                      role="progressbar" 
@@ -74,6 +80,9 @@
                             {% endif %}
                             <button type="submit" class="btn btn-primary" name="save">
                                 <i class="bi bi-save"></i> Spara
+                            </button>
+                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#aiReviewModal">
+                                <i class="bi bi-robot"></i> AI-granskning
                             </button>
                             {% if has_next %}
                                 <button type="submit" class="btn btn-outline-primary" name="save_next">
@@ -308,6 +317,75 @@
                 return e.returnValue;
             }
         });
+    });
+</script>
+<!-- AI Review Modal -->
+<div class="modal fade" id="aiReviewModal" tabindex="-1" aria-labelledby="aiReviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="aiReviewModalLabel">AI-granskning av översättning</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <p>
+                        Skicka den aktuella översättningen till AI för granskning och förbättring. 
+                        Assistenten kommer att kontrollera språket, korrigera fel och 
+                        förbättra flödet i texten.
+                    </p>
+                    
+                    {% if user_assistants %}
+                        <div class="mb-3">
+                            <label for="assistantSelect" class="form-label">Välj assistent</label>
+                            <select class="form-select" id="assistantSelect" name="assistant_id">
+                                {% for assistant in user_assistants %}
+                                    <option value="{{ assistant.id }}">{{ assistant.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <label for="aiInstructions" class="form-label">Instruktioner (valfri)</label>
+                        <textarea class="form-control" id="aiInstructions" name="ai_instructions" rows="3" 
+                            placeholder="Lägg till instruktioner för hur AI:n ska granska din text. Lämna tomt för standardinstruktioner."></textarea>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> När granskningen är klar kommer texten att uppdateras och 
+                        automatiskt sparas. Detta kan ta från 10 sekunder upp till en minut beroende på textens längd.
+                    </div>
+                    
+                    <!-- Copy the current translated content -->
+                    <input type="hidden" name="translated_content" id="reviewTextContent">
+                    <input type="hidden" name="status" value="{{ page.status }}">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Avbryt</button>
+                    <button type="submit" class="btn btn-success" name="ai_review">
+                        <i class="bi bi-robot"></i> Starta AI-granskning
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Update the script to handle AI review
+    document.addEventListener('DOMContentLoaded', function() {
+        // Copy content to review modal when opened
+        const aiReviewModal = document.getElementById('aiReviewModal');
+        if (aiReviewModal) {
+            aiReviewModal.addEventListener('show.bs.modal', function(event) {
+                const textarea = document.querySelector('textarea[name="translated_content"]');
+                const reviewTextContent = document.getElementById('reviewTextContent');
+                if (textarea && reviewTextContent) {
+                    reviewTextContent.value = textarea.value;
+                }
+            });
+        }
     });
 </script>
 {% endblock %}
