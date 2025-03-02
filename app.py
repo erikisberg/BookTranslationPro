@@ -1602,7 +1602,7 @@ def upload_file():
                 folder_id = request.form.get('folderId')
                 
                 # Process this document
-                file_translations = process_document(
+                process_result = process_document(
                     filepath,
                     deepl_api_key,
                     openai_api_key,
@@ -1616,6 +1616,45 @@ def upload_file():
                     complexity_threshold=40,  # Default threshold, could be made configurable
                     glossary_id=glossary_id
                 )
+                
+                # Process document now returns a tuple with translations and stats
+                if isinstance(process_result, tuple) and len(process_result) == 2:
+                    file_translations, file_stats = process_result
+                    
+                    # Update overall statistics (used later for document creation)
+                    if 'cache_hits' in file_stats:
+                        cache_hits += file_stats['cache_hits']
+                    if 'cache_ratio' in file_stats:
+                        # Average the ratios across files
+                        cache_ratio = ((cache_ratio * i) + file_stats['cache_ratio']) / (i + 1) if i > 0 else file_stats['cache_ratio']
+                    if 'smart_review_savings' in file_stats:
+                        smart_review_savings += file_stats['smart_review_savings']
+                    if 'smart_review_ratio' in file_stats:
+                        # Average the ratios across files
+                        smart_review_ratio = ((smart_review_ratio * i) + file_stats['smart_review_ratio']) / (i + 1) if i > 0 else file_stats['smart_review_ratio']
+                    
+                    # Add glossary statistics
+                    if 'glossary_hits' in file_stats:
+                        if not hasattr(globals(), 'glossary_hits'):
+                            globals()['glossary_hits'] = 0
+                        globals()['glossary_hits'] += file_stats['glossary_hits']
+                    if 'glossary_ratio' in file_stats:
+                        if not hasattr(globals(), 'glossary_ratio'):
+                            globals()['glossary_ratio'] = 0
+                        # Average the ratios across files
+                        globals()['glossary_ratio'] = ((globals()['glossary_ratio'] * i) + file_stats['glossary_ratio']) / (i + 1) if i > 0 else file_stats['glossary_ratio']
+                    if 'unique_terms_used' in file_stats:
+                        if not hasattr(globals(), 'unique_terms_used'):
+                            globals()['unique_terms_used'] = 0
+                        globals()['unique_terms_used'] += file_stats['unique_terms_used']
+                        
+                    logger.info(f"Statistics for file {i+1}: Cache hits: {file_stats.get('cache_hits', 0)}, "
+                                f"Smart review savings: {file_stats.get('smart_review_savings', 0)}, "
+                                f"Glossary hits: {file_stats.get('glossary_hits', 0)}, "
+                                f"Unique glossary terms: {file_stats.get('unique_terms_used', 0)}")
+                else:
+                    # Handle older version return type
+                    file_translations = process_result
                 
                 # Store original filename in each translation item for multi-file identification
                 for item in file_translations:
@@ -1684,8 +1723,9 @@ def upload_file():
                     'cache_ratio': cache_ratio,
                     'smart_review_savings': smart_review_savings,
                     'smart_review_ratio': smart_review_ratio,
-                    'glossary_hits': 0,  # Placeholder - would need to track this in process_document
-                    'glossary_ratio': 0  # Placeholder - would need to track this in process_document
+                    'glossary_hits': globals().get('glossary_hits', 0),
+                    'glossary_ratio': globals().get('glossary_ratio', 0),
+                    'unique_terms_used': globals().get('unique_terms_used', 0)
                 },
                 'source_content': source_text,
                 'translated_content': translated_text,
@@ -1757,8 +1797,9 @@ def upload_file():
                             'cache_ratio': cache_ratio,
                             'smart_review_savings': smart_review_savings,
                             'smart_review_ratio': smart_review_ratio,
-                            'glossary_hits': 0,  # Placeholder - would need to track this in process_document
-                            'glossary_ratio': 0  # Placeholder - would need to track this in process_document
+                            'glossary_hits': globals().get('glossary_hits', 0),
+                            'glossary_ratio': globals().get('glossary_ratio', 0),
+                            'unique_terms_used': globals().get('unique_terms_used', 0)
                         },
                         'source_content': source_text,
                         'translated_content': translated_text,
@@ -1782,6 +1823,14 @@ def upload_file():
         smart_review_savings = 0
         smart_review_ratio = 0
         
+        # Initialize glossary stats if they weren't set during processing
+        if 'glossary_hits' not in globals():
+            globals()['glossary_hits'] = 0
+        if 'glossary_ratio' not in globals():
+            globals()['glossary_ratio'] = 0  
+        if 'unique_terms_used' not in globals():
+            globals()['unique_terms_used'] = 0
+        
         for t in all_translations:
             # Check if translation contains cache metadata
             if t.get('cache_metadata') and t.get('cache_metadata').get('source_hash'):
@@ -1796,6 +1845,11 @@ def upload_file():
             smart_review_ratio = (smart_review_savings / total_sections) * 100
             logger.info(f"Cache statistics: {cache_hits}/{total_sections} segments from cache ({cache_ratio:.1f}%)")
             logger.info(f"Smart review savings: {smart_review_savings}/{total_sections} segments skipped ({smart_review_ratio:.1f}%)")
+            
+            # Log glossary statistics
+            if globals()['glossary_hits'] > 0:
+                logger.info(f"Glossary statistics: {globals()['glossary_hits']} terms replaced, {globals()['unique_terms_used']} unique terms used")
+                logger.info(f"Glossary ratio: {globals()['glossary_ratio']:.2f} replacements per 1000 characters")
         
         # Track successful file upload and translation
         if posthog:

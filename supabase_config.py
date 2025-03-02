@@ -513,46 +513,90 @@ def delete_glossary_entry(entry_id):
         return False
 
 def apply_glossary_to_text(text, glossary_id):
-    """Apply glossary terms to a text string"""
+    """Apply glossary terms to a text string and track replacements.
+    
+    Args:
+        text: The text to process
+        glossary_id: The ID of the glossary to apply
+        
+    Returns:
+        tuple: (modified_text, replacements_count, entry_count)
+            - modified_text: The text after glossary term replacements
+            - replacements_count: Number of actual replacements made
+            - entry_count: Number of unique glossary entries used
+    """
     if not text or not glossary_id:
-        return text
+        return text, 0, 0
         
     try:
         # Get all glossary entries
         entries = get_glossary_entries(glossary_id)
         if not entries:
-            return text
+            return text, 0, 0
             
         # Sort entries by length of source term (longest first)
         # This prevents shorter terms from replacing parts of longer terms
         entries.sort(key=lambda x: len(x.get('source_term', '')), reverse=True)
         
+        # Track replacements
+        replacements_count = 0
+        used_entries = set()
+        
         # Apply replacements
         for entry in entries:
             source_term = entry.get('source_term', '')
             target_term = entry.get('target_term', '')
+            entry_id = entry.get('id', '')
             
             if source_term and target_term:
+                replacement_made = False
+                
+                # Keep track of original text to detect if changes were made
+                text_before = text
+                
                 # Replace with word boundary check to avoid partial word replacements
-                # This is a simple implementation - more sophisticated NLP might be needed
-                text = text.replace(f" {source_term} ", f" {target_term} ")
+                if f" {source_term} " in text:
+                    text = text.replace(f" {source_term} ", f" {target_term} ")
+                    replacement_made = text != text_before
                 
                 # Handle beginning of text
                 if text.startswith(source_term + " "):
                     text = target_term + " " + text[len(source_term)+1:]
+                    replacement_made = True
                     
                 # Handle end of text
                 if text.endswith(" " + source_term):
                     text = text[:-len(source_term)-1] + " " + target_term
+                    replacement_made = True
                     
                 # Handle standalone term (the entire text)
                 if text == source_term:
                     text = target_term
-                    
-        return text
+                    replacement_made = True
+                
+                # If at least one replacement was made for this entry
+                if replacement_made:
+                    # Count replacements: check how many times the term was replaced
+                    # We need to count separately, as the text has already been modified
+                    instances_replaced = text_before.count(f" {source_term} ")
+                    if text_before.startswith(source_term + " "):
+                        instances_replaced += 1
+                    if text_before.endswith(" " + source_term):
+                        instances_replaced += 1
+                    if text_before == source_term:
+                        instances_replaced += 1
+                        
+                    replacements_count += instances_replaced
+                    used_entries.add(entry_id)
+                    logger.debug(f"Applied glossary term: '{source_term}' -> '{target_term}' ({instances_replaced} replacements)")
+        
+        entry_count = len(used_entries)        
+        logger.info(f"Applied {replacements_count} glossary replacements using {entry_count} unique terms")
+        return text, replacements_count, entry_count
+    
     except Exception as e:
         logger.error(f"Error applying glossary to text: {e}")
-        return text
+        return text, 0, 0
         
 # Document Management Functions
 

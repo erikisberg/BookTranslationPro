@@ -206,9 +206,14 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <p class="card-text">
-                                                <small>{{ document.settings.glossary_hits|default(0) }} terms applied</small>
+                                            <p class="card-text mb-1">
+                                                <small>{{ document.settings.glossary_hits|default(0) }} term replacements</small>
                                             </p>
+                                            {% if document.settings.unique_terms_used is defined and document.settings.unique_terms_used > 0 %}
+                                            <p class="card-text">
+                                                <small>{{ document.settings.unique_terms_used }} unique terms used</small>
+                                            </p>
+                                            {% endif %}
                                         {% else %}
                                             <p class="text-center text-muted pt-2">
                                                 <em>No glossary data available</em>
