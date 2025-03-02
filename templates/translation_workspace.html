@@ -46,6 +46,11 @@
                                     <li><a class="dropdown-item" href="{{ url_for('export_settings', document_id=document.id) }}">Export Settings</a></li>
                                 </ul>
                             </div>
+                            <div class="btn-group ms-2">
+                                <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#batchAIReviewModal">
+                                    <i class="bi bi-robot"></i> Batch AI Review
+                                </button>
+                            </div>
                             <span class="ms-2">{{ completed_pages }}/{{ total_pages }} pages ({{ overall_progress }}%)</span>
                         </div>
                     </div>
@@ -456,5 +461,234 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+</script>
+<!-- Batch AI Review Modal -->
+<div class="modal fade" id="batchAIReviewModal" tabindex="-1" aria-labelledby="batchAIReviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="batchAIReviewModalLabel">Batch AI Review</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="batchAIReviewForm" action="{{ url_for('batch_ai_review', document_id=document.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Select Pages to Review</label>
+                        <div class="mb-2">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAllPages">Select All</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="selectIncompletePages">Select Incomplete</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="selectNone">Deselect All</button>
+                            </div>
+                        </div>
+                        <div class="page-selection-container border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                            {% for page in pages %}
+                                <div class="form-check">
+                                    <input class="form-check-input page-checkbox" type="checkbox" name="selected_pages" 
+                                           value="{{ page.id }}" id="page-{{ page.id }}" 
+                                           data-status="{{ page.status }}">
+                                    <label class="form-check-label" for="page-{{ page.id }}">
+                                        Page {{ page.page_number }}
+                                        {% if page.status == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% elif page.status == 'in_progress' %}
+                                            <span class="badge bg-warning">In Progress</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Not Started</span>
+                                        {% endif %}
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="aiAssistant" class="form-label">Select AI Assistant</label>
+                        <select class="form-select" id="aiAssistant" name="assistant_id" required>
+                            {% if default_assistant_id %}
+                                <option value="{{ default_assistant_id }}">Default Assistant</option>
+                            {% endif %}
+                            {% for assistant in user_assistants %}
+                                <option value="{{ assistant.assistant_id }}">{{ assistant.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="aiInstructions" class="form-label">Custom Instructions (Optional)</label>
+                        <textarea class="form-control" id="aiInstructions" name="ai_instructions" rows="3" 
+                                  placeholder="Add specific instructions for the AI review..."></textarea>
+                    </div>
+                    
+                    <div class="progress d-none mb-3" id="batchProgressContainer">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar"
+                             role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
+                    </div>
+                    <div id="progressStatus" class="text-center mb-3"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="startBatchReview">Start AI Review</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Page selection buttons
+        const selectAllBtn = document.getElementById('selectAllPages');
+        const selectIncompleteBtn = document.getElementById('selectIncompletePages');
+        const selectNoneBtn = document.getElementById('selectNone');
+        const pageCheckboxes = document.querySelectorAll('.page-checkbox');
+        
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', function() {
+                pageCheckboxes.forEach(cb => cb.checked = true);
+            });
+        }
+        
+        if (selectIncompleteBtn) {
+            selectIncompleteBtn.addEventListener('click', function() {
+                pageCheckboxes.forEach(cb => {
+                    cb.checked = cb.dataset.status !== 'completed';
+                });
+            });
+        }
+        
+        if (selectNoneBtn) {
+            selectNoneBtn.addEventListener('click', function() {
+                pageCheckboxes.forEach(cb => cb.checked = false);
+            });
+        }
+        
+        // Batch AI Review processing
+        const startBatchBtn = document.getElementById('startBatchReview');
+        const batchForm = document.getElementById('batchAIReviewForm');
+        const progressBar = document.getElementById('batchProgressBar');
+        const progressContainer = document.getElementById('batchProgressContainer');
+        const progressStatus = document.getElementById('progressStatus');
+        
+        if (startBatchBtn && batchForm) {
+            startBatchBtn.addEventListener('click', function() {
+                // Validate form
+                const selectedPages = document.querySelectorAll('.page-checkbox:checked');
+                if (selectedPages.length === 0) {
+                    alert('Please select at least one page to review');
+                    return;
+                }
+                
+                const assistantId = document.getElementById('aiAssistant').value;
+                if (!assistantId) {
+                    alert('Please select an AI assistant');
+                    return;
+                }
+                
+                // Prepare form data
+                const formData = new FormData(batchForm);
+                
+                // Disable form elements
+                startBatchBtn.disabled = true;
+                startBatchBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+                
+                // Show progress bar
+                progressContainer.classList.remove('d-none');
+                progressStatus.textContent = 'Starting batch review...';
+                
+                // Submit the batch job
+                fetch(batchForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Initialize the job status polling
+                        const jobId = data.job_id;
+                        pollJobStatus(jobId);
+                    } else {
+                        // Show error
+                        progressStatus.textContent = 'Error: ' + data.message;
+                        startBatchBtn.disabled = false;
+                        startBatchBtn.innerHTML = 'Start AI Review';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    progressStatus.textContent = 'Error submitting batch job';
+                    startBatchBtn.disabled = false;
+                    startBatchBtn.innerHTML = 'Start AI Review';
+                });
+            });
+            
+            // Function to poll job status
+            function pollJobStatus(jobId) {
+                const statusUrl = `{{ url_for('batch_ai_review_status', document_id=document.id) }}?job_id=${jobId}`;
+                
+                const checkStatus = () => {
+                    fetch(statusUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            // Update progress
+                            const progress = data.progress || 0;
+                            progressBar.style.width = `${progress}%`;
+                            progressBar.setAttribute('aria-valuenow', progress);
+                            
+                            // Update status message
+                            progressStatus.textContent = data.status || 'Processing...';
+                            
+                            if (data.completed) {
+                                // Job finished
+                                if (data.success) {
+                                    progressBar.classList.remove('progress-bar-animated');
+                                    progressBar.classList.add('bg-success');
+                                    progressStatus.textContent = `Completed! ${data.pages_processed} pages reviewed.`;
+                                    
+                                    // Enable refresh button
+                                    startBatchBtn.disabled = false;
+                                    startBatchBtn.innerHTML = 'Refresh Page';
+                                    startBatchBtn.classList.remove('btn-primary');
+                                    startBatchBtn.classList.add('btn-success');
+                                    
+                                    // Change button to refresh page
+                                    startBatchBtn.addEventListener('click', function() {
+                                        window.location.reload();
+                                    }, { once: true });
+                                } else {
+                                    progressBar.classList.remove('progress-bar-animated');
+                                    progressBar.classList.add('bg-danger');
+                                    progressStatus.textContent = 'Error: ' + data.message;
+                                    
+                                    // Re-enable start button
+                                    startBatchBtn.disabled = false;
+                                    startBatchBtn.innerHTML = 'Retry';
+                                }
+                            } else {
+                                // Continue polling
+                                setTimeout(checkStatus, 2000); // Check every 2 seconds
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error checking status:', error);
+                            progressStatus.textContent = 'Error checking job status';
+                            
+                            // Retry after a delay
+                            setTimeout(checkStatus, 5000);
+                        });
+                };
+                
+                // Start polling
+                checkStatus();
+            }
+        }
+    });
 </script>
 {% endblock %}

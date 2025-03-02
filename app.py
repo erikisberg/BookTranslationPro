@@ -864,13 +864,24 @@ def translation_workspace(id):
             # Log that we're adding placeholder stats
             logger.info(f"Adding placeholder stats for document {document['id']}")
     
+    # Get user's assistants for the modal dropdown
+    user_assistants = get_user_assistants(user_id) or []
+    
+    # Filter out assistants that don't have a valid OpenAI assistant ID
+    user_assistants = [a for a in user_assistants if a.get('assistant_id') and a['assistant_id'].startswith('asst_')]
+    
+    # Add default assistant from environment if available
+    default_assistant_id = OPENAI_ASSISTANT_ID if OPENAI_ASSISTANT_ID and OPENAI_ASSISTANT_ID.startswith('asst_') else None
+    
     return render_template('translation_workspace.html', 
                           translation_id=id, 
                           document=document,
                           pages=pages, 
                           total_pages=len(pages),
                           completed_pages=completed_pages,
-                          overall_progress=overall_progress)
+                          overall_progress=overall_progress,
+                          user_assistants=user_assistants,
+                          default_assistant_id=default_assistant_id)
                           
 @app.route('/view-translation/<document_id>/page/<page_id>', methods=['GET', 'POST'])
 @login_required
@@ -4450,6 +4461,255 @@ def internal_server_error(e):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return json_error('Internal server error occurred', 500)
     return render_template('500.html'), 500
+
+# Background jobs storage
+batch_jobs = {}
+
+@app.route('/documents/<document_id>/batch-ai-review', methods=['POST'])
+@login_required
+def batch_ai_review(document_id):
+    """Start a background batch AI review job for multiple pages"""
+    user_id = get_user_id()
+    
+    # Check if the document exists and the user owns it
+    document = get_document(user_id, document_id)
+    if not document:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error('Document not found', 404)
+        else:
+            flash('Document not found', 'danger')
+            return redirect(url_for('documents'))
+    
+    # Get selected pages
+    selected_page_ids = request.form.getlist('selected_pages')
+    if not selected_page_ids:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error('No pages selected', 400)
+        else:
+            flash('No pages selected', 'warning')
+            return redirect(url_for('translation_workspace', id=document_id))
+    
+    # Get AI assistant settings
+    assistant_id = request.form.get('assistant_id')
+    if not assistant_id:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error('No AI assistant selected', 400)
+        else:
+            flash('No AI assistant selected', 'warning')
+            return redirect(url_for('translation_workspace', id=document_id))
+    
+    # Validate assistant ID format
+    if not assistant_id.startswith('asst_'):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error('Invalid OpenAI Assistant ID format', 400)
+        else:
+            flash('Invalid OpenAI Assistant ID format', 'danger')
+            return redirect(url_for('translation_workspace', id=document_id))
+    
+    # Get API key
+    user_settings = get_user_settings(user_id) or {}
+    openai_api_key = user_settings.get('api_keys', {}).get('openai_api_key', OPENAI_API_KEY)
+    if not openai_api_key:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return json_error('OpenAI API key not configured', 400)
+        else:
+            flash('OpenAI API key not configured', 'danger')
+            return redirect(url_for('translation_workspace', id=document_id))
+    
+    # Get custom instructions if provided
+    custom_instructions = request.form.get('ai_instructions')
+    
+    # Generate a unique job ID
+    job_id = str(uuid.uuid4())
+    
+    # Initialize job data
+    batch_jobs[job_id] = {
+        'user_id': user_id,
+        'document_id': document_id,
+        'page_ids': selected_page_ids,
+        'assistant_id': assistant_id,
+        'openai_api_key': openai_api_key,
+        'custom_instructions': custom_instructions,
+        'status': 'starting',
+        'progress': 0,
+        'pages_processed': 0,
+        'total_pages': len(selected_page_ids),
+        'completed': False,
+        'success': False,
+        'message': '',
+        'start_time': time.time()
+    }
+    
+    # Start the background job in a separate thread
+    import threading
+    job_thread = threading.Thread(target=process_batch_ai_review, args=(job_id,))
+    job_thread.daemon = True
+    job_thread.start()
+    
+    # Return response based on request type
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return json_response({
+            'success': True,
+            'message': 'Batch AI review job started',
+            'job_id': job_id
+        })
+    else:
+        flash('Batch AI review job started', 'info')
+        return redirect(url_for('translation_workspace', id=document_id))
+
+
+@app.route('/documents/<document_id>/batch-ai-review/status', methods=['GET'])
+@login_required
+def batch_ai_review_status(document_id):
+    """Get the status of a batch AI review job"""
+    user_id = get_user_id()
+    
+    # Check if the document exists and the user owns it
+    document = get_document(user_id, document_id)
+    if not document:
+        return json_error('Document not found', 404)
+    
+    # Get job ID from query params
+    job_id = request.args.get('job_id')
+    if not job_id or job_id not in batch_jobs:
+        return json_error('Job not found', 404)
+    
+    # Check if the job belongs to this user and document
+    job = batch_jobs[job_id]
+    if job['user_id'] != user_id or job['document_id'] != document_id:
+        return json_error('Unauthorized', 403)
+    
+    # Return job status
+    return json_response({
+        'success': True,
+        'status': job['status'],
+        'progress': job['progress'],
+        'pages_processed': job['pages_processed'],
+        'total_pages': job['total_pages'],
+        'completed': job['completed'],
+        'message': job['message']
+    })
+
+
+def process_batch_ai_review(job_id):
+    """Background process to handle batch AI review of multiple pages"""
+    if job_id not in batch_jobs:
+        logger.error(f"Job {job_id} not found in batch_jobs")
+        return
+    
+    job = batch_jobs[job_id]
+    user_id = job['user_id']
+    document_id = job['document_id']
+    page_ids = job['page_ids']
+    assistant_id = job['assistant_id']
+    openai_api_key = job['openai_api_key']
+    custom_instructions = job['custom_instructions']
+    
+    try:
+        # Update job status
+        job['status'] = 'processing'
+        
+        # Get all page data once
+        pages = []
+        for page_id in page_ids:
+            page = get_document_page(user_id, page_id)
+            if page and page.get('document_id') == document_id:
+                pages.append(page)
+        
+        # Update total pages count to actual valid pages
+        job['total_pages'] = len(pages)
+        
+        if not pages:
+            job['status'] = 'error'
+            job['message'] = 'No valid pages found'
+            job['completed'] = True
+            job['success'] = False
+            return
+        
+        # Process each page
+        from utils import review_page_translation
+        
+        for i, page in enumerate(pages):
+            try:
+                # Update status
+                job['status'] = f'Processing page {i+1}/{len(pages)} (page number {page.get("page_number", "unknown")})'
+                job['progress'] = int((i / len(pages)) * 100)
+                
+                # Get the translated content
+                translated_content = page.get('translated_content', '')
+                if not translated_content:
+                    logger.warning(f"No translated content found for page {page.get('id')}")
+                    continue
+                
+                # Run the AI review
+                reviewed_text, success, error_msg = review_page_translation(
+                    translated_content,
+                    openai_api_key,
+                    assistant_id,
+                    custom_instructions
+                )
+                
+                if success:
+                    # Update the page with reviewed content
+                    update_data = {
+                        'translated_content': reviewed_text,
+                        'status': 'completed',
+                        'reviewed_by_ai': True,
+                        'reviewed_at': datetime.now().isoformat()
+                    }
+                    
+                    # Update the page in the database
+                    update_document_page(user_id, page['id'], update_data)
+                    
+                    # Increment success counter
+                    job['pages_processed'] += 1
+                else:
+                    logger.warning(f"AI review failed for page {page.get('id')}: {error_msg}")
+            
+            except Exception as e:
+                logger.error(f"Error processing page {page.get('id')}: {str(e)}")
+        
+        # Update document progress
+        try:
+            update_document_progress(user_id, document_id)
+        except Exception as e:
+            logger.error(f"Error updating document progress: {str(e)}")
+        
+        # Mark job as completed successfully
+        job['status'] = 'completed'
+        job['progress'] = 100
+        job['completed'] = True
+        job['success'] = True
+        job['message'] = f'Successfully processed {job["pages_processed"]} out of {len(pages)} pages'
+        
+    except Exception as e:
+        logger.error(f"Error processing batch AI review job {job_id}: {str(e)}")
+        job['status'] = 'error'
+        job['message'] = str(e)
+        job['completed'] = True
+        job['success'] = False
+    
+    # Clean up old jobs (keep for 1 hour)
+    cleanup_old_jobs()
+
+
+def cleanup_old_jobs():
+    """Remove old batch jobs to prevent memory leaks"""
+    current_time = time.time()
+    job_ids_to_remove = []
+    
+    for job_id, job in batch_jobs.items():
+        # Keep completed jobs for 1 hour, running jobs indefinitely
+        if job['completed'] and (current_time - job.get('start_time', 0)) > 3600:
+            job_ids_to_remove.append(job_id)
+    
+    # Remove the old jobs
+    for job_id in job_ids_to_remove:
+        try:
+            del batch_jobs[job_id]
+        except KeyError:
+            pass
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
