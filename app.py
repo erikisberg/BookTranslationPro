@@ -580,7 +580,7 @@ def translation_workspace(id):
                 return redirect(url_for('view_translation', id=id))
                 
             # Save the translation text as document content
-            save_document_content(user_id, id, translation_text, 'source')
+            save_document_content(user_id, document['id'], translation_text, 'source')
     except Exception as e:
         logger.error(f"Error checking/creating document: {str(e)}")
         flash('Ett fel uppstod: ' + str(e), 'danger')
@@ -588,11 +588,11 @@ def translation_workspace(id):
     
     # Check if the translation has already been split into pages
     try:
-        pages = get_document_pages(user_id, id)
+        pages = get_document_pages(user_id, document['id'])
         
         # If no pages exist, create them
         if not pages:
-            logger.info(f"Creating pages for document {id}")
+            logger.info(f"Creating pages for document {document['id']}")
             
             # Split the translation into pages
             content_pages = split_content_into_pages(translation_text)
@@ -605,7 +605,7 @@ def translation_workspace(id):
             # Create pages in the database
             for i, page_content in enumerate(content_pages, 1):
                 page_data = {
-                    'document_id': id,
+                    'document_id': document['id'],  # Use the actual document ID, not the translation ID
                     'page_number': i,
                     'source_content': page_content,
                     'translated_content': '',  # Start with empty translation
@@ -615,15 +615,15 @@ def translation_workspace(id):
                 create_document_page(user_id, page_data)
                 
             # Get the newly created pages
-            pages = get_document_pages(user_id, id)
+            pages = get_document_pages(user_id, document['id'])
             
             if not pages:
-                logger.error(f"Failed to create pages for document {id}")
+                logger.error(f"Failed to create pages for document {document['id']}")
                 flash('Kunde inte skapa sidor', 'danger')
                 return redirect(url_for('view_translation', id=id))
                 
             # Update document progress
-            update_document_progress(user_id, id)
+            update_document_progress(user_id, document['id'])
     except Exception as e:
         logger.error(f"Error creating workspace pages: {str(e)}")
         flash('Ett fel uppstod vid skapande av sidor: ' + str(e), 'danger')
