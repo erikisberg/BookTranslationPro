@@ -26,8 +26,10 @@
             <!-- Diagnostic Section -->
             <div class="alert alert-info">
                 <h6>Diagnostic Tools</h6>
-                <button onclick="runDiagnostics()" class="btn btn-primary mb-2">Run Diagnostics</button>
-                <div id="diagnosticOutput" class="mt-2 p-2 bg-dark text-white" style="max-height: 200px; overflow-y: auto;"></div>
+                <button class="btn btn-primary mb-2" id="runDiagnosticsBtn">Run Diagnostics</button>
+                <div id="diagnosticOutput" class="mt-2 p-2 bg-dark text-white" style="max-height: 200px; overflow-y: auto;">
+                    <div>Waiting for diagnostics to run...</div>
+                </div>
             </div>
             
             <!-- Actions with form submission fallback -->
@@ -57,9 +59,13 @@
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Mappar</h5>
-                    <button class="btn btn-sm btn-primary" id="createFolderBtn">
-                        <i class="bi bi-folder-plus"></i> Ny
-                    </button>
+                    <form method="POST" action="/documents/folders" class="d-inline">
+                        <input type="hidden" name="name" value="New Folder">
+                        <input type="hidden" name="color" value="#3498db">
+                        <button class="btn btn-sm btn-primary" type="submit">
+                            <i class="bi bi-folder-plus"></i> Ny
+                        </button>
+                    </form>
                 </div>
                 <div class="card-body folder-list p-2">
                     <div class="list-group" id="folderList">
@@ -340,6 +346,88 @@
     </div>
 </div>
 {% endblock %}
+
+<script>
+// Bare diagnostics function - independent of everything else
+function runBasicDiagnostics() {
+    try {
+        console.log("Running basic diagnostics");
+        
+        // Display info
+        const infoDiv = document.createElement('div');
+        infoDiv.style.position = 'fixed';
+        infoDiv.style.top = '10px';
+        infoDiv.style.left = '10px';
+        infoDiv.style.zIndex = '9999';
+        infoDiv.style.background = 'rgba(0,0,0,0.8)';
+        infoDiv.style.color = 'white';
+        infoDiv.style.padding = '10px';
+        infoDiv.style.borderRadius = '5px';
+        infoDiv.style.maxWidth = '500px';
+        infoDiv.style.maxHeight = '400px';
+        infoDiv.style.overflow = 'auto';
+        infoDiv.innerHTML = '<h4>Basic Diagnostics</h4>';
+        document.body.appendChild(infoDiv);
+        
+        // Add info
+        function addInfo(text) {
+            const line = document.createElement('div');
+            line.textContent = text;
+            infoDiv.appendChild(line);
+        }
+        
+        // Check bootstrap
+        addInfo('Bootstrap: ' + (typeof bootstrap !== 'undefined' ? 'Available' : 'NOT AVAILABLE'));
+        
+        // Check bootstrap Modal
+        if (typeof bootstrap !== 'undefined') {
+            addInfo('Bootstrap.Modal: ' + (typeof bootstrap.Modal !== 'undefined' ? 'Available' : 'NOT AVAILABLE'));
+        }
+        
+        // Check createFolderBtn
+        const createFolderBtn = document.getElementById('createFolderBtn');
+        addInfo('createFolderBtn: ' + (createFolderBtn ? 'Found' : 'NOT FOUND'));
+        
+        // Check folderModal
+        const folderModal = document.getElementById('folderModal');
+        addInfo('folderModal: ' + (folderModal ? 'Found' : 'NOT FOUND'));
+        
+        // Check Bootstrap version if possible
+        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+            const tooltipInstance = new bootstrap.Tooltip(document.createElement('div'));
+            if (tooltipInstance && tooltipInstance.constructor) {
+                const version = tooltipInstance.constructor.VERSION;
+                addInfo('Bootstrap Version: ' + (version || 'Unknown'));
+            } else {
+                addInfo('Bootstrap Version: Could not detect');
+            }
+        }
+        
+        // Event test - add a button that will simply use an alert
+        const testBtn = document.createElement('button');
+        testBtn.textContent = 'Test Alert';
+        testBtn.style.margin = '10px 0';
+        testBtn.onclick = function() { alert('Button click works'); };
+        infoDiv.appendChild(testBtn);
+        
+        // Try to get the window.bootstrap version
+        addInfo('Window.bootstrap: ' + (window.bootstrap ? 'Available' : 'Not available'));
+        
+        addInfo('Done - Click anywhere to dismiss');
+        infoDiv.addEventListener('click', function() {
+            infoDiv.remove();
+        });
+    } catch (error) {
+        console.error("Basic diagnostics error:", error);
+        alert("Diagnostics error: " + error.message);
+    }
+}
+
+// Run immediately
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(runBasicDiagnostics, 1000);
+});
+</script>
 
 {% block scripts %}
 <script>
@@ -945,6 +1033,23 @@
                 const directFolderForm = document.getElementById('directFolderForm');
                 log('Direct folder form: ' + (directFolderForm ? 'Found' : 'Not found'));
                 
+                // Check for createFolderBtn
+                const createFolderBtn = document.getElementById('createFolderBtn');
+                log('Original create folder button: ' + (createFolderBtn ? 'Found' : 'Not found'));
+                
+                // Check for folderModal
+                const folderModal = document.getElementById('folderModal');
+                log('Folder modal: ' + (folderModal ? 'Found' : 'Not found'));
+                
+                // Check folder modal elements if available
+                if (folderModal) {
+                    const newFolderForm = document.getElementById('newFolderForm');
+                    log('New folder form inside modal: ' + (newFolderForm ? 'Found' : 'Not found'));
+                    
+                    const createNewFolderBtn = document.getElementById('createNewFolderBtn');
+                    log('Create new folder button: ' + (createNewFolderBtn ? 'Found' : 'Not found'));
+                }
+                
                 // Try a test XHR request
                 log('Attempting test XHR request to /documents...');
                 const xhr = new XMLHttpRequest();
@@ -1067,9 +1172,26 @@
             }
         }
         
+        // Add event listener for diagnostics button
+        const runDiagnosticsBtn = document.getElementById('runDiagnosticsBtn');
+        if (runDiagnosticsBtn) {
+            runDiagnosticsBtn.addEventListener('click', function() {
+                runDiagnostics();
+            });
+        }
+
         // Initialize direct actions on page load
         setTimeout(function() {
-            runDiagnostics();
+            try {
+                runDiagnostics();
+                console.log("Auto-diagnostics completed");
+            } catch (error) {
+                console.error("Error running auto-diagnostics:", error);
+                const output = document.getElementById('diagnosticOutput');
+                if (output) {
+                    output.innerHTML = '<div class="text-danger">Error running diagnostics: ' + error.message + '</div>';
+                }
+            }
         }, 500);
         
         // Global direct action functions
