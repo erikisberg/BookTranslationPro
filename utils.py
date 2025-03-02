@@ -816,9 +816,9 @@ def review_translation(text, openai_api_key, assistant_id, instructions=None, ma
             
             # First validate the assistant exists
             try:
-                # Verify this is even a valid assistant ID format
-                if not assistant_id or not str(assistant_id).startswith("asst_"):
-                    logger.error(f"Invalid OpenAI assistant ID format: {assistant_id}. Must start with 'asst_'")
+                # No need to check the prefix format - some systems may use different formats
+                if not assistant_id:
+                    logger.error("Missing assistant ID")
                     return text  # Return original text without review
 
                 # Retrieve the assistant
