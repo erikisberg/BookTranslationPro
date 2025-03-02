@@ -559,36 +559,48 @@ document.addEventListener('DOMContentLoaded', function() {
 {% block scripts %}
 {{ super() }}
 <script>
-    console.log("LOADING BATCH AI REVIEW SCRIPT");
+    // Define all functions directly - embedded in HTML
+    function selectAllPagesAI() {
+        document.querySelectorAll('.ai-page-checkbox').forEach(cb => cb.checked = true);
+    }
     
-    // Define functions in the window scope to ensure global access
-    window.startBatchAIReview = function() {
+    function selectIncompletePagesAI() {
+        document.querySelectorAll('.ai-page-checkbox').forEach(cb => {
+            cb.checked = cb.dataset.status !== 'completed';
+        });
+    }
+    
+    function selectNonePagesAI() {
+        document.querySelectorAll('.ai-page-checkbox').forEach(cb => cb.checked = false);
+    }
+    
+    function startBatchAIReview() {
         console.log("Start AI Review button clicked");
         
-        const batchForm = document.getElementById('batchAIReviewForm');
-        const startBatchBtn = document.getElementById('startBatchReview');
-        const progressContainer = document.getElementById('batchProgressContainer');
-        const progressBar = document.getElementById('batchProgressBar');
-        const progressStatus = document.getElementById('progressStatus');
+        var batchForm = document.getElementById('batchAIReviewForm');
+        var startBatchBtn = document.getElementById('startBatchReview');
+        var progressContainer = document.getElementById('batchProgressContainer');
+        var progressBar = document.getElementById('batchProgressBar');
+        var progressStatus = document.getElementById('progressStatus');
         
         // Validate form
-        const selectedPages = document.querySelectorAll('.ai-page-checkbox:checked');
-        console.log(`Selected pages: ${selectedPages.length}`);
+        var selectedPages = document.querySelectorAll('.ai-page-checkbox:checked');
+        console.log("Selected pages: " + selectedPages.length);
         
         if (selectedPages.length === 0) {
             alert('Please select at least one page to review');
             return;
         }
         
-        const assistantSelect = document.getElementById('aiAssistant');
+        var assistantSelect = document.getElementById('aiAssistant');
         if (!assistantSelect) {
             console.log("WARNING: AI Assistant select not found");
             alert('AI Assistant selection is missing');
             return;
         }
         
-        const assistantId = assistantSelect.value;
-        console.log(`Selected assistant ID: ${assistantId}`);
+        var assistantId = assistantSelect.value;
+        console.log("Selected assistant ID: " + assistantId);
         
         if (!assistantId) {
             alert('Please select an AI assistant');
@@ -604,116 +616,10 @@ document.addEventListener('DOMContentLoaded', function() {
         progressStatus.textContent = 'Starting batch review...';
         
         // Prepare form data
-        const formData = new FormData(batchForm);
+        var formData = new FormData(batchForm);
         
-        // Submit the form
-        fetch(batchForm.action, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log(`Response data:`, data);
-            if (data.success) {
-                // Start polling for status updates
-                window.pollJobStatus(data.job_id);
-            } else {
-                // Show error
-                progressStatus.textContent = 'Error: ' + (data.message || 'Unknown error');
-                startBatchBtn.disabled = false;
-                startBatchBtn.innerHTML = 'Start AI Review';
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            progressStatus.textContent = 'Error submitting batch job: ' + error.message;
-            startBatchBtn.disabled = false;
-            startBatchBtn.innerHTML = 'Start AI Review';
-        });
-    };
-    
-    // Also make the polling function global
-    window.pollJobStatus = function(jobId) {
-        const statusUrl = `{{ url_for('batch_ai_review_status', document_id=document.id) }}?job_id=${jobId}`;
-        console.log(`Polling status URL: ${statusUrl}`);
-        
-        const startBatchBtn = document.getElementById('startBatchReview');
-        const progressBar = document.getElementById('batchProgressBar');
-        const progressStatus = document.getElementById('progressStatus');
-        
-        fetch(statusUrl)
-            .then(response => response.json())
-            .then(data => {
-                console.log(`Status data:`, data);
-                
-                // Update progress
-                const progress = data.progress || 0;
-                progressBar.style.width = `${progress}%`;
-                progressBar.setAttribute('aria-valuenow', progress);
-                progressStatus.textContent = data.status || 'Processing...';
-                
-                if (data.completed) {
-                    // Job finished
-                    console.log("Job completed");
-                    if (data.success) {
-                        progressBar.classList.remove('progress-bar-animated');
-                        progressBar.classList.add('bg-success');
-                        progressStatus.textContent = `Completed! ${data.pages_processed} pages reviewed.`;
-                        
-                        // Enable refresh button
-                        startBatchBtn.disabled = false;
-                        startBatchBtn.innerHTML = 'Refresh Page';
-                        startBatchBtn.classList.remove('btn-primary');
-                        startBatchBtn.classList.add('btn-success');
-                        
-                        // Change button to refresh page
-                        startBatchBtn.onclick = function() {
-                            window.location.reload();
-                        };
-                    } else {
-                        progressBar.classList.remove('progress-bar-animated');
-                        progressBar.classList.add('bg-danger');
-                        progressStatus.textContent = 'Error: ' + (data.message || 'Unknown error');
-                        
-                        // Re-enable start button
-                        startBatchBtn.disabled = false;
-                        startBatchBtn.innerHTML = 'Retry';
-                    }
-                } else {
-                    // Continue polling
-                    console.log(`Job in progress: ${progress}%`);
-                    setTimeout(function() {
-                        window.pollJobStatus(jobId);
-                    }, 2000); // Check every 2 seconds
-                }
-            })
-            .catch(error => {
-                console.error('Error checking status:', error);
-                progressStatus.textContent = 'Error checking job status: ' + error.message;
-                
-                // Retry after a delay
-                setTimeout(function() {
-                    window.pollJobStatus(jobId);
-                }, 5000);
-            });
-    };
-
-    // Also make the page selection functions global, just in case
-    window.selectAllPagesAI = function() {
-        document.querySelectorAll('.ai-page-checkbox').forEach(cb => cb.checked = true);
-    };
-    
-    window.selectIncompletePagesAI = function() {
-        document.querySelectorAll('.ai-page-checkbox').forEach(cb => {
-            cb.checked = cb.dataset.status !== 'completed';
-        });
-    };
-    
-    window.selectNonePagesAI = function() {
-        document.querySelectorAll('.ai-page-checkbox').forEach(cb => cb.checked = false);
-    };
+        // Submit form directly
+        batchForm.submit();
+    }
 </script>
 {% endblock %}
