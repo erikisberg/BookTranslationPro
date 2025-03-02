@@ -6,11 +6,11 @@
 <!-- Setup notice -->
 {% if not documents and not folders %}
 <div class="container mt-3">
-    <div class="alert alert-warning">
-        <h5><i class="bi bi-exclamation-triangle-fill"></i> Databasinställning krävs</h5>
-        <p>Dokumenthanteringsfunktionen kräver att databastabeller är inställda. Om du är administratör, vänligen kör databasinställningen först.</p>
-        <a href="{{ url_for('setup_database') }}" class="btn btn-primary">
-            <i class="bi bi-database-gear"></i> Kör databasinställning
+    <div class="alert alert-info">
+        <h5><i class="bi bi-lightbulb-fill"></i> Inga dokument ännu</h5>
+        <p>Du har inte skapat några dokumentöversättningar ännu. Skapa en ny översättning för att komma igång.</p>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Skapa ny översättning
         </a>
     </div>
 </div>
