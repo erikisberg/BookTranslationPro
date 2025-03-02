@@ -1324,13 +1324,24 @@ def update_document_progress(user_id, document_id):
         completed_pages = sum(1 for page in pages if page.get('status') == 'completed')
         overall_progress = int((completed_pages / total_pages) * 100) if total_pages > 0 else 0
         
-        # Update document
+        # Update document with minimal fields to avoid schema mismatches
         update_data = {
-            'total_pages': total_pages,
-            'completed_pages': completed_pages,
-            'overall_progress': overall_progress,
-            'updated_at': datetime.now().isoformat()
+            'status': 'in_progress' if completed_pages < total_pages else 'completed',
+            'updated_at': 'now()'  # Use SQL function instead of Python timestamp
         }
+        
+        # Only try to set overall_progress if it exists in schema
+        try:
+            # Get the document first to see what fields exist
+            document = get_document(user_id, document_id)
+            if document and 'overall_progress' in document:
+                update_data['overall_progress'] = overall_progress
+            if document and 'total_pages' in document:
+                update_data['total_pages'] = total_pages
+            if document and 'completed_pages' in document:
+                update_data['completed_pages'] = completed_pages
+        except Exception as schema_error:
+            logger.warning(f"Schema check failed, using minimal fields: {schema_error}")
         
         return update_document(user_id, document_id, update_data)
     except Exception as e:
