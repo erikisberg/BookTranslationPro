@@ -192,10 +192,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             try {
+                // Disable the button immediately to prevent double submission
+                if (uploadButton) {
+                    if (uploadButton.disabled) {
+                        // Button already disabled, prevent duplicate submission
+                        console.log("Ignoring duplicate submission attempt");
+                        return;
+                    }
+                    uploadButton.disabled = true;
+                }
+                
                 // Show loading state
                 if (buttonText) buttonText.textContent = 'Processing...';
                 if (spinner) spinner.classList.remove('d-none');
-                if (uploadButton) uploadButton.disabled = true;
                 if (progressContainer) progressContainer.classList.remove('d-none');
                 if (errorContainer) errorContainer.classList.add('d-none');
                 

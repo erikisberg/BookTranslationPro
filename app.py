@@ -1538,7 +1538,7 @@ def upload_file():
             
         # Save as a document for document management
         if len(filepaths) == 1:
-            # Use project title from form if provided, otherwise use filename
+            # Always use project title from form as the primary title
             project_title = request.form.get('projectTitle', '')
             project_description = request.form.get('projectDescription', '')
             
@@ -1552,7 +1552,8 @@ def upload_file():
                 session.modified = True
             
             original_filename = os.path.basename(filepaths[0])
-            title = project_title if project_title else os.path.splitext(original_filename)[0]
+            # Always prefer project title over filename
+            title = project_title or os.path.splitext(original_filename)[0]
             
             # Combine all translated segments
             translated_text = '\n\n'.join([t['translated_text'] for t in all_translations if t['status'] == 'success'])
@@ -1605,7 +1606,7 @@ def upload_file():
                     # Create document - for multi-file mode, use chapter naming
                     original_filename = os.path.basename(filepath)
                     
-                    # Use project title if provided, otherwise use filename
+                    # Always use project title from form as the primary title
                     project_title = request.form.get('projectTitle', '')
                     project_description = request.form.get('projectDescription', '')
                     
@@ -1618,8 +1619,9 @@ def upload_file():
                         session['last_project_description'] = project_description
                         session.modified = True
                     
-                    # For batch chapters, name them as chapters
+                    # For batch chapters, name them as chapters, always use project title if provided
                     file_number = i + 1
+                    # Always prefer project title for chapter naming
                     chapter_title = f"{project_title} - Chapter {file_number}" if project_title else os.path.splitext(original_filename)[0]
                     
                     doc_data = {
