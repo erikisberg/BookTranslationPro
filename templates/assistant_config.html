@@ -304,17 +304,10 @@ Var särskilt uppmärksam på:
                         </div>
                         <div class="col-md-6">
                             <input type="hidden" id="assistant_id" name="assistant_id" value="">
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="checkbox" id="create_in_openai" name="create_in_openai" value="yes" checked>
-                                <label class="form-check-label" for="create_in_openai">
-                                    Skapa automatiskt i OpenAI
-                                </label>
-                                <div class="form-text">När detta är aktiverat skapas assistenten automatiskt i OpenAI med dina instruktioner</div>
-                            </div>
-                            <div class="manual-id-container d-none">
+                            <div class="mb-3">
                                 <label for="manual_assistant_id" class="form-label">OpenAI Assistant ID</label>
-                                <input type="text" class="form-control" id="manual_assistant_id" name="manual_assistant_id">
-                                <div class="form-text">Från <a href="https://platform.openai.com/assistants" target="_blank">OpenAI Assistants dashboard</a></div>
+                                <input type="text" class="form-control" id="manual_assistant_id" name="manual_assistant_id" required>
+                                <div class="form-text">OBS! ID:t måste börja med "asst_" och skapas via <a href="https://platform.openai.com/assistants" target="_blank">OpenAI Assistants dashboard</a></div>
                             </div>
                         </div>
                     </div>
@@ -369,16 +362,11 @@ Var särskilt uppmärksam på:
                         </div>
                         <div class="col-md-6">
                             <input type="hidden" id="edit_assistant_id" name="assistant_id">
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="checkbox" id="edit_sync_with_openai" name="sync_with_openai" value="yes" checked>
-                                <label class="form-check-label" for="edit_sync_with_openai">
-                                    Uppdatera i OpenAI
-                                </label>
-                                <div class="form-text">När detta är aktiverat uppdateras assistenten automatiskt i OpenAI</div>
-                            </div>
-                            <div class="assistant-id-display">
-                                <label class="form-label">OpenAI Assistant ID:</label>
-                                <div class="form-control-plaintext" id="display_assistant_id"></div>
+                            <div class="mb-3">
+                                <label for="manual_assistant_id" class="form-label">OpenAI Assistant ID</label>
+                                <input type="text" class="form-control" id="edit_manual_assistant_id" name="manual_assistant_id">
+                                <div class="form-text">OBS! ID:t måste börja med "asst_" och skapas via <a href="https://platform.openai.com/assistants" target="_blank">OpenAI Assistants dashboard</a></div>
+                                <div class="form-text">Lämna tomt för att behålla nuvarande ID.</div>
                             </div>
                         </div>
                     </div>
@@ -434,28 +422,14 @@ Var särskilt uppmärksam på:
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Toggle manual assistant ID input based on checkbox
-    const createInOpenAI = document.getElementById('create_in_openai');
-    const manualIdContainer = document.querySelector('.manual-id-container');
+    // Update the hidden assistant_id field when manual ID is entered
     const assistantIdField = document.getElementById('assistant_id');
     const manualAssistantIdField = document.getElementById('manual_assistant_id');
     
-    if (createInOpenAI && manualIdContainer) {
-        createInOpenAI.addEventListener('change', function() {
-            if (this.checked) {
-                manualIdContainer.classList.add('d-none');
-                assistantIdField.value = '';
-            } else {
-                manualIdContainer.classList.remove('d-none');
-            }
+    if (manualAssistantIdField && assistantIdField) {
+        manualAssistantIdField.addEventListener('input', function() {
+            assistantIdField.value = this.value;
         });
-        
-        // Update the hidden assistant_id field when manual ID is entered
-        if (manualAssistantIdField) {
-            manualAssistantIdField.addEventListener('input', function() {
-                assistantIdField.value = this.value;
-            });
-        }
     }
     
     // Alternative implementation - use data attributes from stored divs

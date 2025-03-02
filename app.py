@@ -1329,34 +1329,19 @@ def save_assistant_route():
         
         # For a new assistant
         if not assistant_id_param:
-            # Check if we should create in OpenAI
-            create_in_openai = request.form.get('create_in_openai') == 'yes'
+            # Always use manually entered ID
+            assistant_data['assistant_id'] = request.form.get('manual_assistant_id')
             
-            if create_in_openai:
-                try:
-                    # Create in OpenAI
-                    from utils import create_openai_assistant
-                    openai_result = create_openai_assistant(
-                        openai_api_key,
-                        assistant_name,
-                        assistant_instructions
-                    )
-                    # Use the returned assistant ID
-                    assistant_data['assistant_id'] = openai_result.get('id')
-                    logger.info(f"Created assistant in OpenAI with ID: {assistant_data['assistant_id']}")
-                except Exception as e:
-                    logger.error(f"Failed to create assistant in OpenAI: {str(e)}")
-                    flash(f"Kunde inte skapa assistent i OpenAI: {str(e)}", 'danger')
-                    return redirect(url_for('assistant_config'))
-            else:
-                # Use manually entered ID
-                assistant_data['assistant_id'] = request.form.get('assistant_id')
-                if not assistant_data['assistant_id'] and request.form.get('manual_assistant_id'):
-                    assistant_data['assistant_id'] = request.form.get('manual_assistant_id')
-                    
-                if not assistant_data['assistant_id']:
-                    flash('Du måste ange ett OpenAI Assistant ID eller välja att skapa automatiskt', 'danger')
-                    return redirect(url_for('assistant_config'))
+            # Validate format of the assistant ID
+            if not assistant_data['assistant_id']:
+                flash('Du måste ange ett OpenAI Assistant ID', 'danger')
+                return redirect(url_for('assistant_config'))
+                
+            if not assistant_data['assistant_id'].startswith('asst_'):
+                flash('OpenAI Assistant ID måste börja med "asst_"', 'danger')
+                return redirect(url_for('assistant_config'))
+                
+            logger.info(f"Using manually entered OpenAI Assistant ID: {assistant_data['assistant_id']}")
         
         # For updating an existing assistant
         else:
@@ -1366,26 +1351,19 @@ def save_assistant_route():
                 flash('Kunde inte hitta assistenten för uppdatering', 'danger')
                 return redirect(url_for('assistant_config'))
                 
-            assistant_data['assistant_id'] = existing_assistant.get('assistant_id')
-            
-            # Check if we should update in OpenAI
-            sync_with_openai = request.form.get('sync_with_openai') == 'yes'
-            
-            if sync_with_openai and assistant_data['assistant_id']:
-                try:
-                    # Update in OpenAI
-                    from utils import update_openai_assistant
-                    update_openai_assistant(
-                        openai_api_key,
-                        assistant_data['assistant_id'],
-                        name=assistant_name,
-                        instructions=assistant_instructions
-                    )
-                    logger.info(f"Updated assistant in OpenAI with ID: {assistant_data['assistant_id']}")
-                except Exception as e:
-                    logger.error(f"Failed to update assistant in OpenAI: {str(e)}")
-                    flash(f"Kunde inte uppdatera assistent i OpenAI: {str(e)}", 'warning')
-                    # Continue with the local update even if OpenAI update fails
+            # Get the updated assistant ID from the form if provided, otherwise use existing
+            new_assistant_id = request.form.get('manual_assistant_id')
+            if new_assistant_id and new_assistant_id.strip():
+                # If a new ID is provided, validate it
+                if not new_assistant_id.startswith('asst_'):
+                    flash('OpenAI Assistant ID måste börja med "asst_"', 'danger')
+                    return redirect(url_for('assistant_config'))
+                assistant_data['assistant_id'] = new_assistant_id
+                logger.info(f"Updating assistant with new OpenAI ID: {assistant_data['assistant_id']}")
+            else:
+                # Use existing assistant ID
+                assistant_data['assistant_id'] = existing_assistant.get('assistant_id')
+                logger.info(f"Keeping existing OpenAI ID: {assistant_data['assistant_id']}")
         
         # Save to database
         saved_assistant = save_assistant(user_id, assistant_data)
