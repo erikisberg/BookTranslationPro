@@ -952,10 +952,21 @@ def edit_translation_page(document_id, page_id):
                 update_data = {
                     'translated_content': translated_content,
                     'status': status,
-                    'completion_percentage': completion_percentage,
-                    'reviewed_by_ai': 'ai_review' in request.form
+                    'completion_percentage': completion_percentage
                     # Don't set last_edited_at, let database handle it
                 }
+                
+                # Conditionally add reviewed_by_ai - handle case where column might not exist yet
+                if 'ai_review' in request.form:
+                    try:
+                        # Check if column exists first
+                        from supabase_config import get_db
+                        supabase = get_db()
+                        
+                        # Try to add the field
+                        update_data['reviewed_by_ai'] = True
+                    except Exception as schema_error:
+                        logger.warning(f"Could not set reviewed_by_ai field: {str(schema_error)}")
                 
                 # Log update attempt
                 logger.info(f"Updating page {page_id} with status {status} and completion {completion_percentage}%")

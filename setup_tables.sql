@@ -85,10 +85,22 @@ CREATE TABLE IF NOT EXISTS document_pages (
     translated_content TEXT,
     status TEXT DEFAULT 'in_progress',
     completion_percentage INTEGER DEFAULT 0,
+    reviewed_by_ai BOOLEAN DEFAULT FALSE,
     last_edited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add reviewed_by_ai column if it doesn't exist (for existing installations)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'document_pages' AND column_name = 'reviewed_by_ai'
+    ) THEN
+        ALTER TABLE document_pages ADD COLUMN reviewed_by_ai BOOLEAN DEFAULT FALSE;
+    END IF;
+END$$;
 
 -- Create storage buckets if they don't exist
 -- Note: This needs to be done through the Supabase interface or API

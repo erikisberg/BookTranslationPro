@@ -494,6 +494,12 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
     if source_language not in VALID_SOURCE_LANGUAGES:
         logger.warning(f"Invalid source language code: {source_language}, using AUTO")
         source_language = 'AUTO'  # Fallback to auto-detection
+        
+    # Critical check: if source and target languages are the same, force source to AUTO
+    # This prevents issues where both source and target become the same text
+    if source_language == target_language and source_language != 'AUTO':
+        logger.warning(f"Source and target languages are the same ({source_language}). Forcing source to AUTO")
+        source_language = 'AUTO'
 
     # Default values for glossary stats
     glossary_hits = 0
@@ -1556,6 +1562,14 @@ def process_document(filepath, deepl_api_key, openai_api_key=None, assistant_id=
                 if openai_api_key and assistant_id:
                     complexity_score, complexity_features = analyze_complexity(original_text)
                     logger.info(f"Section {i+1} complexity score: {complexity_score}")
+                
+                # Extra check: ensure translated_text is different from original_text
+                # If they're identical, log a warning and set translated_text to empty
+                if translated_text and translated_text == original_text and source_language != target_language:
+                    logger.warning(f"Translation for section {section_id} is identical to original. This may indicate an issue with the translation service.")
+                    logger.warning(f"Source language: {source_language}, Target language: {target_language}")
+                    logger.warning(f"Setting translated text to empty for now - user can edit it manually")
+                    translated_text = ""
                 
                 translations.append({
                     'id': section_id,
