@@ -2197,29 +2197,6 @@ def not_found_error(e):
     return render_template('404.html'), 404
 
 # Document Management Routes
-@app.route('/simple-documents')
-@login_required
-def simple_documents():
-    """A simple document management page without complex JavaScript"""
-    user_id = get_user_id()
-    if not user_id:
-        return redirect(url_for('login'))
-    
-    # Get user's documents
-    try:
-        documents = get_user_documents(user_id)
-        folders = get_user_folders(user_id)
-        
-        return render_template(
-            'simple_documents.html',
-            documents=documents,
-            folders=folders,
-            user_id=user_id
-        )
-    except Exception as e:
-        logger.error(f"Error displaying simple documents page: {str(e)}")
-        flash("An error occurred. Please check server logs.", "danger")
-        return redirect(url_for('index'))
 
 @app.route('/documents')
 @login_required
