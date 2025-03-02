@@ -314,7 +314,10 @@
                     .filter(tag => tag.length > 0)
             };
             
-            fetch('/documents/{{ document.id }}', {
+            // Get document ID from URL if not available in template
+            const documentId = '{{ document.id }}';
+            
+            fetch(`/documents/${documentId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -330,7 +333,7 @@
                 const sourceContent = document.getElementById('sourceContentEditor').value;
                 const translatedContent = document.getElementById('translatedContentEditor').value;
                 
-                return fetch('/documents/{{ document.id }}/content', {
+                return fetch(`/documents/${documentId}/content`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
@@ -349,7 +352,7 @@
                 showToast('Document saved successfully', 'success');
                 
                 // Redirect to document view
-                window.location.href = '/documents/{{ document.id }}';
+                window.location.href = `/documents/${documentId}`;
             })
             .catch(error => {
                 console.error('Error saving document:', error);
