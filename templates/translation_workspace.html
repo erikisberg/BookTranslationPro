@@ -4,13 +4,27 @@
 <div class="container">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>Translation Workspace</h2>
-                <div>
-                    <a href="{{ url_for('documents') }}" class="btn btn-secondary">
-                        <i class="bi bi-arrow-left"></i> Back to Projects
-                    </a>
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h2 id="project-title">Translation Workspace</h2>
+                    <div>
+                        <a href="{{ url_for('documents') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Projects
+                        </a>
+                    </div>
                 </div>
+                {% if document %}
+                    <div id="project-info" class="text-muted">
+                        Project: <strong>{{ document.title }}</strong> &middot;
+                        {% if document.description %} {{ document.description }} &middot; {% endif %}
+                        Languages: {{ document.source_language }} → {{ document.target_language }} &middot;
+                        Created: {{ document.created_at|datetime }}
+                    </div>
+                {% else %}
+                    <div id="project-info" class="text-muted">
+                        Working with translation: {{ translation_id }}
+                    </div>
+                {% endif %}
             </div>
             
             <!-- Progress bar -->

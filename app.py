@@ -618,10 +618,30 @@ def translation_workspace(id):
             else:
                 # Create a document from the translation with the translation ID
                 # Force the ID to be the same as the translation ID
+                
+                # Try to extract a better title from the original filename if available
+                title = f"Translation {id}"
+                description = f"Created from translation {id}"
+                
+                # Check if we have original filename in session
+                if 'original_filename' in session:
+                    orig_filename = session.get('original_filename')
+                    if orig_filename:
+                        # Use file basename without extension as title
+                        base_name = os.path.splitext(os.path.basename(orig_filename))[0]
+                        if base_name:
+                            title = base_name
+                            description = f"Translated from {orig_filename}"
+                
+                # Get project title from form if set in session
+                project_title = session.get('last_project_title')
+                if project_title:
+                    title = project_title
+                
                 doc_data = {
                     'id': id,  # Use same ID for easy reference
-                    'title': f"Translation {id}",
-                    'description': f"Created from translation {id}",
+                    'title': title,
+                    'description': description,
                     'source_language': 'auto',
                     'target_language': 'SV',
                     'status': 'in_progress',
@@ -714,8 +734,13 @@ def translation_workspace(id):
     completed_pages = sum(1 for page in pages if page.get('status') == 'completed')
     overall_progress = int((completed_pages / len(pages) * 100) if pages else 0)
     
+    # Ensure we have the document information to display in the workspace
+    if not document:
+        document = get_document(user_id, id)
+    
     return render_template('translation_workspace.html', 
                           translation_id=id, 
+                          document=document,
                           pages=pages, 
                           total_pages=len(pages),
                           completed_pages=completed_pages,
@@ -1517,6 +1542,11 @@ def upload_file():
             project_title = request.form.get('projectTitle', '')
             project_description = request.form.get('projectDescription', '')
             
+            # Store project title in session for later use
+            if project_title:
+                session['last_project_title'] = project_title
+                session.modified = True
+            
             original_filename = os.path.basename(filepaths[0])
             title = project_title if project_title else os.path.splitext(original_filename)[0]
             
@@ -1572,6 +1602,11 @@ def upload_file():
                     # Use project title if provided, otherwise use filename
                     project_title = request.form.get('projectTitle', '')
                     project_description = request.form.get('projectDescription', '')
+                    
+                    # Store project title in session for later use if not already stored
+                    if project_title and 'last_project_title' not in session:
+                        session['last_project_title'] = project_title
+                        session.modified = True
                     
                     # For batch chapters, name them as chapters
                     file_number = i + 1

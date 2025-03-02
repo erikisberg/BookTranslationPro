@@ -5,10 +5,10 @@
     <div class="row">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>Översätta Sida {{ page.page_number }}</h2>
+                <h2>Translating Page {{ page.page_number }}</h2>
                 <div>
                     <a href="{{ url_for('translation_workspace', id=document_id) }}" class="btn btn-secondary">
-                        <i class="bi bi-arrow-left"></i> Tillbaka till sidöversikten
+                        <i class="bi bi-arrow-left"></i> Back to Pages
                     </a>
                 </div>
             </div>
@@ -16,13 +16,13 @@
             <form method="POST">
                 <div class="card mb-4">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5>Översättningsarbetsyta</h5>
+                        <h5>Translation Editor</h5>
                         <div class="d-flex align-items-center">
                             <label for="statusSelect" class="me-2">Status:</label>
                             <select name="status" id="statusSelect" class="form-select form-select-sm" style="width: auto;">
-                                <option value="in_progress" {% if page.status == 'in_progress' %}selected{% endif %}>Pågående</option>
-                                <option value="needs_review" {% if page.status == 'needs_review' %}selected{% endif %}>Behöver granskning</option>
-                                <option value="completed" {% if page.status == 'completed' %}selected{% endif %}>Slutförd</option>
+                                <option value="in_progress" {% if page.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                                <option value="needs_review" {% if page.status == 'needs_review' %}selected{% endif %}>Needs Review</option>
+                                <option value="completed" {% if page.status == 'completed' %}selected{% endif %}>Completed</option>
                             </select>
                         </div>
                     </div>
