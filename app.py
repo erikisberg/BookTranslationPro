@@ -2819,6 +2819,30 @@ def download_document(document_id):
             except:
                 pass
 
+@app.route('/documents/<document_id>/delete', methods=['POST'])
+@login_required
+def delete_document_post_route(document_id):
+    """Delete a document (POST method fallback for browsers without JS)"""
+    user_id = get_user_id()
+    if not user_id:
+        flash('Unauthorized', 'error')
+        return redirect(url_for('documents'))
+    
+    # Get the document
+    document = get_document(user_id, document_id)
+    if not document:
+        flash('Document not found', 'error')
+        return redirect(url_for('documents'))
+    
+    # Delete document
+    result = delete_document(user_id, document_id)
+    if not result:
+        flash('Failed to delete document', 'error')
+        return redirect(url_for('documents'))
+    
+    flash('Document deleted successfully', 'success')
+    return redirect(url_for('documents'))
+
 @app.route('/documents/<document_id>', methods=['DELETE'])
 @login_required
 def delete_document_route(document_id):
