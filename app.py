@@ -913,62 +913,73 @@ def edit_translation_page(document_id, page_id):
                     
                     # Get the assistant ID to use
                     assistant_id = None
-                    if 'assistant_id' in request.form and request.form['assistant_id']:
+                    if 'assistant_id' in request.form and request.form['assistant_id'] and request.form['assistant_id'].startswith('asst_'):
                         assistant_id = request.form['assistant_id']
-                    elif document.get('settings') and document['settings'].get('assistant_id'):
+                        logger.info(f"Using assistant ID from form: {assistant_id}")
+                    elif document.get('settings') and document['settings'].get('assistant_id') and document['settings']['assistant_id'].startswith('asst_'):
                         assistant_id = document['settings']['assistant_id']
+                        logger.info(f"Using assistant ID from document settings: {assistant_id}")
                     else:
                         # Use the first available assistant or the default
                         user_assistants = get_user_assistants(user_id)
-                        if user_assistants:
-                            assistant_id = user_assistants[0]['id']
+                        if user_assistants and user_assistants[0].get('assistant_id') and user_assistants[0]['assistant_id'].startswith('asst_'):
+                            # Use the OpenAI assistant_id, not the internal UUID
+                            assistant_id = user_assistants[0]['assistant_id']
+                            logger.info(f"Using user's assistant with OpenAI ID: {assistant_id}")
                         else:
+                            # Use the environment variable assistant ID
                             assistant_id = OPENAI_ASSISTANT_ID
+                            logger.info(f"Using default assistant ID from environment: {assistant_id}")
                     
                     # Get custom instructions if provided
                     custom_instructions = request.form.get('ai_instructions', None)
                     
                     if openai_api_key and assistant_id:
-                        try:
-                            from utils import review_page_translation
-                            
-                            # Run the review process
-                            reviewed_text, success, error_msg = review_page_translation(
-                                translated_content, 
-                                openai_api_key, 
-                                assistant_id, 
-                                custom_instructions
-                            )
-                            
-                            if success:
-                                # Update the translated text with the reviewed version
-                                translated_content = reviewed_text
+                        # Validate the assistant ID format before proceeding
+                        if not assistant_id.startswith('asst_'):
+                            flash(f'Ogiltig OpenAI Assistant ID: {assistant_id}. ID måste börja med "asst_"', 'danger')
+                            logger.error(f"Invalid OpenAI Assistant ID format: {assistant_id}")
+                        else:
+                            try:
+                                from utils import review_page_translation
                                 
-                                # Mark as AI reviewed and completed
-                                status = 'completed'
+                                # Run the review process
+                                reviewed_text, success, error_msg = review_page_translation(
+                                    translated_content, 
+                                    openai_api_key, 
+                                    assistant_id, 
+                                    custom_instructions
+                                )
                                 
-                                # Track AI review stats in document settings
-                                if document.get('settings'):
-                                    settings = document.get('settings', {})
-                                    if not isinstance(settings, dict):
-                                        settings = {}
-                                        
-                                    # Initialize stats if needed
-                                    if 'ai_review_count' not in settings:
-                                        settings['ai_review_count'] = 0
-                                        
-                                    # Increment count
-                                    settings['ai_review_count'] = settings.get('ai_review_count', 0) + 1
+                                if success:
+                                    # Update the translated text with the reviewed version
+                                    translated_content = reviewed_text
                                     
-                                    # Update document settings
-                                    update_document(user_id, document_id, {'settings': settings})
-                                
-                                flash('AI-granskning slutförd!', 'success')
-                            else:
-                                flash(f'AI-granskning misslyckades: {error_msg}', 'warning')
-                        except Exception as e:
-                            logger.error(f"Error reviewing page: {str(e)}")
-                            flash(f'Fel vid AI-granskning: {str(e)}', 'danger')
+                                    # Mark as AI reviewed and completed
+                                    status = 'completed'
+                                    
+                                    # Track AI review stats in document settings
+                                    if document.get('settings'):
+                                        settings = document.get('settings', {})
+                                        if not isinstance(settings, dict):
+                                            settings = {}
+                                            
+                                        # Initialize stats if needed
+                                        if 'ai_review_count' not in settings:
+                                            settings['ai_review_count'] = 0
+                                            
+                                        # Increment count
+                                        settings['ai_review_count'] = settings.get('ai_review_count', 0) + 1
+                                        
+                                        # Update document settings
+                                        update_document(user_id, document_id, {'settings': settings})
+                                    
+                                    flash('AI-granskning slutförd!', 'success')
+                                else:
+                                    flash(f'AI-granskning misslyckades: {error_msg}', 'warning')
+                            except Exception as e:
+                                logger.error(f"Error reviewing page: {str(e)}")
+                                flash(f'Fel vid AI-granskning: {str(e)}', 'danger')
                     else:
                         flash('OpenAI API-nyckel eller assistent-ID saknas', 'warning')
                 
