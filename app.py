@@ -637,8 +637,10 @@ def translation_workspace(id):
                 flash('Kunde inte skapa arbetsdokument', 'danger')
                 return redirect(url_for('view_translation', id=id))
                 
-            # Save the translation text as document content
+            # Save the translation text as both source and translated content
+            # This ensures we have content in both fields for the side-by-side view
             save_document_content(user_id, document['id'], translation_text, 'source')
+            save_document_content(user_id, document['id'], translation_text, 'translated')
     except Exception as e:
         logger.error(f"Error checking/creating document: {str(e)}")
         flash('Ett fel uppstod: ' + str(e), 'danger')
@@ -660,17 +662,38 @@ def translation_workspace(id):
                 flash('Kunde inte dela upp innehållet i sidor', 'danger')
                 return redirect(url_for('view_translation', id=id))
             
-            # Create pages in the database
-            for i, page_content in enumerate(content_pages, 1):
-                page_data = {
-                    'document_id': document['id'],  # Use the actual document ID, not the translation ID
-                    'page_number': i,
-                    'source_content': page_content,
-                    'translated_content': '',  # Start with empty translation
-                    'status': 'in_progress',
-                    'completion_percentage': 0
-                }
-                create_document_page(user_id, page_data)
+            # Try to get translated content
+            translated_content = get_document_content(user_id, document['id'], 'translated')
+            if translated_content:
+                # If we have translated content, split it into pages as well
+                translated_pages = split_content_into_pages(translated_content)
+                
+                # Create pages with both source and translated content
+                for i, source_page in enumerate(content_pages, 1):
+                    # Get corresponding translated page if available
+                    translated_page = translated_pages[i-1] if i <= len(translated_pages) else ''
+                    
+                    page_data = {
+                        'document_id': document['id'],  # Use the actual document ID
+                        'page_number': i,
+                        'source_content': source_page,
+                        'translated_content': translated_page,  # Use translated content if available
+                        'status': 'in_progress',
+                        'completion_percentage': 50 if translated_page else 0  # Set initial progress
+                    }
+                    create_document_page(user_id, page_data)
+            else:
+                # No translated content available, initialize with source only
+                for i, page_content in enumerate(content_pages, 1):
+                    page_data = {
+                        'document_id': document['id'],  # Use the actual document ID
+                        'page_number': i,
+                        'source_content': page_content,
+                        'translated_content': page_content,  # Initialize with source content for easier translation
+                        'status': 'in_progress',
+                        'completion_percentage': 0
+                    }
+                    create_document_page(user_id, page_data)
                 
             # Get the newly created pages
             pages = get_document_pages(user_id, document['id'])
