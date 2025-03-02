@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort, Response
 from werkzeug.utils import secure_filename
 import tempfile
@@ -44,6 +45,10 @@ app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key-for-dev")
 # Get API keys from environment (will be empty by default, requiring users to add their own)
 DEEPL_API_KEY = ""
 OPENAI_API_KEY = ""
+
+# OpenAI Assistant ID - To create a default assistant, run:
+# python create_assistant.py YOUR_OPENAI_API_KEY
+# Then set the assistant ID in your environment variables
 OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID', "")
 
 # PostHog configuration - check both standard and Next.js naming conventions
@@ -1636,6 +1641,13 @@ def upload_file():
                 # Skip AI review since we don't have a valid assistant ID
                 skip_openai = True
                 openai_api_key = None
+            else:
+                # Additional fallback - check for format validity
+                if not str(openai_assistant_id).startswith("asst_"):
+                    logger.warning(f"Invalid OpenAI assistant ID format: {openai_assistant_id}. OpenAI assistant IDs should start with 'asst_'")
+                    logger.warning("Skipping AI review and using DeepL translation only.")
+                    skip_openai = True
+                    openai_api_key = None
         else:
             openai_api_key = None
             openai_assistant_id = None
@@ -1674,6 +1686,17 @@ def upload_file():
         # Process each document and collect translations
         original_filenames = []
         total_sections = 0
+        
+        # Initialize statistics
+        cache_hits = 0
+        cache_ratio = 0
+        smart_review_savings = 0
+        smart_review_ratio = 0
+        
+        # Initialize glossary stats
+        globals()['glossary_hits'] = 0
+        globals()['glossary_ratio'] = 0
+        globals()['unique_terms_used'] = 0
         
         for i, filepath in enumerate(filepaths):
             try:

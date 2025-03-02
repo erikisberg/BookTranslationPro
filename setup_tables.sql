@@ -93,3 +93,20 @@ CREATE TABLE IF NOT EXISTS document_pages (
 -- Create storage buckets if they don't exist
 -- Note: This needs to be done through the Supabase interface or API
 -- Create a bucket called 'documents' for storing document content
+
+-- Translation Memory/Cache
+CREATE TABLE IF NOT EXISTS translation_cache (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    source_hash TEXT NOT NULL,
+    source_text TEXT NOT NULL,
+    translated_text TEXT NOT NULL,
+    target_language TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (source_hash, target_language)
+);
+
+-- Create index for translation cache
+CREATE INDEX IF NOT EXISTS idx_translation_cache_source_hash ON translation_cache(source_hash);
+CREATE INDEX IF NOT EXISTS idx_translation_cache_user_id ON translation_cache(user_id);

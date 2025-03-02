@@ -798,11 +798,18 @@ def review_translation(text, openai_api_key, assistant_id, instructions=None, ma
             
             # First validate the assistant exists
             try:
+                # Verify this is even a valid assistant ID format
+                if not assistant_id or not str(assistant_id).startswith("asst_"):
+                    logger.error(f"Invalid OpenAI assistant ID format: {assistant_id}. Must start with 'asst_'")
+                    return text  # Return original text without review
+
+                # Retrieve the assistant
                 assistant = client.beta.assistants.retrieve(assistant_id)
                 logger.info(f"Using assistant: {assistant.name} (model: {assistant.model})")
             except Exception as assistant_error:
                 logger.error(f"Could not retrieve assistant with ID {assistant_id}: {assistant_error}")
-                raise ValueError(f"Invalid assistant ID or API key: {assistant_error}")
+                # Return original text instead of raising error
+                return text
             
             # Create a new thread
             logger.info(f"Creating new thread for reviewing {len(text)} characters")

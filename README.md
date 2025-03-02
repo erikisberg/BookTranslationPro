@@ -41,7 +41,19 @@ POSTHOG_API_KEY=your_posthog_key
 POSTHOG_HOST=https://app.posthog.com
 ```
 
-3. Run the application
+3. Set up the database
+   - Create a Supabase project at https://supabase.com
+   - Run the setup_tables.sql script in the Supabase SQL editor to create required tables
+   - Create a storage bucket called 'documents' in the Supabase dashboard
+
+4. Create an OpenAI Assistant
+```
+python create_assistant.py YOUR_OPENAI_API_KEY
+```
+   - This will create a translation review assistant
+   - Add the generated assistant ID to your .env file as OPENAI_ASSISTANT_ID
+
+5. Run the application
 ```
 python app.py
 ```
