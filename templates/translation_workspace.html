@@ -548,7 +548,113 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="startBatchReview" onclick="submitBatchAIReview()">Start AI Review</button>
+                <button type="button" class="btn btn-primary" id="startBatchReview" onclick="
+(function() {
+    console.log('Start AI Review button clicked');
+    const batchForm = document.getElementById('batchAIReviewForm');
+    const startBtn = document.getElementById('startBatchReview');
+    const progressContainer = document.getElementById('batchProgressContainer');
+    const progressStatus = document.getElementById('progressStatus');
+    
+    // Validate form
+    const selectedPages = document.querySelectorAll('.ai-page-checkbox:checked');
+    
+    if (selectedPages.length === 0) {
+        alert('Please select at least one page to review');
+        return;
+    }
+    
+    const assistantSelect = document.getElementById('aiAssistant');
+    if (!assistantSelect) {
+        alert('AI Assistant selection is missing');
+        return;
+    }
+    
+    const assistantId = assistantSelect.value;
+    if (!assistantId) {
+        alert('Please select an AI assistant');
+        return;
+    }
+    
+    // Prepare form data and submit
+    const formData = new FormData(batchForm);
+    
+    // Disable form elements
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<span class=\"spinner-border spinner-border-sm\" role=\"status\"></span> Processing...';
+    
+    // Show progress
+    progressContainer.classList.remove('d-none');
+    progressStatus.textContent = 'Starting batch review...';
+    
+    // Submit form
+    fetch(batchForm.action, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Start polling for status
+            const statusUrl = '{{ url_for('batch_ai_review_status', document_id=document.id) }}?job_id=' + data.job_id;
+            checkBatchStatus(statusUrl);
+        } else {
+            progressStatus.textContent = 'Error: ' + (data.message || 'Unknown error');
+            startBtn.disabled = false;
+            startBtn.innerHTML = 'Start AI Review';
+        }
+    })
+    .catch(error => {
+        progressStatus.textContent = 'Error: ' + error.message;
+        startBtn.disabled = false;
+        startBtn.innerHTML = 'Start AI Review';
+    });
+})();
+
+// Helper function to check batch status
+function checkBatchStatus(statusUrl) {
+    const progressBar = document.getElementById('batchProgressBar');
+    const progressStatus = document.getElementById('progressStatus');
+    const startBtn = document.getElementById('startBatchReview');
+    
+    fetch(statusUrl)
+    .then(response => response.json())
+    .then(data => {
+        // Update progress
+        const progress = data.progress || 0;
+        progressBar.style.width = progress + '%';
+        progressBar.setAttribute('aria-valuenow', progress);
+        progressStatus.textContent = data.status || 'Processing...';
+        
+        if (data.completed) {
+            if (data.success) {
+                progressBar.classList.remove('progress-bar-animated');
+                progressBar.classList.add('bg-success');
+                progressStatus.textContent = 'Completed! ' + data.pages_processed + ' pages reviewed.';
+                
+                startBtn.disabled = false;
+                startBtn.innerHTML = 'Refresh Page';
+                startBtn.classList.remove('btn-primary');
+                startBtn.classList.add('btn-success');
+                startBtn.onclick = function() { window.location.reload(); };
+            } else {
+                progressBar.classList.remove('progress-bar-animated');
+                progressBar.classList.add('bg-danger');
+                progressStatus.textContent = 'Error: ' + (data.message || 'Unknown error');
+                
+                startBtn.disabled = false;
+                startBtn.innerHTML = 'Retry';
+            }
+        } else {
+            setTimeout(function() { checkBatchStatus(statusUrl); }, 2000);
+        }
+    })
+    .catch(error => {
+        progressStatus.textContent = 'Error checking status: ' + error.message;
+        setTimeout(function() { checkBatchStatus(statusUrl); }, 5000);
+    });
+}">Start AI Review</button>
             </div>
         </div>
     </div>
