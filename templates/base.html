@@ -29,7 +29,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <i class="bi bi-pen"></i> InkAssist
+                <i class="bi bi-book"></i> BookTranslation Pro
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -38,23 +38,23 @@
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
-                            <i class="bi bi-house"></i> Hem
+                            <i class="bi bi-house"></i> Dashboard
                         </a>
                     </li>
                     {% if current_user %}
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'review' %}active{% endif %}" href="{{ url_for('review') }}">
-                            <i class="bi bi-check-square"></i> Granska
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'history' %}active{% endif %}" href="{{ url_for('history') }}">
-                            <i class="bi bi-clock-history"></i> Historik
-                        </a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'documents' or request.endpoint == 'documents_folder' %}active{% endif %}" href="{{ url_for('documents') }}">
-                            <i class="bi bi-folder2-open"></i> Dokument
+                            <i class="bi bi-journal-text"></i> Projects
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'translation_memory' %}active{% endif %}" href="{{ url_for('translation_memory') }}">
+                            <i class="bi bi-archive"></i> Translation Memory
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'glossary_list' %}active{% endif %}" href="{{ url_for('glossary_list') }}">
+                            <i class="bi bi-book"></i> Glossaries
                         </a>
                     </li>
                     {% endif %}

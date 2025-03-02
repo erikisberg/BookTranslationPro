@@ -8,7 +8,7 @@
         <div>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ url_for('documents') }}">Documents</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('documents') }}">Book Projects</a></li>
                     {% if document.folder_id %}
                         <li class="breadcrumb-item">
                             <a href="{{ url_for('documents_folder', folder_id=document.folder_id) }}">{{ folder_name }}</a>

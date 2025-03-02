@@ -969,8 +969,47 @@ def index():
     
     # Get user's folders for the dropdown
     folders = get_user_folders(user_id)
+    
+    # Get recent documents for the dashboard
+    try:
+        documents = get_user_documents(user_id, limit=5)
+        
+        # Calculate progress for each document
+        for doc in documents:
+            if 'total_pages' not in doc or 'completed_pages' not in doc:
+                # Get document pages to calculate progress
+                try:
+                    pages = get_document_pages(user_id, doc['id'])
+                    if pages:
+                        doc['total_pages'] = len(pages)
+                        doc['completed_pages'] = sum(1 for p in pages if p.get('status') == 'completed')
+                        doc['overall_progress'] = int((doc['completed_pages'] / doc['total_pages'] * 100) if doc['total_pages'] > 0 else 0)
+                    else:
+                        doc['total_pages'] = 0
+                        doc['completed_pages'] = 0
+                        doc['overall_progress'] = 0
+                except Exception as page_error:
+                    logger.error(f"Error getting pages for document {doc['id']}: {str(page_error)}")
+                    doc['total_pages'] = 0
+                    doc['completed_pages'] = 0
+                    doc['overall_progress'] = 0
+    except Exception as e:
+        logger.error(f"Error loading recent documents: {str(e)}")
+        documents = []
+    
+    # Get translation memory stats
+    try:
+        translation_memory_stats = get_translation_memory_stats(user_id)
+    except Exception as e:
+        logger.error(f"Error loading translation memory stats: {str(e)}")
+        translation_memory_stats = {'total_entries': 0, 'languages': []}
             
-    return render_template('index.html', assistants=assistants, glossaries=glossaries, folders=folders)
+    return render_template('index.html', 
+                          assistants=assistants, 
+                          glossaries=glossaries, 
+                          folders=folders,
+                          documents=documents,
+                          translation_memory_stats=translation_memory_stats)
 
 @app.route('/assistant-config', methods=['GET'])
 @login_required
@@ -2529,7 +2568,7 @@ def not_found_error(e):
 @app.route('/documents')
 @login_required
 def documents():
-    """Show all user documents"""
+    """Show all user book translation projects"""
     user_id = get_user_id()
     if not user_id:
         return redirect(url_for('login'))
@@ -2567,6 +2606,26 @@ def documents():
             # Get total document count for pagination
             total_documents = len(get_user_documents(user_id))
             total_pages = (total_documents + per_page - 1) // per_page
+            
+            # Calculate progress info for each document
+            for doc in documents:
+                if 'total_pages' not in doc or 'completed_pages' not in doc:
+                    # Get document pages to calculate progress if not already in the document data
+                    try:
+                        pages = get_document_pages(user_id, doc['id'])
+                        if pages:
+                            doc['total_pages'] = len(pages)
+                            doc['completed_pages'] = sum(1 for p in pages if p.get('status') == 'completed')
+                            doc['overall_progress'] = int((doc['completed_pages'] / doc['total_pages'] * 100) if doc['total_pages'] > 0 else 0)
+                        else:
+                            doc['total_pages'] = 0
+                            doc['completed_pages'] = 0
+                            doc['overall_progress'] = 0
+                    except Exception as page_error:
+                        logger.error(f"Error getting pages for document {doc['id']}: {str(page_error)}")
+                        doc['total_pages'] = 0
+                        doc['completed_pages'] = 0
+                        doc['overall_progress'] = 0
         except Exception as docs_error:
             logger.error(f"Error loading documents: {str(docs_error)}")
             documents = []
