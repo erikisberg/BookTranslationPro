@@ -2512,6 +2512,8 @@ def import_glossary_entries(glossary_id):
 @app.route('/export/<document_id>', methods=['GET'])
 @login_required
 def export_document(document_id):
+    from utils import create_pdf_with_formatting, create_docx_with_text, create_html_with_text
+    
     user_id = get_user_id()
     export_format = request.args.get('format', 'pdf')
     
@@ -2569,21 +2571,21 @@ def export_document(document_id):
     # Generate the document based on format
     try:
         if export_format == 'pdf':
-            output_file = utils.create_pdf_with_formatting(
+            output_file = create_pdf_with_formatting(
                 final_content, font_family, font_size, page_size, 
                 orientation, margin_size, line_spacing, alignment,
                 include_page_numbers, header_text, footer_text
             )
             mimetype = 'application/pdf'
         elif export_format == 'docx':
-            output_file = utils.create_docx_with_text(
+            output_file = create_docx_with_text(
                 final_content, font_family, font_size, page_size,
                 orientation, margin_size, line_spacing, alignment,
                 include_page_numbers, header_text, footer_text
             )
             mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         elif export_format == 'html':
-            output_file = utils.create_html_with_text(
+            output_file = create_html_with_text(
                 final_content, font_family, font_size, line_spacing, 
                 alignment, include_page_numbers, header_text, footer_text
             )
@@ -2627,6 +2629,8 @@ def export_document(document_id):
 @app.route('/export-selected-pages/<document_id>', methods=['POST'])
 @login_required
 def export_selected_pages(document_id):
+    from utils import create_pdf_with_formatting, create_docx_with_text, create_html_with_text
+    
     user_id = get_user_id()
     
     # Get document to verify ownership
@@ -2720,21 +2724,21 @@ def export_selected_pages(document_id):
     # Generate the document based on format
     try:
         if export_format == 'pdf':
-            output_file = utils.create_pdf_with_formatting(
+            output_file = create_pdf_with_formatting(
                 final_content, font_family, font_size, page_size, 
                 orientation, margin_size, line_spacing, alignment,
                 include_page_numbers, header_text, footer_text
             )
             mimetype = 'application/pdf'
         elif export_format == 'docx':
-            output_file = utils.create_docx_with_text(
+            output_file = create_docx_with_text(
                 final_content, font_family, font_size, page_size,
                 orientation, margin_size, line_spacing, alignment,
                 include_page_numbers, header_text, footer_text
             )
             mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         elif export_format == 'html':
-            output_file = utils.create_html_with_text(
+            output_file = create_html_with_text(
                 final_content, font_family, font_size, line_spacing, 
                 alignment, include_page_numbers, header_text, footer_text
             )
