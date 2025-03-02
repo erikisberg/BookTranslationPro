@@ -755,11 +755,11 @@ def translation_workspace(id):
             # Add character count
             if 'char_count' not in document['settings']:
                 # If either source or translated content is available, count characters
-                source_content = get_document_content(user_id, document_id, 'source')
+                source_content = get_document_content(user_id, document['id'], 'source')
                 if source_content:
                     document['settings']['char_count'] = len(source_content)
                 else:
-                    translated_content = get_document_content(user_id, document_id, 'translated')
+                    translated_content = get_document_content(user_id, document['id'], 'translated')
                     if translated_content:
                         document['settings']['char_count'] = len(translated_content)
                     else:
