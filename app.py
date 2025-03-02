@@ -441,6 +441,14 @@ def signup():
                 # Note: 'name' column doesn't exist in users table according to error message
             }
             save_user_data(response.user.id, user_data)
+            
+            # Automatically set up database tables for new user
+            try:
+                logger.info(f"Setting up database tables for new user: {response.user.id}")
+                setup_db_for_user(response.user.id)
+                logger.info(f"Database setup complete for user: {response.user.id}")
+            except Exception as e:
+                logger.error(f"Error setting up database for new user: {str(e)}")
         
         # Track successful signup
         if posthog_available and posthog:
@@ -3344,6 +3352,22 @@ def translation_memory():
     user_id = get_user_id()
     if not user_id:
         return redirect(url_for('login'))
+    
+    # Check if database tables are set up
+    try:
+        from supabase_config import supabase
+        # Try to check if translation_cache table exists
+        try:
+            result = supabase.table('translation_cache').select('count').limit(1).execute()
+        except Exception as table_error:
+            if 'relation "public.translation_cache" does not exist' in str(table_error):
+                logger.warning("Database tables not set up. Running setup automatically.")
+                setup_db_for_user(user_id)
+                flash("Database tables have been set up automatically.", "info")
+            else:
+                logger.error(f"Error checking database: {str(table_error)}")
+    except Exception as e:
+        logger.error(f"Error checking database setup: {str(e)}")
         
     # Get pagination params
     page = request.args.get('page', 1, type=int)
@@ -3355,34 +3379,39 @@ def translation_memory():
     language = request.args.get('language', '')
     
     # Get entries
-    entries = get_translation_memory_entries(
-        user_id, 
-        limit=per_page, 
-        offset=offset,
-        search=search, 
-        language=language
-    )
-    
-    # Get statistics
-    stats = get_translation_memory_stats(user_id)
-    
-    # Get total count for pagination
-    total_entries = stats['total_entries']
-    total_pages = (total_entries + per_page - 1) // per_page
-    
-    # Get unique languages from stats for dropdown
-    languages = stats.get('languages', [])
-    
-    return render_template(
-        'translation_memory.html',
-        entries=entries,
-        page=page,
-        total_pages=total_pages,
-        search=search,
-        language=language,
-        languages=languages,
-        stats=stats
-    )
+    try:
+        entries = get_translation_memory_entries(
+            user_id, 
+            limit=per_page, 
+            offset=offset,
+            search=search, 
+            language=language
+        )
+        
+        # Get statistics
+        stats = get_translation_memory_stats(user_id)
+        
+        # Get total count for pagination
+        total_entries = stats['total_entries']
+        total_pages = (total_entries + per_page - 1) // per_page
+        
+        # Get unique languages from stats for dropdown
+        languages = stats.get('languages', [])
+        
+        return render_template(
+            'translation_memory.html',
+            entries=entries,
+            page=page,
+            total_pages=total_pages,
+            search=search,
+            language=language,
+            languages=languages,
+            stats=stats
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving translation memory: {str(e)}")
+        flash("Error retrieving translation memory. Please try again.", "danger")
+        return redirect(url_for('index'))
 
 @app.route('/translation-memory/<entry_id>', methods=['GET'])
 @login_required
@@ -4324,6 +4353,70 @@ def delete_document_route(document_id):
         'message': 'Document deleted successfully'
     })
 
+# Function to set up database for a new user
+def setup_db_for_user(user_id):
+    """Setup database tables for a newly registered user"""
+    if not user_id:
+        logger.error("Cannot set up database for empty user_id")
+        return False
+    
+    try:
+        # Get the SQL setup script content
+        with open('setup_tables.sql', 'r') as f:
+            sql_script = f.read()
+        
+        # Execute the SQL script
+        from supabase_config import supabase
+        
+        # Split the script into individual statements
+        statements = sql_script.split(';')
+        
+        success_count = 0
+        error_messages = []
+        
+        # Execute each statement
+        for stmt in statements:
+            stmt = stmt.strip()
+            if not stmt:  # Skip empty statements
+                continue
+                
+            try:
+                result = supabase.rpc('exec_sql', {'query': stmt}).execute()
+                success_count += 1
+            except Exception as stmt_error:
+                error_messages.append(f"Error executing statement: {str(stmt_error)}")
+                logger.warning(f"Error during database setup (non-fatal): {str(stmt_error)}")
+                # Continue with other statements
+        
+        # Create storage bucket if it doesn't exist
+        try:
+            # Try to create the documents bucket directly
+            try:
+                # Create bucket with public access and CORS enabled
+                supabase.storage.create_bucket(
+                    id="documents", 
+                    options={
+                        "public": True,
+                        "file_size_limit": 52428800,
+                        "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
+                                             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                    }
+                )
+                logger.info("Created 'documents' storage bucket with public access")
+            except Exception as bucket_exists_error:
+                # Bucket might already exist, which is fine
+                if "already exists" in str(bucket_exists_error).lower():
+                    logger.info("'documents' bucket already exists")
+        except Exception as bucket_error:
+            error_messages.append(f"Error creating 'documents' bucket: {str(bucket_error)}")
+            logger.error(f"Error creating documents bucket: {bucket_error}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error in database setup for user {user_id}: {str(e)}")
+        return False
+
 # Admin Route for Database Setup
 @app.route('/admin/setup-database')
 @login_required
@@ -4348,117 +4441,19 @@ def setup_database():
         return redirect(url_for('index'))
     
     try:
-        # Get the SQL setup script content
-        with open('setup_tables.sql', 'r') as f:
-            sql_script = f.read()
+        # Use the common setup function
+        success = setup_db_for_user(user_id)
         
-        # Execute the SQL script 
-        # Note: This is a simplified approach. In a production environment,
-        # you would want to use a more robust solution for database migrations.
-        try:
-            # Split the script into individual statements
-            statements = sql_script.split(';')
+        if success:
+            flash("Database tables set up successfully!", "success")
+        else:
+            flash("Error setting up database tables. Check logs for details.", "warning")
             
-            success_count = 0
-            error_messages = []
-            
-            # Execute each statement
-            for stmt in statements:
-                stmt = stmt.strip()
-                if not stmt:  # Skip empty statements
-                    continue
-                    
-                try:
-                    # This is a simplistic approach - in a real app use proper SQL execution
-                    from supabase_config import supabase
-                    result = supabase.rpc('exec_sql', {'query': stmt}).execute()
-                    success_count += 1
-                except Exception as stmt_error:
-                    error_messages.append(f"Error executing statement: {str(stmt_error)}")
-                    # Continue with other statements
-            
-            # Create storage bucket if it doesn't exist
-            try:
-                # Try to create the documents bucket directly
-                try:
-                    # Create bucket with public access and CORS enabled
-                    # Using the correct format for create_bucket
-                    supabase.storage.create_bucket(
-                        id="documents", 
-                        options={
-                            "public": True,
-                            "file_size_limit": 52428800,
-                            "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
-                                                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
-                        }
-                    )
-                    
-                    # Set CORS policy for the bucket
-                    try:
-                        # This is the format for setting CORS policy via the Admin API
-                        cors_config = {
-                            "origins": ["*"],
-                            "methods": ["GET", "POST", "PUT", "DELETE"],
-                            "headers": ["*"],
-                            "maxAgeSeconds": 3600
-                        }
-                        # Note: This might require a direct SQL query or Admin API access
-                        # For now, log that the proper CORS config needs to be set in dashboard
-                        logger.info("CORS policy needs to be set in Supabase dashboard for 'documents' bucket")
-                    except Exception as cors_error:
-                        logger.error(f"Error setting CORS policy: {cors_error}")
-                        
-                    logger.info("Created 'documents' storage bucket with public access")
-                except Exception as bucket_exists_error:
-                    # Bucket might already exist, which is fine
-                    if "already exists" in str(bucket_exists_error).lower():
-                        logger.info("'documents' bucket already exists")
-                        # Make sure bucket is public with proper settings
-                        try:
-                            # Update bucket to be public with proper configs
-                            supabase.storage.update_bucket(
-                                id="documents", 
-                                options={
-                                    "public": True,
-                                    "file_size_limit": 52428800,
-                                    "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
-                                                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
-                                }
-                            )
-                            logger.info("Updated 'documents' bucket to be public with proper settings")
-                            
-                            # Remind about CORS configuration
-                            logger.info("Note: CORS policy may need to be updated in Supabase dashboard for 'documents' bucket")
-                        except Exception as update_error:
-                            logger.error(f"Error updating 'documents' bucket: {update_error}")
-                    else:
-                        # Some other error occurred
-                        raise bucket_exists_error
-            except Exception as bucket_error:
-                error_messages.append(f"Error creating 'documents' bucket: {str(bucket_error)}")
-                logger.error(f"Error creating documents bucket: {bucket_error}")
-            
-            # Report results
-            if error_messages:
-                flash(f"Database setup completed with {len(error_messages)} errors. See logs for details.", "warning")
-                for error in error_messages:
-                    logger.error(error)
-            else:
-                flash("Database tables set up successfully!", "success")
+        return render_template('setup_database.html', success_count=1, error_count=0, errors=[])
                 
-            return render_template('setup_database.html', 
-                                  success_count=success_count, 
-                                  error_count=len(error_messages),
-                                  errors=error_messages)
-                
-        except Exception as exec_error:
-            logger.error(f"Error executing SQL script: {str(exec_error)}")
-            flash(f"Error executing database setup script: {str(exec_error)}", "danger")
-            return render_template('setup_database.html', error=str(exec_error))
-        
     except Exception as e:
         logger.error(f"Error in database setup: {str(e)}")
-        flash(f"Error reading setup script: {str(e)}", "danger")
+        flash(f"Error setting up database: {str(e)}", "danger")
         return render_template('setup_database.html', error=str(e))
 
 @app.errorhandler(500)
