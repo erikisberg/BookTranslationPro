@@ -9,24 +9,38 @@
                     <h1 class="card-title"><i class="bi bi-question-circle"></i> Hjälp & Information</h1>
                 </div>
                 <div class="card-body">
-                    <!-- Table of contents -->
-                    <div class="mb-4">
-                        <h5>Innehåll</h5>
-                        <ul class="list-unstyled">
-                            <li><a href="#about" class="text-decoration-none">Vad är InkAssist?</a></li>
-                            <li><a href="#getting-started" class="text-decoration-none">Kom igång</a></li>
-                            <li><a href="#documents" class="text-decoration-none">Dokumenthantering</a></li>
-                            <li><a href="#versions" class="text-decoration-none">Versionshantering</a></li>
-                            <li><a href="#glossary" class="text-decoration-none">Ordlistor</a></li>
-                            <li><a href="#deepl" class="text-decoration-none">DeepL översättning</a></li>
-                            <li><a href="#openai" class="text-decoration-none">OpenAI assistenter</a></li>
-                            <li><a href="#assistants" class="text-decoration-none">Anpassa assistenter</a></li>
-                            <li><a href="#api-keys" class="text-decoration-none">Använda egna API-nycklar</a></li>
-                            <li><a href="#analytics" class="text-decoration-none">Analys och datainsamling</a></li>
-                            <li><a href="#shortcuts" class="text-decoration-none">Tangentbordsgenvägar</a></li>
-                            <li><a href="#issues" class="text-decoration-none">Felsökning</a></li>
-                        </ul>
-                    </div>
+                    <!-- Tabs navigation -->
+                    <ul class="nav nav-tabs" id="helpTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="help-tab" data-bs-toggle="tab" data-bs-target="#help-content" type="button" role="tab" aria-controls="help-content" aria-selected="true">Hjälpdokumentation</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="getting-started-tab" data-bs-toggle="tab" data-bs-target="#getting-started-content" type="button" role="tab" aria-controls="getting-started-content" aria-selected="false">Kom igång guide</button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab content -->
+                    <div class="tab-content pt-4" id="helpTabsContent">
+                        <!-- Tab 1: Help Documentation -->
+                        <div class="tab-pane fade show active" id="help-content" role="tabpanel" aria-labelledby="help-tab">
+                            <!-- Table of contents -->
+                            <div class="mb-4">
+                                <h5>Innehåll</h5>
+                                <ul class="list-unstyled">
+                                    <li><a href="#about" class="text-decoration-none">Vad är InkAssist?</a></li>
+                                    <li><a href="#getting-started" class="text-decoration-none">Kom igång</a></li>
+                                    <li><a href="#documents" class="text-decoration-none">Dokumenthantering</a></li>
+                                    <li><a href="#versions" class="text-decoration-none">Versionshantering</a></li>
+                                    <li><a href="#glossary" class="text-decoration-none">Ordlistor</a></li>
+                                    <li><a href="#deepl" class="text-decoration-none">DeepL översättning</a></li>
+                                    <li><a href="#openai" class="text-decoration-none">OpenAI assistenter</a></li>
+                                    <li><a href="#assistants" class="text-decoration-none">Anpassa assistenter</a></li>
+                                    <li><a href="#api-keys" class="text-decoration-none">Använda egna API-nycklar</a></li>
+                                    <li><a href="#analytics" class="text-decoration-none">Analys och datainsamling</a></li>
+                                    <li><a href="#shortcuts" class="text-decoration-none">Tangentbordsgenvägar</a></li>
+                                    <li><a href="#issues" class="text-decoration-none">Felsökning</a></li>
+                                </ul>
+                            </div>
                     
                     <!-- About section -->
                     <section id="about" class="mb-5">
@@ -447,6 +461,263 @@ Var särskilt uppmärksam på:
                             <li>Eventuella felmeddelanden som visas i webbläsarens konsol (om tillgängligt)</li>
                         </ul>
                     </section>
+                        </div>
+                        
+                        <!-- Tab 2: Getting Started Guide -->
+                        <div class="tab-pane fade" id="getting-started-content" role="tabpanel" aria-labelledby="getting-started-tab">
+                            <div class="mb-4">
+                                <h2 class="border-bottom pb-2">Kom igång guide</h2>
+                                <p class="lead">
+                                    Denna guide tar dig genom alla steg för att börja använda InkAssist, från att ställa in ditt konto till att slutföra din första översättning.
+                                </p>
+                            </div>
+                            
+                            <section class="mb-5">
+                                <h3 class="mb-3">1. Förberedelser innan översättning</h3>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">1.1 Ställ in ditt konto</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Skapa konto:</strong> Om du inte redan har ett konto, registrera dig med din e-postadress och ett säkert lösenord.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Komplettera din profil:</strong> Gå till <a href="{{ url_for('profile') }}">Profil</a> och lägg till ditt namn.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Lägga till API-nycklar:</strong> För obegränsad användning, gå till <a href="{{ url_for('api_keys_settings') }}">API-nycklar</a> och lägg till dina egna nycklar från:
+                                                <ul>
+                                                    <li><a href="https://www.deepl.com/pro-api" target="_blank" rel="noopener">DeepL API</a> (krävs)</li>
+                                                    <li><a href="https://platform.openai.com/" target="_blank" rel="noopener">OpenAI API</a> (rekommenderas)</li>
+                                                </ul>
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">1.2 Ställ in assistenter (optional)</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>För bästa resultat, särskilt för skönlitterära texter, rekommenderar vi att du anpassar AI-assistenter:</p>
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Gå till inställningar:</strong> Öppna <a href="{{ url_for('assistant_config') }}">Inställningar</a> och klicka på fliken "Assistenter".
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Skapa ny assistent:</strong> Klicka på "Ny assistent" och fyll i följande information:
+                                                <ul>
+                                                    <li>Namn (t.ex. "Barnlitteratur" eller "John Doe stil")</li>
+                                                    <li>Författare som assistenten ska efterlikna</li>
+                                                    <li>Genre assistenten är anpassad för</li>
+                                                </ul>
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Instruktioner:</strong> Ge detaljerade instruktioner om hur översättningen ska anpassas, till exempel:
+                                                <pre class="p-3 bg-light">Översätt med bevarande av författarens barnbokskaraktär. Fokusera på:
+- Enkel men levande språknivå anpassad för barn
+- Bevarande av ordlekar och humor
+- Kulturell anpassning av uttryck som kan vara svåra att förstå
+- Konsekvent ton och stilistiska element</pre>
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">1.3 Skapa ordlistor (optional)</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>Ordlistor är särskilt viktiga för att säkerställa konsekvent användning av termer:</p>
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Gå till ordlistor:</strong> Välj <a href="{{ url_for('glossary_list') }}">Ordlistor</a> från din profilmeny.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Skapa ordlista:</strong> Klicka på "Ny ordlista" och definiera källspråk och målspråk.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Lägga till termer:</strong> Lägg till specifika termer som ska översättas konsekvent i dina projekt.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Importera (för större ordlistor):</strong> Använd CSV-import för att snabbt lägga till många termer.
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">1.4 Skapa mappar för organisation</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>Innan du börjar översätta, organisera ditt arbetsflöde med mappar:</p>
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Gå till dokumentbibliotek:</strong> Öppna <a href="{{ url_for('documents') }}">Dokument</a> från huvudmenyn.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Skapa mappar:</strong> Klicka på "Ny" under mappanelen till vänster.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Organisera efter projekt:</strong> Skapa mappar för olika författare, projekt eller kategorier.
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </section>
+                            
+                            <section class="mb-5">
+                                <h3 class="mb-3">2. Din första översättning</h3>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">2.1 Ladda upp och konfigurera</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Gå till startsidan:</strong> Klicka på <a href="{{ url_for('index') }}">Hem</a> i huvudmenyn.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Välj dokument:</strong> Klicka på "Välj fil" eller dra-och-släpp en fil för att ladda upp (PDf, DOCX, TXT är stödda).
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Välj språk:</strong> 
+                                                <ul>
+                                                    <li>Källspråk: Välj språket i ditt originaldokument (eller välj "Auto-detect")</li>
+                                                    <li>Målspråk: Välj språket du vill översätta till</li>
+                                                </ul>
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Välj alternativ:</strong>
+                                                <ul>
+                                                    <li>Författar-assistent: Välj en anpassad assistent om du skapat en</li>
+                                                    <li>Ordlista: Välj om du har en relevant ordlista</li>
+                                                    <li>Mapp: Välj en mapp för dokumentorganisation</li>
+                                                </ul>
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Optimeringsalternativ:</strong>
+                                                <ul>
+                                                    <li>Snabb översättning: Aktivera om du bara vill använda DeepL utan AI-förbättring</li>
+                                                    <li>Smart granskning: Låter systemet prioritera AI-granskning för komplexa avsnitt</li>
+                                                    <li>Använd cache: Återanvänder tidigare översatta segment för snabbare resultat</li>
+                                                </ul>
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">2.2 Översättningsprocessen</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Starta översättning:</strong> Klicka på "Översätt" för att börja processen.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Vänta på bearbetning:</strong> 
+                                                <ul>
+                                                    <li>Systemet delar upp dokumentet i segment</li>
+                                                    <li>DeepL översätter grundtexten</li>
+                                                    <li>OpenAI assistent förbättrar översättningen (om aktiverad)</li>
+                                                </ul>
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Granskningssidan:</strong> När översättningen är klar visas en granskningssida där du kan se källtext och översatt text sida vid sida.
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">2.3 Redigera och förbättra</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Läs igenom översättningen:</strong> Kontrollera att den stämmer överens med källtexten.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Gå till dokumenthantering:</strong> Din översättning sparas automatiskt i dokumentbiblioteket.
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Redigera vid behov:</strong> Klicka på "Redigera" för att göra manuella ändringar.
+                                                <ul>
+                                                    <li>Du kan redigera både källtext och översatt text</li>
+                                                    <li>Använd "Spara" för att bevara dina ändringar</li>
+                                                </ul>
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Skapa en version:</strong> När du gör större ändringar, använd "Skapa ny version" för att spara en kontrollpunkt du kan återgå till.
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0">2.4 Exportera slutresultatet</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <ol class="mb-0">
+                                            <li class="mb-2">
+                                                <strong>Exportalternativ:</strong> När du är nöjd, använd "Exportera" för att ladda ner översättningen i önskat format:
+                                                <ul>
+                                                    <li>PDF (med eller utan formateringsalternativ)</li>
+                                                    <li>Word (DOCX)</li>
+                                                    <li>Textfil (TXT)</li>
+                                                    <li>HTML</li>
+                                                </ul>
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>Anpassa exportinställningar:</strong> Under "Exportinställningar" kan du anpassa utseendet på det exporterade dokumentet.
+                                            </li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </section>
+                            
+                            <div class="alert alert-success mb-5">
+                                <h5><i class="bi bi-check-circle-fill"></i> Gratulerar!</h5>
+                                <p class="mb-0">Du har nu slutfört din första översättning med InkAssist. För mer detaljerad information om specifika funktioner, se hjälpdokumentationen i den första fliken.</p>
+                            </div>
+                            
+                            <div class="card mb-4">
+                                <div class="card-header bg-primary bg-opacity-10">
+                                    <h4 class="card-title mb-0"><i class="bi bi-lightbulb"></i> Tips för bästa resultat</h4>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="mb-0">
+                                        <li class="mb-2">
+                                            <strong>Skapa specifika ordlistor</strong> för varje projekt för att säkerställa konsekvent terminologi.
+                                        </li>
+                                        <li class="mb-2">
+                                            <strong>Anpassa assistenter</strong> efter författare eller genre för mer stilistiskt korrekta översättningar.
+                                        </li>
+                                        <li class="mb-2">
+                                            <strong>Skapa versioner regelbundet</strong> så att du kan återgå till tidigare stadier om något går fel.
+                                        </li>
+                                        <li class="mb-2">
+                                            <strong>Organisera dokument i mappar</strong> för att lättare hitta och hantera relaterade översättningar.
+                                        </li>
+                                        <li class="mb-2">
+                                            <strong>Använd tangentbordsgenvägar</strong> för snabbare arbete med dokumentredigering.
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
