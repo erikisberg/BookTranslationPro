@@ -663,10 +663,63 @@ def translation_workspace(id):
                 flash('Kunde inte skapa arbetsdokument', 'danger')
                 return redirect(url_for('view_translation', id=id))
                 
-            # Save the translation text as both source and translated content
-            # This ensures we have content in both fields for the side-by-side view
-            save_document_content(user_id, document['id'], translation_text, 'source')
-            save_document_content(user_id, document['id'], translation_text, 'translated')
+            # Save the translation content properly
+            try:
+                # First check if we have an original document/entry in translations
+                translation_entry = None
+                try:
+                    # Try to look up the translation in the database
+                    from supabase_config import get_db
+                    supabase = get_db()
+                    response = supabase.table('translations').select('*').eq('id', id).execute()
+                    if response.data and len(response.data) > 0:
+                        translation_entry = response.data[0]
+                except Exception as e:
+                    logger.warning(f"Could not look up translation entry: {str(e)}")
+                
+                # Try to get separate source and translated text
+                if translation_entry and 'original_text' in translation_entry and 'translated_text' in translation_entry:
+                    # We found the original data - use it
+                    source_text = translation_entry.get('original_text', '')
+                    translated_text = translation_entry.get('translated_text', '')
+                    
+                    # Save the content
+                    save_document_content(user_id, document['id'], source_text, 'source')
+                    save_document_content(user_id, document['id'], translated_text, 'translated')
+                    
+                    logger.info(f"Successfully saved source and translated content from translation entry")
+                else:
+                    # We don't have the original entry - try to get the full translation
+                    full_translation = get_full_translation(user_id, id)
+                    if full_translation:
+                        # Save as translated content
+                        save_document_content(user_id, document['id'], full_translation, 'translated')
+                        save_document_content(user_id, document['id'], "", 'source')
+                        
+                        # Mark document as needing source setup
+                        if document.get('settings'):
+                            settings = document.get('settings', {})
+                            settings['needs_source_setup'] = True
+                            update_document(user_id, document['id'], {'settings': settings})
+                        
+                        logger.warning(f"Could only save translated content, source content is empty")
+                    else:
+                        # If we can't get any translation data, use what we have
+                        save_document_content(user_id, document['id'], "", 'source')
+                        save_document_content(user_id, document['id'], translation_text, 'translated')
+                        
+                        # Update document settings to indicate source is missing
+                        if document.get('settings'):
+                            settings = document.get('settings', {})
+                            settings['needs_source_setup'] = True
+                            update_document(user_id, document['id'], {'settings': settings})
+                        
+                        logger.warning(f"Could not find original translation data, using available text")
+            except Exception as source_error:
+                logger.warning(f"Error setting up content: {str(source_error)}")
+                # Fall back to using translation text for translated content only
+                save_document_content(user_id, document['id'], "", 'source')
+                save_document_content(user_id, document['id'], translation_text, 'translated')
     except Exception as e:
         logger.error(f"Error checking/creating document: {str(e)}")
         flash('Ett fel uppstod: ' + str(e), 'danger')
@@ -715,7 +768,7 @@ def translation_workspace(id):
                         'document_id': document['id'],  # Use the actual document ID
                         'page_number': i,
                         'source_content': page_content,
-                        'translated_content': page_content,  # Initialize with source content for easier translation
+                        'translated_content': '',  # Start with empty translation
                         'status': 'in_progress',
                         'completion_percentage': 0
                     }

@@ -32,7 +32,11 @@
                             <div class="col-md-6 border-end">
                                 <h6>Källtext</h6>
                                 <div class="source-content bg-light p-3" style="white-space: pre-wrap; font-family: 'Roboto Mono', monospace; height: 65vh; overflow-y: auto;">
-                                    {{ page.source_content }}
+                                    {% if page.source_content %}
+                                        {{ page.source_content }}
+                                    {% else %}
+                                        <em class="text-muted">No source content available. Edit your translation in the right panel.</em>
+                                    {% endif %}
                                 </div>
                             </div>
                             
