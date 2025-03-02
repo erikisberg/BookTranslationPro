@@ -1200,9 +1200,18 @@ def split_content_into_pages(content, page_size=1500):
 def get_document_pages(user_id, document_id):
     """Get all pages for a document"""
     try:
-        response = supabase.table('document_pages').select('*').eq('document_id', document_id).eq('user_id', user_id).order('page_number').execute()
-        if hasattr(response, 'data'):
-            return response.data
+        # Try first with user_id filter
+        try:
+            response = supabase.table('document_pages').select('*').eq('document_id', document_id).eq('user_id', user_id).order('page_number').execute()
+            if hasattr(response, 'data'):
+                return response.data
+        except Exception as filter_error:
+            logger.warning(f"Error fetching document pages with user_id filter: {filter_error}")
+            # Try without user_id filter if the column doesn't exist yet
+            response = supabase.table('document_pages').select('*').eq('document_id', document_id).order('page_number').execute()
+            if hasattr(response, 'data'):
+                return response.data
+                
         return []
     except Exception as e:
         logger.error(f"Error fetching document pages: {e}")
@@ -1211,9 +1220,18 @@ def get_document_pages(user_id, document_id):
 def get_document_page(user_id, page_id):
     """Get a specific page"""
     try:
-        response = supabase.table('document_pages').select('*').eq('id', page_id).eq('user_id', user_id).limit(1).execute()
-        if hasattr(response, 'data') and response.data:
-            return response.data[0]
+        # Try first with user_id filter
+        try:
+            response = supabase.table('document_pages').select('*').eq('id', page_id).eq('user_id', user_id).limit(1).execute()
+            if hasattr(response, 'data') and response.data:
+                return response.data[0]
+        except Exception as filter_error:
+            logger.warning(f"Error fetching document page with user_id filter: {filter_error}")
+            # Try without user_id filter if the column doesn't exist yet
+            response = supabase.table('document_pages').select('*').eq('id', page_id).limit(1).execute()
+            if hasattr(response, 'data') and response.data:
+                return response.data[0]
+                
         return None
     except Exception as e:
         logger.error(f"Error fetching document page: {e}")
@@ -1227,9 +1245,13 @@ def create_document_page(user_id, page_data):
             logger.error("Missing required fields for document page")
             return None
             
+        # Add user_id
         page_data['user_id'] = user_id
-        page_data['created_at'] = datetime.now().isoformat()
-        page_data['updated_at'] = datetime.now().isoformat()
+        
+        # Don't set timestamps explicitly, rely on database defaults
+        # Remove these keys if they exist to avoid conflicts
+        page_data.pop('created_at', None)
+        page_data.pop('updated_at', None)
         
         # Generate a unique ID if not provided
         if 'id' not in page_data:
@@ -1247,7 +1269,10 @@ def create_document_page(user_id, page_data):
 def update_document_page(user_id, page_id, data):
     """Update a document page"""
     try:
-        data['updated_at'] = datetime.now().isoformat()
+        # Remove timestamp fields to rely on database defaults
+        data.pop('created_at', None)
+        data.pop('updated_at', None)
+        
         response = supabase.table('document_pages').update(data).eq('id', page_id).eq('user_id', user_id).execute()
         if hasattr(response, 'data') and response.data:
             return response.data[0]
