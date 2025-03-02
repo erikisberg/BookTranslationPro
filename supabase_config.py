@@ -1122,6 +1122,31 @@ def delete_translation_memory_entry(user_id, entry_id):
 def get_translation_memory_stats(user_id):
     """Get statistics about the translation memory"""
     try:
+        # Check if translation_cache table exists by attempting a minimal query
+        try:
+            # Just get one record to check if table exists
+            test_response = supabase.table('translation_cache').select('count').eq('user_id', user_id).limit(1).execute()
+            table_exists = True
+        except Exception as table_check_error:
+            # Check if the error message indicates table doesn't exist
+            error_message = str(table_check_error)
+            if 'relation "public.translation_cache" does not exist' in error_message:
+                logger.warning(f"Translation cache table doesn't exist yet: {error_message}")
+                table_exists = False
+            else:
+                # Some other error occurred
+                raise table_check_error
+                
+        # If table doesn't exist, return empty stats
+        if not table_exists:
+            logger.info("Translation memory stats: table doesn't exist, returning empty data")
+            return {
+                'total_entries': 0,
+                'languages': [],
+                'recent_activity': []
+            }
+        
+        # Table exists, proceed with normal queries
         # Get total count
         count_response = supabase.table('translation_cache').select('count', count='exact').eq('user_id', user_id).execute()
         total_count = count_response.count if hasattr(count_response, 'count') else 0

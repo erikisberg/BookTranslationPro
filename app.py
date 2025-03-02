@@ -1537,9 +1537,19 @@ def upload_file():
                     openai_assistant_id = assistant_data.get('assistant_id')
                     logger.info(f"Using selected assistant: {assistant_data.get('name')} ({openai_assistant_id})")
                 else:
+                    # Selected assistant doesn't exist or has no OpenAI ID
+                    logger.warning(f"Selected assistant {assistant_id_selected} not found or has no OpenAI ID. Using default.")
                     openai_assistant_id = OPENAI_ASSISTANT_ID
             else:
+                # No assistant selected, use default
                 openai_assistant_id = OPENAI_ASSISTANT_ID
+                
+            # Verify default assistant is set and valid
+            if not openai_assistant_id:
+                logger.warning("No default OpenAI assistant ID configured. Using fallback text.")
+                # Skip AI review since we don't have a valid assistant ID
+                skip_openai = True
+                openai_api_key = None
         else:
             openai_api_key = None
             openai_assistant_id = None
@@ -1569,6 +1579,11 @@ def upload_file():
                 if assistant_data:
                     custom_instructions = assistant_data.get('instructions')
                     logger.info(f"Using custom instructions for assistant from DB: {assistant_data.get('name')}")
+            
+            # If still no instructions, use default
+            if not custom_instructions:
+                logger.info("No custom instructions found, using default instructions")
+                custom_instructions = DEFAULT_INSTRUCTIONS
         
         # Process each document and collect translations
         original_filenames = []
