@@ -303,11 +303,16 @@ DEFAULT_API_KEYS = {
 def json_response(data, status=200):
     """Helper function to ensure consistent JSON responses"""
     logger.debug(f"Sending JSON response (status {status}): {data}")
+    if not isinstance(data, dict):
+        data = {'data': data}
+    # If success key not present, add it
+    if 'success' not in data:
+        data['success'] = True
     return jsonify(data), status, {'Content-Type': 'application/json'}
 
 def json_error(message, status=400):
     """Helper function for JSON error responses"""
-    return json_response({'error': message}, status)
+    return json_response({'error': message, 'message': message, 'success': False}, status)
 
 # Authentication Routes
 @app.route('/login', methods=['GET', 'POST'])

@@ -482,23 +482,27 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         </div>
                         <div class="page-selection-container border rounded p-3" style="max-height: 300px; overflow-y: auto;">
-                            {% for page in pages %}
-                                <div class="form-check">
-                                    <input class="form-check-input page-checkbox" type="checkbox" name="selected_pages" 
-                                           value="{{ page.id }}" id="page-{{ page.id }}" 
-                                           data-status="{{ page.status }}">
-                                    <label class="form-check-label" for="page-{{ page.id }}">
-                                        Page {{ page.page_number }}
-                                        {% if page.status == 'completed' %}
-                                            <span class="badge bg-success">Completed</span>
-                                        {% elif page.status == 'in_progress' %}
-                                            <span class="badge bg-warning">In Progress</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Not Started</span>
-                                        {% endif %}
-                                    </label>
-                                </div>
-                            {% endfor %}
+                            {% if pages %}
+                                {% for page in pages %}
+                                    <div class="form-check">
+                                        <input class="form-check-input page-checkbox" type="checkbox" name="selected_pages" 
+                                               value="{{ page.id }}" id="page-{{ page.id }}" 
+                                               data-status="{{ page.status }}">
+                                        <label class="form-check-label" for="page-{{ page.id }}">
+                                            Page {{ page.page_number }}
+                                            {% if page.status == 'completed' %}
+                                                <span class="badge bg-success">Completed</span>
+                                            {% elif page.status == 'in_progress' %}
+                                                <span class="badge bg-warning">In Progress</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Not Started</span>
+                                            {% endif %}
+                                        </label>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="alert alert-warning">No pages found for this document.</div>
+                            {% endif %}
                         </div>
                     </div>
                     
@@ -506,12 +510,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         <label for="aiAssistant" class="form-label">Select AI Assistant</label>
                         <select class="form-select" id="aiAssistant" name="assistant_id" required>
                             {% if default_assistant_id %}
-                                <option value="{{ default_assistant_id }}">Default Assistant</option>
+                                <option value="{{ default_assistant_id }}">Default Assistant ({{ default_assistant_id }})</option>
                             {% endif %}
-                            {% for assistant in user_assistants %}
-                                <option value="{{ assistant.assistant_id }}">{{ assistant.name }}</option>
-                            {% endfor %}
+                            
+                            {% if user_assistants %}
+                                {% for assistant in user_assistants %}
+                                    <option value="{{ assistant.assistant_id }}">
+                                        {{ assistant.name }} {% if assistant.assistant_id %}({{ assistant.assistant_id }}){% endif %}
+                                    </option>
+                                {% endfor %}
+                            {% else %}
+                                <option value="">No assistants found</option>
+                            {% endif %}
                         </select>
+                        <div class="form-text">
+                            Make sure the assistant ID starts with "asst_"
+                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -525,6 +539,13 @@ document.addEventListener('DOMContentLoaded', function() {
                              role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
                     </div>
                     <div id="progressStatus" class="text-center mb-3"></div>
+                    
+                    <!-- Debug Info -->
+                    <div class="mt-3 small text-muted">
+                        <p>Document ID: {{ document.id }}<br>
+                        Pages: {{ pages|length if pages else 0 }}<br>
+                        Form Action: {{ url_for('batch_ai_review', document_id=document.id) }}</p>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -540,31 +561,57 @@ document.addEventListener('DOMContentLoaded', function() {
 {% block scripts %}
 {{ super() }}
 <script>
+    // Debug function to help identify issues
+    function debug(msg) {
+        console.log("DEBUG: " + msg);
+    }
+    
+    // Wait for DOM to be ready
     document.addEventListener('DOMContentLoaded', function() {
+        debug("DOM loaded, initializing Batch AI Review functionality");
+        
         // Page selection buttons
         const selectAllBtn = document.getElementById('selectAllPages');
         const selectIncompleteBtn = document.getElementById('selectIncompletePages');
         const selectNoneBtn = document.getElementById('selectNone');
         const pageCheckboxes = document.querySelectorAll('.page-checkbox');
         
+        debug(`Found ${pageCheckboxes.length} page checkboxes`);
+        
+        // Add click handlers for selection buttons with proper error handling
         if (selectAllBtn) {
-            selectAllBtn.addEventListener('click', function() {
+            debug("Found Select All button");
+            selectAllBtn.addEventListener('click', function(e) {
+                e.preventDefault(); // Prevent any default button behavior
+                debug("Select All clicked");
                 pageCheckboxes.forEach(cb => cb.checked = true);
             });
+        } else {
+            debug("WARNING: Select All button not found");
         }
         
         if (selectIncompleteBtn) {
-            selectIncompleteBtn.addEventListener('click', function() {
+            debug("Found Select Incomplete button");
+            selectIncompleteBtn.addEventListener('click', function(e) {
+                e.preventDefault(); // Prevent any default button behavior
+                debug("Select Incomplete clicked");
                 pageCheckboxes.forEach(cb => {
                     cb.checked = cb.dataset.status !== 'completed';
                 });
             });
+        } else {
+            debug("WARNING: Select Incomplete button not found");
         }
         
         if (selectNoneBtn) {
-            selectNoneBtn.addEventListener('click', function() {
+            debug("Found Deselect All button");
+            selectNoneBtn.addEventListener('click', function(e) {
+                e.preventDefault(); // Prevent any default button behavior
+                debug("Deselect All clicked");
                 pageCheckboxes.forEach(cb => cb.checked = false);
             });
+        } else {
+            debug("WARNING: Deselect All button not found");
         }
         
         // Batch AI Review processing
@@ -574,16 +621,44 @@ document.addEventListener('DOMContentLoaded', function() {
         const progressContainer = document.getElementById('batchProgressContainer');
         const progressStatus = document.getElementById('progressStatus');
         
+        // Log details about the form
+        if (batchForm) {
+            debug(`Form action: ${batchForm.action}`);
+        } else {
+            debug("WARNING: Batch AI Review form not found");
+        }
+        
+        if (startBatchBtn) {
+            debug("Found Start AI Review button");
+        } else {
+            debug("WARNING: Start AI Review button not found");
+        }
+        
+        // Handle Start AI Review button click
         if (startBatchBtn && batchForm) {
-            startBatchBtn.addEventListener('click', function() {
+            startBatchBtn.addEventListener('click', function(e) {
+                e.preventDefault(); // Prevent any default button behavior
+                debug("Start AI Review button clicked");
+                
                 // Validate form
                 const selectedPages = document.querySelectorAll('.page-checkbox:checked');
+                debug(`Selected pages: ${selectedPages.length}`);
+                
                 if (selectedPages.length === 0) {
                     alert('Please select at least one page to review');
                     return;
                 }
                 
-                const assistantId = document.getElementById('aiAssistant').value;
+                const assistantSelect = document.getElementById('aiAssistant');
+                if (!assistantSelect) {
+                    debug("WARNING: AI Assistant select not found");
+                    alert('AI Assistant selection is missing');
+                    return;
+                }
+                
+                const assistantId = assistantSelect.value;
+                debug(`Selected assistant ID: ${assistantId}`);
+                
                 if (!assistantId) {
                     alert('Please select an AI assistant');
                     return;
@@ -591,16 +666,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Prepare form data
                 const formData = new FormData(batchForm);
+                debug("Form data prepared");
+                
+                // Log all form data for debugging
+                for (const [key, value] of formData.entries()) {
+                    debug(`Form data: ${key} = ${value}`);
+                }
                 
                 // Disable form elements
                 startBatchBtn.disabled = true;
                 startBatchBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
                 
                 // Show progress bar
-                progressContainer.classList.remove('d-none');
-                progressStatus.textContent = 'Starting batch review...';
+                if (progressContainer) {
+                    progressContainer.classList.remove('d-none');
+                }
+                
+                if (progressStatus) {
+                    progressStatus.textContent = 'Starting batch review...';
+                }
                 
                 // Submit the batch job
+                debug(`Submitting to: ${batchForm.action}`);
                 fetch(batchForm.action, {
                     method: 'POST',
                     body: formData,
@@ -608,22 +695,32 @@ document.addEventListener('DOMContentLoaded', function() {
                         'X-Requested-With': 'XMLHttpRequest'
                     }
                 })
-                .then(response => response.json())
+                .then(response => {
+                    debug(`Response status: ${response.status}`);
+                    return response.json();
+                })
                 .then(data => {
+                    debug(`Response data: ${JSON.stringify(data)}`);
                     if (data.success) {
                         // Initialize the job status polling
                         const jobId = data.job_id;
+                        debug(`Job started with ID: ${jobId}`);
                         pollJobStatus(jobId);
                     } else {
                         // Show error
-                        progressStatus.textContent = 'Error: ' + data.message;
+                        if (progressStatus) {
+                            progressStatus.textContent = 'Error: ' + (data.message || 'Unknown error');
+                        }
                         startBatchBtn.disabled = false;
                         startBatchBtn.innerHTML = 'Start AI Review';
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    progressStatus.textContent = 'Error submitting batch job';
+                    debug(`Fetch error: ${error.message}`);
+                    if (progressStatus) {
+                        progressStatus.textContent = 'Error submitting batch job: ' + error.message;
+                    }
                     startBatchBtn.disabled = false;
                     startBatchBtn.innerHTML = 'Start AI Review';
                 });
@@ -632,25 +729,41 @@ document.addEventListener('DOMContentLoaded', function() {
             // Function to poll job status
             function pollJobStatus(jobId) {
                 const statusUrl = `{{ url_for('batch_ai_review_status', document_id=document.id) }}?job_id=${jobId}`;
+                debug(`Polling status URL: ${statusUrl}`);
                 
                 const checkStatus = () => {
                     fetch(statusUrl)
-                        .then(response => response.json())
+                        .then(response => {
+                            debug(`Status response: ${response.status}`);
+                            return response.json();
+                        })
                         .then(data => {
+                            debug(`Status data: ${JSON.stringify(data)}`);
+                            
                             // Update progress
                             const progress = data.progress || 0;
-                            progressBar.style.width = `${progress}%`;
-                            progressBar.setAttribute('aria-valuenow', progress);
+                            if (progressBar) {
+                                progressBar.style.width = `${progress}%`;
+                                progressBar.setAttribute('aria-valuenow', progress);
+                            }
                             
                             // Update status message
-                            progressStatus.textContent = data.status || 'Processing...';
+                            if (progressStatus) {
+                                progressStatus.textContent = data.status || 'Processing...';
+                            }
                             
                             if (data.completed) {
                                 // Job finished
+                                debug("Job completed");
                                 if (data.success) {
-                                    progressBar.classList.remove('progress-bar-animated');
-                                    progressBar.classList.add('bg-success');
-                                    progressStatus.textContent = `Completed! ${data.pages_processed} pages reviewed.`;
+                                    if (progressBar) {
+                                        progressBar.classList.remove('progress-bar-animated');
+                                        progressBar.classList.add('bg-success');
+                                    }
+                                    
+                                    if (progressStatus) {
+                                        progressStatus.textContent = `Completed! ${data.pages_processed} pages reviewed.`;
+                                    }
                                     
                                     // Enable refresh button
                                     startBatchBtn.disabled = false;
@@ -660,12 +773,18 @@ document.addEventListener('DOMContentLoaded', function() {
                                     
                                     // Change button to refresh page
                                     startBatchBtn.addEventListener('click', function() {
+                                        debug("Refreshing page");
                                         window.location.reload();
                                     }, { once: true });
                                 } else {
-                                    progressBar.classList.remove('progress-bar-animated');
-                                    progressBar.classList.add('bg-danger');
-                                    progressStatus.textContent = 'Error: ' + data.message;
+                                    if (progressBar) {
+                                        progressBar.classList.remove('progress-bar-animated');
+                                        progressBar.classList.add('bg-danger');
+                                    }
+                                    
+                                    if (progressStatus) {
+                                        progressStatus.textContent = 'Error: ' + (data.message || 'Unknown error');
+                                    }
                                     
                                     // Re-enable start button
                                     startBatchBtn.disabled = false;
@@ -673,12 +792,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             } else {
                                 // Continue polling
+                                debug(`Job in progress: ${progress}%`);
                                 setTimeout(checkStatus, 2000); // Check every 2 seconds
                             }
                         })
                         .catch(error => {
                             console.error('Error checking status:', error);
-                            progressStatus.textContent = 'Error checking job status';
+                            debug(`Status polling error: ${error.message}`);
+                            
+                            if (progressStatus) {
+                                progressStatus.textContent = 'Error checking job status: ' + error.message;
+                            }
                             
                             // Retry after a delay
                             setTimeout(checkStatus, 5000);
@@ -686,6 +810,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
                 
                 // Start polling
+                debug("Starting status polling");
                 checkStatus();
             }
         }
