@@ -337,19 +337,29 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Optimization Options</label>
+                        <label class="form-label fw-bold">Translation Settings</label>
                         <div class="card">
                             <div class="card-body py-2 px-3">
-                                <div class="form-check mb-2">
-                                    <input type="checkbox" class="form-check-input" id="skipOpenAI" name="skipOpenAI">
+                                <div class="card card-body bg-light mb-2">
+                                    <h6><i class="bi bi-translate"></i> Translation Process</h6>
+                                    <p class="small mb-0">
+                                        After upload, DeepL will translate your document. You will then be able to manually review 
+                                        and optionally apply AI review to any page. AI review can be applied page-by-page as needed.
+                                    </p>
+                                </div>
+                                
+                                <!-- Hidden now that AI review is a separate step -->
+                                <div class="form-check mb-2" style="display: none;">
+                                    <input type="checkbox" class="form-check-input" id="skipOpenAI" name="skipOpenAI" checked>
                                     <label class="form-check-label" for="skipOpenAI">
                                         <i class="bi bi-lightning-charge me-1"></i> Fast Translation
                                     </label>
                                     <div class="form-text ms-4">Uses DeepL only, without AI enhancement</div>
                                 </div>
                                 
-                                <div class="form-check mb-2">
-                                    <input type="checkbox" class="form-check-input" id="smartReview" name="smartReview" checked>
+                                <!-- Changed Smart Review description to reflect new behavior -->
+                                <div class="form-check mb-2" style="display: none;">
+                                    <input type="checkbox" class="form-check-input" id="smartReview" name="smartReview">
                                     <label class="form-check-label" for="smartReview">
                                         <i class="bi bi-magic me-1"></i> Smart Review
                                     </label>
