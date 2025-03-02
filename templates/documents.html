@@ -148,7 +148,7 @@
                                     {% for doc in documents %}
                                         <tr data-id="{{ doc.id }}">
                                             <td>
-                                                <a href="{{ url_for('view_document', document_id=doc.id) }}" class="text-decoration-none">
+                                                <a href="{{ url_for('translation_workspace', id=doc.id) }}" class="text-decoration-none">
                                                     {{ doc.title }}
                                                 </a>
                                                 {% if doc.description %}
@@ -177,7 +177,7 @@
                                                         Actions
                                                     </button>
                                                     <ul class="dropdown-menu">
-                                                        <li><a class="dropdown-item" href="{{ url_for('view_document', document_id=doc.id) }}"><i class="bi bi-eye"></i> View Project</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('translation_workspace', id=doc.id) }}"><i class="bi bi-eye"></i> View Project</a></li>
                                                         <li><a class="dropdown-item" href="{{ url_for('translation_workspace', id=doc.id) }}"><i class="bi bi-translate"></i> Continue Translation</a></li>
                                                         <li><a class="dropdown-item" href="{{ url_for('edit_document', document_id=doc.id) }}"><i class="bi bi-pencil"></i> Edit Details</a></li>
                                                         <li><a class="dropdown-item" href="{{ url_for('document_versions', document_id=doc.id) }}"><i class="bi bi-clock-history"></i> Versions</a></li>

@@ -1513,9 +1513,12 @@ def upload_file():
             
         # Save as a document for document management
         if len(filepaths) == 1:
-            # Single file - use its filename as the document title
+            # Use project title from form if provided, otherwise use filename
+            project_title = request.form.get('projectTitle', '')
+            project_description = request.form.get('projectDescription', '')
+            
             original_filename = os.path.basename(filepaths[0])
-            title = os.path.splitext(original_filename)[0]
+            title = project_title if project_title else os.path.splitext(original_filename)[0]
             
             # Combine all translated segments
             translated_text = '\n\n'.join([t['translated_text'] for t in all_translations if t['status'] == 'success'])
@@ -1524,13 +1527,13 @@ def upload_file():
             # Create document data
             doc_data = {
                 'title': title,
-                'description': f"Translated from {original_filename}",
+                'description': project_description if project_description else f"Translated from {original_filename}",
                 'original_filename': original_filename,
                 'file_type': os.path.splitext(original_filename)[1].lower(),
                 'source_language': source_language,
                 'target_language': target_language,
                 'word_count': len(translated_text.split()),
-                'status': 'completed',
+                'status': 'in_progress',  # Changed from 'completed' to 'in_progress'
                 'settings': {
                     'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
                 },
@@ -1563,19 +1566,26 @@ def upload_file():
                     if not translated_text or not source_text:
                         continue
                     
-                    # Create document
+                    # Create document - for multi-file mode, use chapter naming
                     original_filename = os.path.basename(filepath)
-                    title = os.path.splitext(original_filename)[0]
+                    
+                    # Use project title if provided, otherwise use filename
+                    project_title = request.form.get('projectTitle', '')
+                    project_description = request.form.get('projectDescription', '')
+                    
+                    # For batch chapters, name them as chapters
+                    file_number = i + 1
+                    chapter_title = f"{project_title} - Chapter {file_number}" if project_title else os.path.splitext(original_filename)[0]
                     
                     doc_data = {
-                        'title': title,
-                        'description': f"Translated from {original_filename}",
+                        'title': chapter_title,
+                        'description': project_description if project_description else f"Translated from {original_filename}",
                         'original_filename': original_filename,
                         'file_type': os.path.splitext(original_filename)[1].lower(),
                         'source_language': source_language,
                         'target_language': target_language,
                         'word_count': len(translated_text.split()),
-                        'status': 'completed',
+                        'status': 'in_progress',
                         'settings': {
                             'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
                         },
@@ -1636,10 +1646,24 @@ def upload_file():
                 }
             )
 
-        return json_response({
-            'success': True,
-            'redirect': url_for('review')
-        })
+        # Store the created document ID for later reference
+        created_doc_id = None
+        if 'doc_result' in locals() and doc_result and 'id' in doc_result:
+            created_doc_id = doc_result['id']
+        
+        # After successful upload, redirect directly to the workspace
+        # for the newly created project instead of the review screen
+        if created_doc_id:
+            return json_response({
+                'success': True,
+                'redirect': url_for('translation_workspace', id=created_doc_id)
+            })
+        else:
+            # Fallback to documents page if we couldn't get a specific document ID
+            return json_response({
+                'success': True,
+                'redirect': url_for('documents')
+            })
 
     except Exception as e:
         logger.error(f"Error processing file: {str(e)}")

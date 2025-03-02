@@ -808,7 +808,17 @@ def update_document(user_id, document_id, document_data, create_new_version=Fals
 def delete_document(user_id, document_id):
     """Delete a document and all its versions/content"""
     try:
-        # First delete all version history
+        # First delete all document pages to avoid foreign key constraint errors
+        logger.debug(f"Deleting document pages for document {document_id}")
+        try:
+            supabase.table('document_pages').delete().eq('document_id', document_id).execute()
+            logger.info(f"Document pages deleted for document {document_id}")
+        except Exception as page_error:
+            logger.error(f"Error deleting document pages: {page_error}")
+            # If we can't delete pages, we won't be able to delete the document
+            return False
+            
+        # Delete version history
         logger.debug(f"Deleting version history for document {document_id}")
         supabase.table('document_versions').delete().eq('document_id', document_id).execute()
         
@@ -817,15 +827,15 @@ def delete_document(user_id, document_id):
             # Source content
             source_path = f"documents/{user_id}/{document_id}/source"
             supabase.storage.from_('documents').remove([source_path])
-        except:
-            logger.warning(f"Could not delete source content for document {document_id}")
+        except Exception as source_error:
+            logger.warning(f"Could not delete source content for document {document_id}: {source_error}")
             
         try:
             # Translated content
             translated_path = f"documents/{user_id}/{document_id}/translated"
             supabase.storage.from_('documents').remove([translated_path])
-        except:
-            logger.warning(f"Could not delete translated content for document {document_id}")
+        except Exception as translated_error:
+            logger.warning(f"Could not delete translated content for document {document_id}: {translated_error}")
         
         # Then delete the document
         logger.debug(f"Deleting document {document_id} for user_id: {user_id}")
