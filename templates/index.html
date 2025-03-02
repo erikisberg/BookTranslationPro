@@ -179,6 +179,26 @@
                                     </div>
                                     
                                     <div class="mb-3">
+                                        <label for="folderSelect" class="form-label fw-bold">Mapp</label>
+                                        <select class="form-select" id="folderSelect" name="folderId">
+                                            <option value="">Standard mapp</option>
+                                            {% if folders %}
+                                                {% for folder in folders %}
+                                                <option value="{{ folder.id }}">{{ folder.name }}</option>
+                                                {% endfor %}
+                                            {% else %}
+                                                <option value="" disabled>Inga mappar konfigurerade</option>
+                                            {% endif %}
+                                        </select>
+                                        <div class="form-text">
+                                            <i class="bi bi-folder2 me-1"></i> Välj en mapp att spara dokumentet i
+                                        </div>
+                                        <div class="text-primary small mt-1">
+                                            <a href="{{ url_for('documents') }}"><i class="bi bi-plus-circle me-1"></i>Hantera mappar</a>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
                                         <label class="form-label fw-bold">Optimeringsalternativ</label>
                                         <div class="card">
                                             <div class="card-body py-2 px-3">

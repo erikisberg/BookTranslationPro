@@ -1034,3 +1034,108 @@ def get_document_content(user_id, document_id, content_type='translated', versio
         logger.error(f"Error getting document content: {e}")
         # Even in case of errors, return something the user can see
         return "Error retrieving document content. Please try the 'Fix Document Content' option."
+        
+# Translation Memory Management Functions
+
+def get_translation_memory_entries(user_id, limit=50, offset=0, search=None, language=None):
+    """Fetch translation memory entries with optional filtering"""
+    try:
+        query = supabase.table('translation_cache').select('*').eq('user_id', user_id)
+        
+        # Filter by language if specified
+        if language:
+            query = query.eq('target_language', language)
+            
+        # Filter by search term if specified (fuzzy search in source or translated text)
+        if search:
+            # This is simplified - would need proper text search implementation
+            query = query.or_(f"source_text.ilike.%{search}%,translated_text.ilike.%{search}%")
+            
+        # Apply pagination
+        query = query.order('updated_at', desc=True).limit(limit).offset(offset)
+        
+        response = query.execute()
+        
+        if hasattr(response, 'data'):
+            return response.data
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching translation memory: {e}")
+        return []
+
+def update_translation_memory_entry(user_id, entry_id, data):
+    """Update a translation memory entry"""
+    try:
+        # Ensure user owns this entry
+        entry = get_translation_memory_entry(user_id, entry_id)
+        if not entry:
+            return None
+            
+        # Update data
+        data['updated_at'] = datetime.now().isoformat()
+        response = supabase.table('translation_cache').update(data).eq('id', entry_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error updating translation memory entry: {e}")
+        return None
+
+def get_translation_memory_entry(user_id, entry_id):
+    """Get a specific translation memory entry"""
+    try:
+        response = supabase.table('translation_cache').select('*').eq('id', entry_id).eq('user_id', user_id).limit(1).execute()
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching translation memory entry: {e}")
+        return None
+
+def delete_translation_memory_entry(user_id, entry_id):
+    """Delete a translation memory entry"""
+    try:
+        # Ensure user owns this entry
+        entry = get_translation_memory_entry(user_id, entry_id)
+        if not entry:
+            return False
+            
+        response = supabase.table('translation_cache').delete().eq('id', entry_id).eq('user_id', user_id).execute()
+        if hasattr(response, 'data'):
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting translation memory entry: {e}")
+        return False
+
+def get_translation_memory_stats(user_id):
+    """Get statistics about the translation memory"""
+    try:
+        # Get total count
+        count_response = supabase.table('translation_cache').select('count', count='exact').eq('user_id', user_id).execute()
+        total_count = count_response.count if hasattr(count_response, 'count') else 0
+        
+        # Get language distribution
+        lang_query = """
+        SELECT target_language, COUNT(*) as count 
+        FROM translation_cache 
+        WHERE user_id = ? 
+        GROUP BY target_language 
+        ORDER BY count DESC
+        """
+        lang_response = supabase.rpc('exec_sql', {'query': lang_query.replace('?', f"'{user_id}'")}).execute()
+        languages = lang_response.data if hasattr(lang_response, 'data') else []
+        
+        # Get recent activity
+        recent_response = supabase.table('translation_cache').select('*').eq('user_id', user_id).order('updated_at', desc=True).limit(5).execute()
+        recent = recent_response.data if hasattr(recent_response, 'data') else []
+        
+        return {
+            'total_entries': total_count,
+            'languages': languages,
+            'recent_activity': recent
+        }
+    except Exception as e:
+        logger.error(f"Error fetching translation memory stats: {e}")
+        return {'total_entries': 0, 'languages': [], 'recent_activity': []}

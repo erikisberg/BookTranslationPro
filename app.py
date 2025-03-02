@@ -22,7 +22,9 @@ from supabase_config import (
     get_glossary_entries, create_glossary_entry, update_glossary_entry, delete_glossary_entry,
     get_user_folders, get_folder, create_folder, update_folder, delete_folder,
     get_user_documents, get_document, create_document, update_document, delete_document,
-    get_document_versions, get_document_content, save_document_content, fix_document_content
+    get_document_versions, get_document_content, save_document_content, fix_document_content,
+    get_translation_memory_entries, get_translation_memory_entry, update_translation_memory_entry,
+    delete_translation_memory_entry, get_translation_memory_stats
 )
 
 # Load environment variables from .env file
@@ -636,8 +638,11 @@ def index():
             glossary['source_language'] = LANGUAGE_CODES[glossary['source_language']]
         if glossary.get('target_language') in LANGUAGE_CODES:
             glossary['target_language'] = LANGUAGE_CODES[glossary['target_language']]
+    
+    # Get user's folders for the dropdown
+    folders = get_user_folders(user_id)
             
-    return render_template('index.html', assistants=assistants, glossaries=glossaries)
+    return render_template('index.html', assistants=assistants, glossaries=glossaries, folders=folders)
 
 @app.route('/assistant-config', methods=['GET'])
 @login_required
@@ -1097,6 +1102,9 @@ def upload_file():
                 smart_review = request.form.get('smartReview') != 'false'  # Default to True
                 glossary_id = request.form.get('glossaryId')  # Will be None if not provided
                 
+                # Get folder selection
+                folder_id = request.form.get('folderId')
+                
                 # Process this document
                 file_translations = process_document(
                     filepath,
@@ -1160,7 +1168,8 @@ def upload_file():
                     'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
                 },
                 'source_content': source_text,
-                'translated_content': translated_text
+                'translated_content': translated_text,
+                'folder_id': folder_id if folder_id else None
             }
             
             # Save document
@@ -1204,7 +1213,8 @@ def upload_file():
                             'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS)
                         },
                         'source_content': source_text,
-                        'translated_content': translated_text
+                        'translated_content': translated_text,
+                        'folder_id': folder_id if folder_id else None
                     }
                     
                     # Save document
@@ -2076,6 +2086,109 @@ def export_glossary_entries(glossary_id):
         logger.error(f"Error exporting glossary entries: {str(e)}")
         flash(f'Error exporting glossary: {str(e)}', 'danger')
         return redirect(url_for('glossary_list'))
+
+# Translation Memory Management Routes
+
+@app.route('/translation-memory')
+@login_required
+def translation_memory():
+    """View translation memory entries"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+        
+    # Get pagination params
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    offset = (page - 1) * per_page
+    
+    # Get filter parameters
+    search = request.args.get('search', '')
+    language = request.args.get('language', '')
+    
+    # Get entries
+    entries = get_translation_memory_entries(
+        user_id, 
+        limit=per_page, 
+        offset=offset,
+        search=search, 
+        language=language
+    )
+    
+    # Get statistics
+    stats = get_translation_memory_stats(user_id)
+    
+    # Get total count for pagination
+    total_entries = stats['total_entries']
+    total_pages = (total_entries + per_page - 1) // per_page
+    
+    # Get unique languages from stats for dropdown
+    languages = stats.get('languages', [])
+    
+    return render_template(
+        'translation_memory.html',
+        entries=entries,
+        page=page,
+        total_pages=total_pages,
+        search=search,
+        language=language,
+        languages=languages,
+        stats=stats
+    )
+
+@app.route('/translation-memory/<entry_id>', methods=['GET'])
+@login_required
+def view_translation_memory_entry(entry_id):
+    """View a specific translation memory entry"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+        
+    entry = get_translation_memory_entry(user_id, entry_id)
+    if not entry:
+        flash('Entry not found', 'danger')
+        return redirect(url_for('translation_memory'))
+        
+    return render_template('translation_memory_view.html', entry=entry)
+
+@app.route('/translation-memory/<entry_id>', methods=['PUT'])
+@login_required
+def update_translation_memory_entry_route(entry_id):
+    """Update a translation memory entry"""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        
+    data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    result = update_translation_memory_entry(user_id, entry_id, data)
+    if not result:
+        return jsonify({'success': False, 'error': 'Failed to update entry'}), 500
+        
+    return jsonify({
+        'success': True,
+        'message': 'Entry updated successfully',
+        'entry': result
+    })
+
+@app.route('/translation-memory/<entry_id>', methods=['DELETE'])
+@login_required
+def delete_translation_memory_entry_route(entry_id):
+    """Delete a translation memory entry"""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        
+    result = delete_translation_memory_entry(user_id, entry_id)
+    if not result:
+        return jsonify({'success': False, 'error': 'Failed to delete entry'}), 500
+        
+    return jsonify({
+        'success': True,
+        'message': 'Entry deleted successfully'
+    })
 
 @app.errorhandler(404)
 def not_found_error(e):
