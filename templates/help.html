@@ -17,6 +17,9 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="getting-started-tab" data-bs-toggle="tab" data-bs-target="#getting-started-content" type="button" role="tab" aria-controls="getting-started-content" aria-selected="false">Kom igång guide</button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="translation-process-tab" data-bs-toggle="tab" data-bs-target="#translation-process-content" type="button" role="tab" aria-controls="translation-process-content" aria-selected="false">Översättningsprocessen</button>
+                        </li>
                     </ul>
                     
                     <!-- Tab content -->
@@ -717,10 +720,513 @@ Var särskilt uppmärksam på:
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Tab 3: Translation Process in Detail -->
+                        <div class="tab-pane fade" id="translation-process-content" role="tabpanel" aria-labelledby="translation-process-tab">
+                            <div class="mb-4">
+                                <h2 class="border-bottom pb-2">Översättningsprocessen i detalj</h2>
+                                <p class="lead">
+                                    Denna guide förklarar i detalj hur InkAssist behandlar din text från uppladdning till färdig översättning, inklusive hur olika teknologier samverkar för att skapa högkvalitativa resultat.
+                                </p>
+                            </div>
+
+                            <!-- Process Overview Section -->
+                            <section class="mb-5">
+                                <h3 class="mb-3">Översikt över processen</h3>
+
+                                <div class="mb-4">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <!-- Process Flow Diagram -->
+                                            <div class="process-flow text-center mb-4">
+                                                <div class="row g-0">
+                                                    <!-- Step 1: Document Upload -->
+                                                    <div class="col">
+                                                        <div class="process-step">
+                                                            <div class="icon-wrapper bg-primary bg-opacity-10 rounded-circle p-3 mb-2 mx-auto" style="width: 80px; height: 80px;">
+                                                                <i class="bi bi-file-earmark-arrow-up fs-2 text-primary"></i>
+                                                            </div>
+                                                            <h5>1. Uppladdning</h5>
+                                                            <p class="small">Dokumentanalys <br>och segmentering</p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <!-- Arrow -->
+                                                    <div class="col-1 d-flex align-items-center justify-content-center">
+                                                        <i class="bi bi-arrow-right fs-3 text-muted"></i>
+                                                    </div>
+                                                    
+                                                    <!-- Step 2: Translation Memory -->
+                                                    <div class="col">
+                                                        <div class="process-step">
+                                                            <div class="icon-wrapper bg-info bg-opacity-10 rounded-circle p-3 mb-2 mx-auto" style="width: 80px; height: 80px;">
+                                                                <i class="bi bi-database-check fs-2 text-info"></i>
+                                                            </div>
+                                                            <h5>2. Översättningsminne</h5>
+                                                            <p class="small">Cache-kontroll<br>och återanvändning</p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <!-- Arrow -->
+                                                    <div class="col-1 d-flex align-items-center justify-content-center">
+                                                        <i class="bi bi-arrow-right fs-3 text-muted"></i>
+                                                    </div>
+                                                    
+                                                    <!-- Step 3: DeepL Translation -->
+                                                    <div class="col">
+                                                        <div class="process-step">
+                                                            <div class="icon-wrapper bg-success bg-opacity-10 rounded-circle p-3 mb-2 mx-auto" style="width: 80px; height: 80px;">
+                                                                <i class="bi bi-translate fs-2 text-success"></i>
+                                                            </div>
+                                                            <h5>3. DeepL</h5>
+                                                            <p class="small">Maskin-<br>översättning</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="row g-0 mt-3">
+                                                    <!-- Step 6: Document Assembly -->
+                                                    <div class="col">
+                                                        <div class="process-step">
+                                                            <div class="icon-wrapper bg-primary bg-opacity-10 rounded-circle p-3 mb-2 mx-auto" style="width: 80px; height: 80px;">
+                                                                <i class="bi bi-file-earmark-text fs-2 text-primary"></i>
+                                                            </div>
+                                                            <h5>6. Dokumentmontering</h5>
+                                                            <p class="small">Sammanställning av<br>segment till helhet</p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <!-- Arrow (left) -->
+                                                    <div class="col-1 d-flex align-items-center justify-content-center">
+                                                        <i class="bi bi-arrow-left fs-3 text-muted"></i>
+                                                    </div>
+                                                    
+                                                    <!-- Step 5: Smart Review -->
+                                                    <div class="col">
+                                                        <div class="process-step">
+                                                            <div class="icon-wrapper bg-warning bg-opacity-10 rounded-circle p-3 mb-2 mx-auto" style="width: 80px; height: 80px;">
+                                                                <i class="bi bi-speedometer2 fs-2 text-warning"></i>
+                                                            </div>
+                                                            <h5>5. Smart granskning</h5>
+                                                            <p class="small">Prioritering<br>baserat på komplexitet</p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <!-- Arrow (left) -->
+                                                    <div class="col-1 d-flex align-items-center justify-content-center">
+                                                        <i class="bi bi-arrow-left fs-3 text-muted"></i>
+                                                    </div>
+                                                    
+                                                    <!-- Step 4: Glossary Application -->
+                                                    <div class="col">
+                                                        <div class="process-step">
+                                                            <div class="icon-wrapper bg-danger bg-opacity-10 rounded-circle p-3 mb-2 mx-auto" style="width: 80px; height: 80px;">
+                                                                <i class="bi bi-book fs-2 text-danger"></i>
+                                                            </div>
+                                                            <h5>4. Ordlistor</h5>
+                                                            <p class="small">Terminologi-<br>tillämpning</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Final Arrow (Vertical) -->
+                                                <div class="d-flex justify-content-center my-2">
+                                                    <i class="bi bi-arrow-down fs-3 text-muted"></i>
+                                                </div>
+
+                                                <!-- Step 7: OpenAI Review -->
+                                                <div class="row justify-content-center g-0">
+                                                    <div class="col-4">
+                                                        <div class="process-step">
+                                                            <div class="icon-wrapper bg-purple bg-opacity-10 rounded-circle p-3 mb-2 mx-auto" style="width: 80px; height: 80px;">
+                                                                <i class="bi bi-robot fs-2 text-purple"></i>
+                                                            </div>
+                                                            <h5>7. OpenAI Granskning</h5>
+                                                            <p class="small">Stilistisk förbättring och<br>kvalitetskontroll</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <p class="text-center fst-italic">Diagram av InkAssist's översättningsprocess från uppladdning till färdig översättning</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- Each Process Step in Detail -->
+                            <section class="mb-5">
+                                <h3 class="mb-3">Steg-för-steg förklaring</h3>
+                                
+                                <!-- Step 1: Document Upload and Processing -->
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0"><i class="bi bi-file-earmark-arrow-up"></i> Steg 1: Uppladdning och dokumentanalys</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Vad som händer:</strong></p>
+                                        <ol>
+                                            <li><strong>Filvalidering:</strong> Systemet kontrollerar filtyp, storlek och innehåll för att säkerställa att dokumentet är läsbart.</li>
+                                            <li><strong>Textextraktion:</strong> Text extraheras från dokumentet (PDF, DOCX, etc.) med bevarande av grundläggande struktur.</li>
+                                            <li><strong>Segmentering:</strong> Texten delas upp i hanterbara segment (vanligtvis stycken eller meningar) för effektiv översättning.</li>
+                                            <li><strong>Metadata-extraktion:</strong> Systemet identifierar viktiga egenskaper som dokumentstorlek, ordantal och struktur.</li>
+                                        </ol>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>Teknisk detalj:</strong> Filhanteringen inkluderar automatisk säkerhetsåtgärder som:
+                                            <ul class="mb-0">
+                                                <li>Filnamnssanering för att förhindra skadliga filnamn</li>
+                                                <li>MIME-typ validering för att bekräfta att filens faktiska innehåll matchar filändelsen</li>
+                                                <li>Virusskanning av uppladdade dokument</li>
+                                                <li>Feltoleranta extraktionsmetoder som kan hantera delvis skadade filer</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Step 2: Translation Memory -->
+                                <div class="card mb-4">
+                                    <div class="card-header bg-info bg-opacity-10">
+                                        <h4 class="card-title mb-0"><i class="bi bi-database-check"></i> Steg 2: Översättningsminne</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Vad som händer:</strong></p>
+                                        <ol>
+                                            <li><strong>Textmatchning:</strong> Varje segment jämförs med en databas av tidigare översatta texter.</li>
+                                            <li><strong>Fuzzy-matchning:</strong> Systemet hittar även liknande (inte bara identiska) segment för att maximera återanvändning.</li>
+                                            <li><strong>Cacheträffar:</strong> Om en matchning hittas används den lagrade översättningen istället för att översätta på nytt.</li>
+                                            <li><strong>Prestandaoptimering:</strong> Detta sparar både tid och API-anrop, vilket gör processen snabbare och billigare.</li>
+                                        </ol>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>Teknisk detalj:</strong> Översättningsminnet använder en sofistikerad hashningsteknik:
+                                            <ul class="mb-0">
+                                                <li>Text-fingeravtryck skapas för varje segment</li>
+                                                <li>MD5-hashing med språkspecifik normalisering används för effektiv lagring och hämtning</li>
+                                                <li>Automatisk synkronisering mellan användare med samma organisation</li>
+                                                <li>Statistik samlas för att visa hur mycket tid som sparats genom minnesanvändning</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <p><strong>Effektivitetsstatistik:</strong> I dashboarden visas följande nyckeltal för översättningsminne:</p>
+                                            <ul>
+                                                <li><strong>Cache-träffar:</strong> Antal segment som hämtades från minnet</li>
+                                                <li><strong>Cache-procent:</strong> Procentandel av dokumentet som kom från minnet</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Step 3: DeepL Translation -->
+                                <div class="card mb-4">
+                                    <div class="card-header bg-success bg-opacity-10">
+                                        <h4 class="card-title mb-0"><i class="bi bi-translate"></i> Steg 3: DeepL maskinöversättning</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Vad som händer:</strong></p>
+                                        <ol>
+                                            <li><strong>API-anrop:</strong> För segment som inte finns i minnet skickas en förfrågan till DeepL API.</li>
+                                            <li><strong>Språkdetektering:</strong> Om "auto" valts som källspråk, identifierar DeepL automatiskt språket.</li>
+                                            <li><strong>Neural översättning:</strong> DeepL:s neurala nätverk (NMT) översätter texten med kontextförståelse.</li>
+                                            <li><strong>Fel- och återförsökshantering:</strong> Systemet hanterar automatiskt anslutningsproblem och API-fel.</li>
+                                        </ol>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>Teknisk detalj:</strong> DeepL-integrationen inkluderar:
+                                            <ul class="mb-0">
+                                                <li>Automatisk validering av API-nycklar innan användning</li>
+                                                <li>Kvotövervakning för att undvika oväntat överskridande av gränser</li>
+                                                <li>Exponentiell backoff vid tillfälliga nätverksfel</li>
+                                                <li>Timeout-hantering för att förhindra att processen hänger vid API-problem</li>
+                                                <li>Parallell bearbetning av flera segment för snabbare resultat</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <p><strong>Felsäkerhetsåtgärder:</strong></p>
+                                            <ul>
+                                                <li>Om språkidentifiering misslyckas, används engelska som fallback-källspråk</li>
+                                                <li>Vid API-överbelastning, implementeras automatisk fördröjning och nya försök</li>
+                                                <li>Om DeepL är helt otillgängligt, visas en tydlig felmeddelande med alternativa åtgärder</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Step 4: Glossary Application -->
+                                <div class="card mb-4">
+                                    <div class="card-header bg-danger bg-opacity-10">
+                                        <h4 class="card-title mb-0"><i class="bi bi-book"></i> Steg 4: Ordlisteapplicering</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Vad som händer:</strong></p>
+                                        <ol>
+                                            <li><strong>Termextraktion:</strong> Systemet hämtar alla termer från den valda ordlistan.</li>
+                                            <li><strong>Sortering efter längd:</strong> Termer sorteras efter längd (längst först) för att undvika partiella ersättningar.</li>
+                                            <li><strong>Kontextkänslig ersättning:</strong> Termer ersätts med hänsyn till ordgränser för att undvika felaktiga ersättningar.</li>
+                                            <li><strong>Statistikinsamling:</strong> Systemet spårar exakt hur många termersättningar som gjorts och vilka unika termer som använts.</li>
+                                        </ol>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>Teknisk detalj:</strong> Ordlisteprocessen:
+                                            <ul class="mb-0">
+                                                <li>Använder ordgränsdetektering för att undvika att ersätta delar av ord</li>
+                                                <li>Spårar antalet unika termer som appliceras på texten</li>
+                                                <li>Räknar det totala antalet ersättningar (en term kan användas flera gånger)</li>
+                                                <li>Beräknar en "ordlisteratio" som visar termersättningar per 1000 tecken</li>
+                                                <li>Har feltoleranta rutiner som fortsätter även om vissa termersättningar misslyckas</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <p><strong>Statistik som visas:</strong></p>
+                                            <ul>
+                                                <li><strong>Ordlisteträffar:</strong> Totalt antal termersättningar i dokumentet</li>
+                                                <li><strong>Unika termer:</strong> Antal olika termer från ordlistan som använts</li>
+                                                <li><strong>Ordlisteratio:</strong> Densitet av termersättningar (per 1000 tecken)</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Step 5: Smart Review -->
+                                <div class="card mb-4">
+                                    <div class="card-header bg-warning bg-opacity-10">
+                                        <h4 class="card-title mb-0"><i class="bi bi-speedometer2"></i> Steg 5: Smart granskning</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Vad som händer:</strong></p>
+                                        <ol>
+                                            <li><strong>Komplexitetsanalys:</strong> Varje textsegment analyseras för att bedöma dess komplexitet och behovet av AI-granskning.</li>
+                                            <li><strong>Scoringalgoritm:</strong> En komplexitetspoäng (0-100) beräknas baserat på flera faktorer.</li>
+                                            <li><strong>Tröskelbaserat beslut:</strong> Segment som överstiger tröskelvärdet (standard: 40) skickas för AI-granskning.</li>
+                                            <li><strong>Optimerad resursanvändning:</strong> Enklare text hoppar över AI-granskning, vilket sparar tid och kostnad.</li>
+                                        </ol>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>Teknisk detalj:</strong> Komplexitetsanalysen beaktar faktorer som:
+                                            <ul class="mb-0">
+                                                <li>Meningslängd och -struktur</li>
+                                                <li>Lexikal variation och sällsynta ord</li>
+                                                <li>Närvaro av bildspråk, idiom och kulturella referenser</li>
+                                                <li>Jämförelsekvoter mot större språkliga korpusar</li>
+                                                <li>Genre-specifika faktorer (t.ex. skönlitterära vs tekniska texter)</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <p><strong>Effektivitetsstatistik:</strong></p>
+                                            <ul>
+                                                <li><strong>Granskningsbesparingar:</strong> Antal segment som skippade AI-granskning</li>
+                                                <li><strong>Granskningsratio:</strong> Procentandel av texten som kunde hoppa över granskning</li>
+                                                <li><strong>Genomsnittlig komplexitet:</strong> Dokumentets sammanlagda komplexitetspoäng</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Step 6: Document Assembly -->
+                                <div class="card mb-4">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h4 class="card-title mb-0"><i class="bi bi-file-earmark-text"></i> Steg 6: Dokumentmontering</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Vad som händer:</strong></p>
+                                        <ol>
+                                            <li><strong>Sidindelning:</strong> Texten delas upp i logiska sidor baserat på mängden innehåll.</li>
+                                            <li><strong>Strukturbevarande:</strong> Dokumentets ursprungliga struktur (stycken, avsnitt) återskapas.</li>
+                                            <li><strong>Metadatalagring:</strong> Information om översättningsprocessen sparas med dokumentet.</li>
+                                            <li><strong>Statistikberäkning:</strong> Viktiga mätvärden för översättningskvalitet beräknas och lagras.</li>
+                                        </ol>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>Teknisk detalj:</strong> Monteringsprocessen hanterar:
+                                            <ul class="mb-0">
+                                                <li>Automatisk beräkning av total ordmängd och teckenantal</li>
+                                                <li>Detaljerad statistik om olika översättningskällor (minne, DeepL, AI)</li>
+                                                <li>Strukturellt konsekvenskontroll mellan källdokument och måldokument</li>
+                                                <li>Säkerhetskopiering av varje bearbetningssteg för att möjliggöra återställning</li>
+                                                <li>Optimerad lagring med komprimerad datarepresentation</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <p><strong>Robusta säkerhetsåtgärder:</strong></p>
+                                            <ul>
+                                                <li>Automatisk återhämtning från partiella misslyckanden</li>
+                                                <li>Detektering av saknade segment med korrigeringsåtgärder</li>
+                                                <li>Bevarande av både käll- och måltext för framtida referenser</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Step 7: OpenAI Review -->
+                                <div class="card mb-4">
+                                    <div class="card-header" style="background-color: rgba(128, 0, 128, 0.1);">
+                                        <h4 class="card-title mb-0"><i class="bi bi-robot"></i> Steg 7: OpenAI AI-granskning</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Vad som händer:</strong></p>
+                                        <ol>
+                                            <li><strong>Instruktionsförberedelse:</strong> Specifika granskningsinstruktioner kombineras med texten och skickas till OpenAI.</li>
+                                            <li><strong>Assistentgranskning:</strong> OpenAI-assistenten förbättrar översättningen baserat på angivna instruktioner.</li>
+                                            <li><strong>Stilistisk justering:</strong> Språk, ton och idiomatiska uttryck anpassas för att låta mer naturliga.</li>
+                                            <li><strong>Kvalitetskontroll:</strong> Potentiella fel eller missförstånd i grundöversättningen identifieras och korrigeras.</li>
+                                        </ol>
+                                        
+                                        <div class="alert alert-info">
+                                            <strong>Teknisk detalj:</strong> OpenAI-integrationens robusthet:
+                                            <ul class="mb-0">
+                                                <li>Automatisk validering av assistentens tillgänglighet innan användning</li>
+                                                <li>Fullständig exponentiell backoff med retrymekanik för API-fel</li>
+                                                <li>Tidsbegränsningshantering för att förhindra att systemet stannar vid API-problem</li>
+                                                <li>Thread-rensning för att förhindra resursläckage i OpenAI-miljön</li>
+                                                <li>Förbehandling av text för att undvika token-begränsningsproblem</li>
+                                                <li>Sofistikerad felstatusolkning för att skilja mellan tillfälliga och permanenta fel</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <p><strong>Anpassade assistenter:</strong></p>
+                                            <p>Användare kan skapa specialiserade assistenter för olika typer av innehåll:</p>
+                                            <ul>
+                                                <li>Författarspecifika assistenter som bevarar unik stil och ton</li>
+                                                <li>Genrespecifika assistenter för skönlitteratur, facklitteratur, teknisk dokumentation, etc.</li>
+                                                <li>Instruktioner för kulturell anpassning och målgruppsspecifik terminologi</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Final Result -->
+                                <div class="card mb-4">
+                                    <div class="card-header bg-success bg-opacity-10">
+                                        <h4 class="card-title mb-0"><i class="bi bi-check-circle"></i> Slutresultat: Komplett översättningsprojekt</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <p>När hela processen är klar har du ett komplett översättningsprojekt med:</p>
+                                        
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <h5 class="mb-3">Innehåll</h5>
+                                                <ul>
+                                                    <li>Fullständig källtext</li>
+                                                    <li>Fullt översatt måltext</li>
+                                                    <li>Sidindelning med struktur bevarad</li>
+                                                    <li>Översättningsmetadata</li>
+                                                </ul>
+                                            </div>
+                                            
+                                            <div class="col-md-6">
+                                                <h5 class="mb-3">Statistik och data</h5>
+                                                <ul>
+                                                    <li>Ordantal och teckenantal</li>
+                                                    <li>Översättningskällor och effektivitet</li>
+                                                    <li>Ordlisteanvändning och träffar</li>
+                                                    <li>Komplexitetsbedömning</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="alert alert-success mt-3">
+                                            <p class="mb-0"><strong>Resultat:</strong> En översättning som kombinerar DeepL:s grundläggande träffsäkerhet med OpenAI:s stilistiska anpassning, kompletterad med din egna terminologi och specialkunskap från ordlistor. Detta ger en högkvalitativ översättning som balanserar exakthet med naturligt flyt och stil.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- Failure Handling Section -->
+                            <section class="mb-5">
+                                <h3 class="mb-3">Felhantering och säkerhetsåtgärder</h3>
+                                
+                                <div class="card mb-4">
+                                    <div class="card-body">
+                                        <p>InkAssist är utformat med omfattande felhantering för att säkerställa att din översättning slutförs även när problem uppstår:</p>
+                                        
+                                        <table class="table table-bordered">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Potentiellt problem</th>
+                                                    <th>Säkerhetsåtgärd</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>DeepL API otillgängligt</td>
+                                                    <td>
+                                                        <ul class="mb-0">
+                                                            <li>Automatiska återförsök med exponentiell backoff</li>
+                                                            <li>Tidsbegränsning med användarvänligt felmeddelande</li>
+                                                            <li>Delvis översättning bevaras</li>
+                                                        </ul>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>OpenAI API-fel</td>
+                                                    <td>
+                                                        <ul class="mb-0">
+                                                            <li>Fallback till DeepL-översättningen utan AI-granskning</li>
+                                                            <li>Detaljerad felloggning för diagnos</li>
+                                                            <li>Automatiska återförsök för tillfälliga fel</li>
+                                                        </ul>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Felaktig ordlista</td>
+                                                    <td>
+                                                        <ul class="mb-0">
+                                                            <li>Valideringskontroll innan användning</li>
+                                                            <li>Hoppar över problematiska termer utan att avbryta</li>
+                                                            <li>Ordningsortering med säkerhetsfilter mot oändliga loopar</li>
+                                                        </ul>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Lagringsproblem</td>
+                                                    <td>
+                                                        <ul class="mb-0">
+                                                            <li>Automatisk återförsöksmekanism för databas- och lagringsskrivningar</li>
+                                                            <li>Lokala tillfälliga kopior av data</li>
+                                                            <li>Möjlighet att återuppta avbrutna överföringar</li>
+                                                        </ul>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Avbrutet arbetsflöde</td>
+                                                    <td>
+                                                        <ul class="mb-0">
+                                                            <li>Checkpoints vid varje steg i processen</li>
+                                                            <li>"Reparera dokument"-funktion för delvis misslyckade dokument</li>
+                                                            <li>Manuell översättningsgenomgång som nödåtgärd</li>
+                                                        </ul>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+/* Custom styles for the translation process tab */
+.text-purple {
+    color: #8a2be2;
+}
+.bg-purple {
+    background-color: #8a2be2;
+}
+.process-step {
+    max-width: 160px;
+    margin: 0 auto;
+}
+</style>
 {% endblock %}

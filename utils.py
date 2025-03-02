@@ -447,12 +447,53 @@ def extract_text_from_page(pdf_reader, page_num):
         logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
         raise Exception(f"Failed to extract text from page {page_num + 1}: {str(e)}")
 
-def translate_text(text, deepl_api_key, target_language='SV', source_language='auto', use_cache=True, glossary_id=None):
+def translate_text(text, deepl_api_key, target_language='SV', source_language='auto', use_cache=True, glossary_id=None, max_retries=3, timeout=30):
     """First step: Translate text using DeepL with caching and glossary support.
+    
     Returns a tuple containing (translated_text, text_hash, source_text, glossary_hits, glossary_terms_used).
+    
+    Args:
+        text: The text to translate
+        deepl_api_key: DeepL API key
+        target_language: Target language code (default: 'SV' for Swedish)
+        source_language: Source language code or 'auto' for auto-detection
+        use_cache: Whether to use translation memory cache
+        glossary_id: ID of glossary to apply (optional)
+        max_retries: Maximum number of retries for API failures
+        timeout: Timeout in seconds for API calls
+        
+    Returns:
+        Tuple containing (translated_text, text_hash, source_text, glossary_hits, glossary_terms_used)
+        
+    Raises:
+        ValueError: If input is empty or API key is invalid
+        Exception: For other translation errors
     """
+    # Validate input
     if not text or text.isspace():
+        logger.warning("Received empty text for translation")
         raise ValueError("Cannot translate empty text")
+    
+    # Validate API key format (basic check)
+    if not deepl_api_key or len(deepl_api_key) < 20:
+        logger.error("Invalid DeepL API key format")
+        raise ValueError("DeepL API key appears to be invalid (too short)")
+    
+    # Validate language codes
+    VALID_TARGET_LANGUAGES = ['BG', 'CS', 'DA', 'DE', 'EL', 'EN', 'ES', 'ET', 'FI', 'FR', 'HU', 'ID', 'IT', 'JA', 'KO', 'LT', 'LV', 'NB', 'NL', 'PL', 'PT', 'RO', 'RU', 'SK', 'SL', 'SV', 'TR', 'UK', 'ZH']
+    VALID_SOURCE_LANGUAGES = ['AUTO', 'BG', 'CS', 'DA', 'DE', 'EL', 'EN', 'ES', 'ET', 'FI', 'FR', 'HU', 'ID', 'IT', 'JA', 'KO', 'LT', 'LV', 'NB', 'NL', 'PL', 'PT', 'RO', 'RU', 'SK', 'SL', 'SV', 'TR', 'UK', 'ZH']
+    
+    # Normalize language codes to uppercase
+    target_language = target_language.upper()
+    source_language = source_language.upper()
+    
+    if target_language not in VALID_TARGET_LANGUAGES:
+        logger.warning(f"Invalid target language code: {target_language}, using EN")
+        target_language = 'EN'  # Fallback to English
+    
+    if source_language not in VALID_SOURCE_LANGUAGES:
+        logger.warning(f"Invalid source language code: {source_language}, using AUTO")
+        source_language = 'AUTO'  # Fallback to auto-detection
 
     # Default values for glossary stats
     glossary_hits = 0
@@ -499,60 +540,115 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
             # If cache check fails, log but continue with normal translation
             logger.error(f"Error checking translation cache: {str(cache_error)}")
 
-    # No cache hit, use DeepL
+    # No cache hit, use DeepL with retry mechanism
     logger.info(f"DeepL API Key starting with: {deepl_api_key[:5]}...")
     logger.info(f"Source language: {source_language}, Target language: {target_language}")
     
-    translator = deepl.Translator(deepl_api_key)
-    try:
-        logger.info(f"Sending {len(text)} characters to DeepL for translation")
-        logger.info(f"Text sample: {text[:100]}...")
-        
-        # Use source_language only if it's not auto-detect
-        if source_language.lower() == 'auto':
-            result = translator.translate_text(text, target_lang=target_language)
-        else:
-            result = translator.translate_text(text, source_lang=source_language, target_lang=target_language)
-
-        if not result.text or result.text.isspace():
-            raise ValueError("DeepL returned empty translation")
-
-        logger.info("Text successfully translated with DeepL")
-        logger.info(f"Translation sample: {result.text[:100]}...")
-        
-        # Apply glossary to translation if specified
-        translation_text = result.text
-        if glossary_id:
+    # Define retry mechanism with exponential backoff
+    retry_count = 0
+    last_error = None
+    
+    while retry_count < max_retries:
+        try:
+            # Create translator with timeout
+            translator = deepl.Translator(deepl_api_key, timeout=timeout)
+            
+            # Validate API key by checking usage
             try:
-                from supabase_config import apply_glossary_to_text
-                glossary_result = apply_glossary_to_text(translation_text, glossary_id)
+                usage = translator.get_usage()
+                logger.debug(f"DeepL API usage: {usage.character.count}/{usage.character.limit} characters")
                 
-                # Unpack the result tuple (modified_text, replacements_count, entry_count)
-                if isinstance(glossary_result, tuple) and len(glossary_result) == 3:
-                    translation_text, glossary_hits, glossary_terms_used = glossary_result
-                    logger.info(f"Applied glossary to DeepL translation ({glossary_hits} replacements from {glossary_terms_used} terms)")
-                else:
-                    # Fallback for older version of apply_glossary_to_text
-                    translation_text = glossary_result
-                    logger.info(f"Applied glossary to DeepL translation with older function version")
-            except Exception as glossary_error:
-                logger.error(f"Error applying glossary to translation: {str(glossary_error)}")
-                # Continue with the original translation
-        
-        # Generate hash for caching if needed
-        text_hash = None
-        if use_cache:
-            try:
-                from supabase_config import generate_text_hash
-                text_hash = generate_text_hash(text, target_language)
-            except Exception as hash_error:
-                logger.error(f"Error generating hash for caching: {str(hash_error)}")
-        
-        return translation_text, text_hash, text, glossary_hits, glossary_terms_used
+                # Check if we're near the limit
+                if usage.character.limit > 0 and usage.character.count / usage.character.limit > 0.95:
+                    logger.warning(f"DeepL API usage is at {usage.character.count}/{usage.character.limit} characters (95%+ of limit)")
+            except Exception as usage_error:
+                logger.warning(f"Could not check DeepL API usage: {str(usage_error)}")
+            
+            logger.info(f"Sending {len(text)} characters to DeepL for translation")
+            logger.info(f"Text sample: {text[:100]}...")
+            
+            # Use source_language only if it's not auto-detect
+            if source_language == 'AUTO':
+                result = translator.translate_text(text, target_lang=target_language)
+            else:
+                result = translator.translate_text(text, source_lang=source_language, target_lang=target_language)
 
-    except Exception as e:
-        logger.error(f"DeepL translation error: {str(e)}")
-        raise Exception(f"Translation failed: {str(e)}")
+            # Validate response
+            if not result:
+                raise ValueError("DeepL returned None result")
+                
+            if not hasattr(result, 'text'):
+                raise ValueError("DeepL returned malformed result without text attribute")
+                
+            if not result.text or result.text.isspace():
+                raise ValueError("DeepL returned empty translation")
+
+            logger.info("Text successfully translated with DeepL")
+            logger.info(f"Translation sample: {result.text[:100]}...")
+            
+            # Apply glossary to translation if specified
+            translation_text = result.text
+            if glossary_id:
+                try:
+                    from supabase_config import apply_glossary_to_text
+                    glossary_result = apply_glossary_to_text(translation_text, glossary_id)
+                    
+                    # Unpack the result tuple (modified_text, replacements_count, entry_count)
+                    if isinstance(glossary_result, tuple) and len(glossary_result) == 3:
+                        translation_text, glossary_hits, glossary_terms_used = glossary_result
+                        logger.info(f"Applied glossary to DeepL translation ({glossary_hits} replacements from {glossary_terms_used} terms)")
+                    else:
+                        # Fallback for older version of apply_glossary_to_text
+                        translation_text = glossary_result
+                        logger.info(f"Applied glossary to DeepL translation with older function version")
+                except Exception as glossary_error:
+                    logger.error(f"Error applying glossary to translation: {str(glossary_error)}")
+                    # Continue with the original translation
+            
+            # Generate hash for caching if needed
+            text_hash = None
+            if use_cache:
+                try:
+                    from supabase_config import generate_text_hash
+                    text_hash = generate_text_hash(text, target_language)
+                except Exception as hash_error:
+                    logger.error(f"Error generating hash for caching: {str(hash_error)}")
+            
+            return translation_text, text_hash, text, glossary_hits, glossary_terms_used
+
+        except deepl.exceptions.AuthorizationException as auth_err:
+            # Authentication errors won't be fixed by retrying
+            logger.error(f"DeepL API authentication error: {str(auth_err)}")
+            raise ValueError(f"DeepL API key is invalid or has expired: {str(auth_err)}")
+            
+        except deepl.exceptions.QuotaExceededException as quota_err:
+            # Quota errors won't be fixed by retrying
+            logger.error(f"DeepL API quota exceeded: {str(quota_err)}")
+            raise ValueError(f"DeepL API quota has been exceeded: {str(quota_err)}")
+            
+        except (deepl.exceptions.ConnectionException, deepl.exceptions.DeepLException) as network_err:
+            # Network/transient errors are worth retrying with backoff
+            retry_count += 1
+            wait_time = min(2 ** retry_count, 60)  # Exponential backoff capped at 60 seconds
+            
+            logger.warning(f"DeepL API error (attempt {retry_count}/{max_retries}): {str(network_err)}. Retrying in {wait_time} seconds...")
+            last_error = network_err
+            
+            # Wait before retrying
+            time.sleep(wait_time)
+            
+        except Exception as e:
+            # Other unexpected errors
+            logger.error(f"Unexpected DeepL translation error: {str(e)}")
+            raise Exception(f"Translation failed: {str(e)}")
+    
+    # If we've exhausted retries
+    if last_error:
+        logger.error(f"DeepL translation failed after {max_retries} attempts: {str(last_error)}")
+        raise Exception(f"Translation failed after {max_retries} attempts: {str(last_error)}")
+        
+    # Fallback - we should never reach here, but just in case
+    raise Exception("Translation failed: Unknown error")
 
 def create_openai_assistant(openai_api_key, name, instructions, model="gpt-4o"):
     """Create a new OpenAI assistant with the given name and instructions"""
@@ -637,101 +733,309 @@ def delete_openai_assistant(openai_api_key, assistant_id):
         logger.error(f"Error deleting OpenAI assistant: {str(e)}")
         raise Exception(f"Failed to delete OpenAI assistant: {str(e)}")
 
-def review_translation(text, openai_api_key, assistant_id, instructions=None):
-    """Second step: Review the Swedish translation using OpenAI Assistant"""
+def review_translation(text, openai_api_key, assistant_id, instructions=None, max_retries=3, timeout=300):
+    """Second step: Review the translation using OpenAI Assistant with robust error handling.
+    
+    Args:
+        text: The text to review
+        openai_api_key: OpenAI API key
+        assistant_id: ID of the assistant to use
+        instructions: Custom instructions for the review (optional)
+        max_retries: Maximum number of retry attempts for transient errors
+        timeout: Maximum time to wait for completion in seconds
+        
+    Returns:
+        The reviewed translation text, or the original text if review fails
+        
+    Raises:
+        ValueError: For validation errors
+        Exception: For critical errors (optional, can be caught internally)
+    """
+    # Validate inputs
     if not text or text.isspace():
+        logger.warning("Cannot review empty translation")
         raise ValueError("Cannot review empty translation")
+        
+    # Validate API key format (basic check)
+    if not openai_api_key or len(openai_api_key) < 30:
+        logger.error("Invalid OpenAI API key format")
+        raise ValueError("OpenAI API key appears to be invalid (too short)")
+        
+    # Validate assistant ID format
+    if not assistant_id or not isinstance(assistant_id, str) or len(assistant_id) < 10:
+        logger.error(f"Invalid assistant ID format: {assistant_id}")
+        raise ValueError("Assistant ID appears to be invalid")
+        
+    # Limit text length to avoid excessive costs
+    MAX_CHARS = 100000  # 100k character limit
+    if len(text) > MAX_CHARS:
+        logger.warning(f"Text too long for review ({len(text)} chars). Truncating to {MAX_CHARS} chars.")
+        text = text[:MAX_CHARS]
 
     logger.info(f"OpenAI API Key starting with: {openai_api_key[:5]}...")
     logger.info(f"Assistant ID: {assistant_id}")
     
-    # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
+    # Use the specified OpenAI API key
     client = OpenAI(api_key=openai_api_key)
+    
+    # Track start time for timeout
+    start_time = time.time()
+    
+    # Create a thread ID outside the try block for potential cleanup
+    thread_id = None
 
-    try:
-        logger.info(f"Creating new thread for reviewing {len(text)} characters")
-        thread = client.beta.threads.create()
-        logger.info(f"Created thread with ID: {thread.id}")
-
-        # Use custom instructions if provided, otherwise use default
-        if not instructions:
-            instructions = """Granska och förbättra denna svenska översättning. 
-            Texten ska vara tydlig, naturlig och bevara den ursprungliga betydelsen."""
-            
-        logger.info("Adding message to thread")
-        message_content = f"""{instructions}
-
-            {text}
-
-            Om texten verkar förvirrad eller oklar, returnera ett felmeddelande som börjar med 'TRANSLATION_ERROR:'.
-            """
-        logger.info(f"Message sample: {message_content[:100]}...")
-        
-        client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=message_content
-        )
-
-        logger.info("Starting assistant run")
-        run = client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=assistant_id
-        )
-
-        # Simplified exponential backoff
-        max_retries = 5  # Increased to give more time for completion
-        initial_delay = 10  # Increased initial delay to give more time
-        max_delay = 60  # Increased max delay to allow for longer processing
-
-        for attempt in range(max_retries):
-            logger.info(f"Checking run status (attempt {attempt + 1}/{max_retries})")
-            run_status = client.beta.threads.runs.retrieve(
-                thread_id=thread.id,
-                run_id=run.id
-            )
-
-            if run_status.status == 'completed':
-                break
-            elif run_status.status in ['failed', 'cancelled', 'expired']:
-                logger.error(f"Run failed with status: {run_status.status}")
-                return text
-
-            if attempt < max_retries - 1:
-                delay = min(initial_delay * (4 ** attempt), max_delay)
-                logger.info(f"Waiting {delay} seconds before next check")
-                time.sleep(delay)
-            else:
-                logger.warning("Maximum retry attempts reached")
-                return text
-
-        logger.info("Retrieving assistant's response")
-        messages = client.beta.threads.messages.list(thread_id=thread.id)
-
-        if not messages.data:
-            logger.warning("No messages received from assistant")
-            return text
-
+    # Define retry mechanism with backoff
+    retry_count = 0
+    last_error = None
+    
+    while retry_count < max_retries:
         try:
-            response = next(
-                content.text.value
-                for content in messages.data[0].content
-                if hasattr(content, 'text')
+            # Check if we've exceeded the timeout
+            elapsed_time = time.time() - start_time
+            if elapsed_time > timeout:
+                logger.error(f"Review timed out after {elapsed_time:.1f} seconds")
+                return text
+            
+            # First validate the assistant exists
+            try:
+                assistant = client.beta.assistants.retrieve(assistant_id)
+                logger.info(f"Using assistant: {assistant.name} (model: {assistant.model})")
+            except Exception as assistant_error:
+                logger.error(f"Could not retrieve assistant with ID {assistant_id}: {assistant_error}")
+                raise ValueError(f"Invalid assistant ID or API key: {assistant_error}")
+            
+            # Create a new thread
+            logger.info(f"Creating new thread for reviewing {len(text)} characters")
+            thread = client.beta.threads.create()
+            thread_id = thread.id
+            logger.info(f"Created thread with ID: {thread_id}")
+
+            # Use custom instructions if provided, otherwise use default
+            if not instructions:
+                instructions = """Granska och förbättra denna svenska översättning. 
+                Texten ska vara tydlig, naturlig och bevara den ursprungliga betydelsen.
+                Om du inte kan förbättra texten, returnera den som den är."""
+                
+            # Sanitize the instructions and text
+            if instructions and len(instructions) > 5000:
+                logger.warning(f"Instructions too long ({len(instructions)} chars). Truncating.")
+                instructions = instructions[:5000]
+                
+            # Construct message with clear instructions
+            logger.info("Adding message to thread")
+            message_content = f"""{instructions}
+
+                ---
+
+                {text}
+
+                ---
+
+                If the text seems confused or unclear, return an error message starting with 'TRANSLATION_ERROR:'.
+                """
+            logger.info(f"Message sample (first 100 chars): {message_content[:100]}...")
+            
+            # Create the message in the thread
+            message = client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=message_content
             )
+            
+            if not message or not message.id:
+                raise ValueError("Failed to create message in thread")
 
-            if response.startswith('TRANSLATION_ERROR:'):
-                raise ValueError(response)
+            # Start the assistant run
+            logger.info("Starting assistant run")
+            run = client.beta.threads.runs.create(
+                thread_id=thread_id,
+                assistant_id=assistant_id
+            )
+            
+            if not run or not run.id:
+                raise ValueError("Failed to start assistant run")
+                
+            run_id = run.id
+            logger.info(f"Started run with ID: {run_id}")
 
-            logger.info("Translation review completed successfully")
-            return response
+            # Poll for completion with improved exponential backoff
+            poll_count = 0
+            max_polls = 30  # Safety limit to avoid infinite loops
+            current_delay = 5  # Start with a 5 second delay
+            max_poll_delay = 30  # Maximum delay between polls
+            
+            while poll_count < max_polls:
+                # Check if we've exceeded the timeout
+                elapsed_time = time.time() - start_time
+                if elapsed_time > timeout:
+                    logger.error(f"Review timed out after {elapsed_time:.1f} seconds")
+                    return text
+                
+                # Wait before polling
+                if poll_count > 0:
+                    logger.info(f"Waiting {current_delay} seconds before next check")
+                    time.sleep(current_delay)
+                    # Increase delay for next poll with cap
+                    current_delay = min(current_delay * 1.5, max_poll_delay)
+                
+                # Poll for status
+                logger.info(f"Checking run status (poll {poll_count + 1}/{max_polls}, elapsed: {elapsed_time:.1f}s)")
+                try:
+                    run_status = client.beta.threads.runs.retrieve(
+                        thread_id=thread_id,
+                        run_id=run_id
+                    )
+                    
+                    if not run_status:
+                        logger.warning("Empty run status response")
+                        poll_count += 1
+                        continue
+                except Exception as poll_error:
+                    logger.warning(f"Error polling run status: {poll_error}")
+                    poll_count += 1
+                    continue
+                
+                # Check status
+                status = run_status.status
+                logger.info(f"Run status: {status}")
+                
+                if status == 'completed':
+                    logger.info(f"Run completed successfully after {elapsed_time:.1f} seconds")
+                    break
+                elif status in ['failed', 'cancelled', 'expired']:
+                    logger.error(f"Run failed with status: {status}")
+                    # Check for failure details
+                    try:
+                        if hasattr(run_status, 'last_error') and run_status.last_error:
+                            logger.error(f"Error details: {run_status.last_error}")
+                    except:
+                        pass
+                    return text
+                elif status in ['queued', 'in_progress', 'requires_action']:
+                    # Continue polling
+                    poll_count += 1
+                    continue
+                else:
+                    # Unknown status
+                    logger.warning(f"Unknown run status: {status}")
+                    poll_count += 1
+            
+            # If we exited the loop without completing, return original text
+            if status != 'completed':
+                logger.warning(f"Run did not complete after {max_polls} polls. Status: {status}")
+                return text
 
-        except (StopIteration, AttributeError) as e:
-            logger.error(f"Error extracting message content: {str(e)}")
+            # Successfully completed, retrieve messages
+            logger.info("Retrieving assistant's response")
+            try:
+                messages = client.beta.threads.messages.list(thread_id=thread_id)
+            except Exception as msg_error:
+                logger.error(f"Error retrieving messages: {msg_error}")
+                return text
+
+            if not messages or not hasattr(messages, 'data') or not messages.data:
+                logger.warning("No messages received from assistant")
+                return text
+
+            # Find the assistant's response (should be the newest message from assistant)
+            assistant_messages = [msg for msg in messages.data 
+                                 if msg.role == 'assistant' and msg.content]
+            
+            if not assistant_messages:
+                logger.warning("No assistant messages found in response")
+                return text
+                
+            # Get the newest message
+            assistant_message = assistant_messages[0]
+            
+            try:
+                # Extract text content from the message
+                text_contents = [content.text.value 
+                               for content in assistant_message.content 
+                               if hasattr(content, 'text') and hasattr(content.text, 'value')]
+                
+                if not text_contents:
+                    logger.warning("No text content found in assistant message")
+                    return text
+                
+                # Join all text content fragments
+                response = '\n'.join(text_contents)
+                
+                # Check for error message pattern
+                if response.startswith('TRANSLATION_ERROR:'):
+                    logger.warning(f"Assistant reported translation error: {response}")
+                    return text  # Return original on error
+
+                logger.info("Translation review completed successfully")
+                logger.info(f"Response sample (first 100 chars): {response[:100]}...")
+                
+                # Clean up the thread to avoid cluttering OpenAI storage
+                try:
+                    client.beta.threads.delete(thread_id)
+                    logger.debug(f"Deleted thread {thread_id}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Error cleaning up thread: {cleanup_error}")
+                
+                return response  # Success!
+
+            except Exception as content_error:
+                logger.error(f"Error extracting message content: {content_error}")
+                return text
+
+        except openai.AuthenticationError as auth_err:
+            logger.error(f"OpenAI API authentication error: {auth_err}")
+            # Don't retry auth errors
             return text
-
-    except Exception as e:
-        logger.error(f"Error in review_translation: {str(e)}")
-        return text
+            
+        except openai.RateLimitError as rate_err:
+            # Rate limiting errors might be retryable with longer delays
+            retry_count += 1
+            last_error = rate_err
+            wait_time = min(30 * retry_count, 120)  # 30s, 60s, 90s, capped at 120s
+            logger.warning(f"OpenAI API rate limited (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+            
+        except openai.APITimeoutError as timeout_err:
+            # Timeouts are retryable
+            retry_count += 1
+            last_error = timeout_err
+            wait_time = min(10 * retry_count, 60)
+            logger.warning(f"OpenAI API timeout (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+            
+        except (openai.APIConnectionError, openai.BadRequestError) as conn_err:
+            # Connection errors can be retried
+            retry_count += 1
+            last_error = conn_err
+            wait_time = min(5 * retry_count, 30)
+            logger.warning(f"OpenAI API connection error (attempt {retry_count}/{max_retries}): {conn_err}. Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+            
+        except Exception as e:
+            # For other errors, log and return original text
+            logger.error(f"Unexpected error in review_translation: {e}")
+            # Clean up thread if it was created
+            if thread_id:
+                try:
+                    client.beta.threads.delete(thread_id)
+                    logger.debug(f"Deleted thread {thread_id} after error")
+                except:
+                    pass
+            return text
+            
+    # If we've exhausted retries
+    if last_error:
+        logger.error(f"Review failed after {max_retries} attempts: {last_error}")
+        
+    # Clean up thread if it was created
+    if thread_id:
+        try:
+            client.beta.threads.delete(thread_id)
+            logger.debug(f"Deleted thread {thread_id} after exhausting retries")
+        except:
+            pass
+            
+    return text  # Return original text if all retries failed
 
 def create_pdf_with_text(text_content):
     """Legacy function - kept for backward compatibility"""

@@ -1488,12 +1488,98 @@ def upload_file():
         all_translations = []
         filepaths = []
         
-        # Save all files
+        # Maximum file size (100MB)
+        MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB in bytes
+        
+        # Check upload directory exists and is writable
+        upload_dir = app.config['UPLOAD_FOLDER']
+        if not os.path.exists(upload_dir):
+            try:
+                os.makedirs(upload_dir, exist_ok=True)
+                logger.info(f"Created upload directory: {upload_dir}")
+            except Exception as dir_error:
+                logger.error(f"Failed to create upload directory: {str(dir_error)}")
+                return json_error("Server configuration error: Upload directory cannot be created")
+        
+        if not os.access(upload_dir, os.W_OK):
+            logger.error(f"Upload directory is not writable: {upload_dir}")
+            return json_error("Server configuration error: Upload directory is not writable")
+        
+        # Check disk space
+        try:
+            import shutil
+            disk_usage = shutil.disk_usage(upload_dir)
+            if disk_usage.free < 500 * 1024 * 1024:  # Less than 500MB free
+                logger.warning(f"Low disk space: {disk_usage.free / (1024*1024):.2f}MB free")
+        except Exception as disk_error:
+            logger.warning(f"Unable to check disk space: {str(disk_error)}")
+        
+        # Save all files with validation
         for file in files:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            filepaths.append(filepath)
+            # Validate filename
+            original_filename = file.filename
+            if not original_filename:
+                logger.warning("Received file with empty filename")
+                continue
+                
+            # Create a secure filename
+            filename = secure_filename(original_filename)
+            if filename != original_filename:
+                logger.info(f"Sanitized filename from '{original_filename}' to '{filename}'")
+            
+            # Generate a unique filename to avoid conflicts
+            unique_prefix = str(uuid.uuid4())[:8]
+            unique_filename = f"{unique_prefix}_{filename}"
+            filepath = os.path.join(upload_dir, unique_filename)
+            
+            # Check file size limit
+            file.seek(0, os.SEEK_END)
+            file_size = file.tell()
+            file.seek(0)  # Reset file pointer
+            
+            if file_size > MAX_FILE_SIZE:
+                logger.warning(f"File too large: {filename} ({file_size / (1024*1024):.2f}MB)")
+                return json_error(f"File {filename} is too large. Maximum file size is 100MB.")
+            
+            # Check for empty files
+            if file_size == 0:
+                logger.warning(f"Empty file: {filename}")
+                return json_error(f"File {filename} is empty and cannot be processed.")
+            
+            # Scan first few bytes to validate file type
+            try:
+                file_header = file.read(512)
+                file.seek(0)  # Reset file pointer
+                
+                # Basic PDF header check
+                if filename.lower().endswith('.pdf') and not file_header.startswith(b'%PDF-'):
+                    logger.warning(f"Invalid PDF file format: {filename}")
+                    return json_error(f"File {filename} is not a valid PDF file.")
+                
+                # DOCX is a ZIP file
+                if filename.lower().endswith('.docx') and not (file_header.startswith(b'PK\x03\x04') or file_header.startswith(b'PK\x05\x06')):
+                    logger.warning(f"Invalid DOCX file format: {filename}")
+                    return json_error(f"File {filename} is not a valid DOCX file.")
+            except Exception as header_check_error:
+                logger.warning(f"Error checking file header: {str(header_check_error)}")
+            
+            try:
+                # Actually save the file
+                file.save(filepath)
+                logger.info(f"Saved file: {filename} ({file_size / 1024:.2f}KB) to {filepath}")
+                filepaths.append(filepath)
+                
+                # Track original filename mapping for reference
+                session[f'original_filename_{unique_filename}'] = original_filename
+                
+            except Exception as save_error:
+                logger.error(f"Failed to save file {filename}: {str(save_error)}")
+                return json_error(f"Failed to upload file {filename}: {str(save_error)}")
+                
+        # Verify we have files to process
+        if not filepaths:
+            logger.error("No valid files were uploaded")
+            return json_error("No valid files were uploaded. Please try again.")
         
         logger.info(f"Processing {len(filepaths)} files in batch mode")
         

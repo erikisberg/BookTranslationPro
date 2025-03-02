@@ -969,65 +969,151 @@ def fix_document_content(user_id, document_id):
         logger.error(f"Error fixing document content: {e}")
         return False
 
-def save_document_content(user_id, document_id, content, content_type='translated'):
-    """Save document content to storage"""
-    try:
-        if not content:
-            logger.warning(f"Empty content for document {document_id}, not saving")
-            return False
-            
-        # Create path for the content
-        storage_path = f"documents/{user_id}/{document_id}/{content_type}"
+def save_document_content(user_id, document_id, content, content_type='translated', max_retries=3):
+    """
+    Save document content to storage with improved error handling and retry logic.
+    
+    Args:
+        user_id: The user ID who owns the document
+        document_id: The document's unique ID
+        content: The content to save (string or bytes)
+        content_type: Type of content ('source' or 'translated')
+        max_retries: Maximum number of retry attempts
         
-        # Convert content to bytes if it's not already
-        if isinstance(content, str):
-            content = content.encode('utf-8')
-        
-        # First check if the document_id directory exists, create it if not
-        document_dir = f"documents/{user_id}/{document_id}"
-        
-        try:
-            # List files to see if directory exists
-            dir_exists = False
-            try:
-                list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
-                # Check if list_files is valid (not None and is a list)
-                if list_files and isinstance(list_files, list):
-                    dir_exists = True
-                    logger.debug(f"Directory exists for document {document_id}")
-            except:
-                dir_exists = False
-                
-            # If directory doesn't exist, create it
-            if not dir_exists:
-                logger.debug(f"Creating directory for document {document_id}")
-                placeholder_path = f"{user_id}/{document_id}/.placeholder"
-                placeholder_content = b"placeholder"
-                
-                # Upload placeholder file to create directory structure
-                supabase.storage.from_('documents').upload(
-                    placeholder_path,
-                    placeholder_content,
-                    {"contentType": "text/plain", "upsert": "true", "cacheControl": "3600"}
-                )
-                logger.debug(f"Created directory for document {document_id}")
-        except Exception as dir_error:
-            logger.error(f"Error checking/creating directory for document {document_id}: {dir_error}")
-            # Continue anyway, the upload might still work
-        
-        # Upload to storage
-        logger.debug(f"Saving {content_type} content for document {document_id} to path {storage_path}")
-        storage_response = supabase.storage.from_('documents').upload(
-            storage_path,
-            content,
-            {"contentType": "text/plain", "upsert": "true", "cacheControl": "3600"}
-        )
-        
-        logger.info(f"Content saved successfully for document {document_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Error saving document content: {e}")
+    Returns:
+        bool: True if saved successfully, False otherwise
+    """
+    # Input validation
+    if not user_id:
+        logger.error("Cannot save document content: Missing user ID")
         return False
+        
+    if not document_id:
+        logger.error("Cannot save document content: Missing document ID")
+        return False
+    
+    if not content:
+        logger.warning(f"Empty content for document {document_id}, not saving")
+        return False
+    
+    if content_type not in ['source', 'translated']:
+        logger.warning(f"Invalid content_type '{content_type}', using 'translated'")
+        content_type = 'translated'
+    
+    # Create path for the content
+    storage_path = f"documents/{user_id}/{document_id}/{content_type}"
+    
+    # Convert content to bytes if it's not already
+    if isinstance(content, str):
+        try:
+            content = content.encode('utf-8')
+        except UnicodeEncodeError as encode_error:
+            logger.error(f"Error encoding content to UTF-8: {encode_error}")
+            # Try with fallback encoding and error handling
+            content = content.encode('utf-8', errors='replace')
+    
+    # Retry mechanism
+    retry_count = 0
+    last_error = None
+    
+    while retry_count < max_retries:
+        try:
+            # First check if the document_id directory exists, create it if not
+            document_dir = f"documents/{user_id}/{document_id}"
+            
+            # Check if document exists in database before trying to save content
+            try:
+                doc_check = supabase.table('documents').select('id').eq('id', document_id).eq('user_id', user_id).limit(1).execute()
+                if not (hasattr(doc_check, 'data') and doc_check.data):
+                    logger.warning(f"Document {document_id} does not exist in database for user {user_id}")
+                    # We'll continue anyway - the content might be needed before the document is created
+            except Exception as doc_check_error:
+                logger.warning(f"Error checking document in database: {doc_check_error}")
+            
+            # Check if directory exists in storage
+            try:
+                dir_exists = False
+                try:
+                    list_files = supabase.storage.from_('documents').list(f"{user_id}/{document_id}")
+                    # Check if list_files is valid (not None and is a list)
+                    if list_files and isinstance(list_files, list):
+                        dir_exists = True
+                        logger.debug(f"Directory exists for document {document_id}")
+                except Exception as list_error:
+                    logger.warning(f"Error listing files in storage: {list_error}")
+                    dir_exists = False
+                    
+                # If directory doesn't exist, create it
+                if not dir_exists:
+                    logger.debug(f"Creating directory for document {document_id}")
+                    placeholder_path = f"{user_id}/{document_id}/.placeholder"
+                    placeholder_content = b"placeholder"
+                    
+                    # Upload placeholder file to create directory structure
+                    placeholder_resp = supabase.storage.from_('documents').upload(
+                        placeholder_path,
+                        placeholder_content,
+                        {"contentType": "text/plain", "upsert": "true", "cacheControl": "3600"}
+                    )
+                    
+                    # Verify the placeholder was created
+                    if placeholder_resp:
+                        logger.debug(f"Created directory for document {document_id}")
+                    else:
+                        logger.warning(f"Failed to create directory for document {document_id}")
+            except Exception as dir_error:
+                logger.error(f"Error checking/creating directory for document {document_id}: {dir_error}")
+                # Continue anyway, the upload might still work
+            
+            # Upload to storage with content size validation
+            content_size_kb = len(content) / 1024
+            if content_size_kb > 10240:  # 10MB
+                logger.warning(f"Large content being saved ({content_size_kb:.2f}KB) for document {document_id}")
+            
+            logger.debug(f"Saving {content_type} content ({content_size_kb:.2f}KB) for document {document_id}")
+            storage_response = supabase.storage.from_('documents').upload(
+                storage_path,
+                content,
+                {"contentType": "text/plain", "upsert": "true", "cacheControl": "3600"}
+            )
+            
+            # Verify upload succeeded
+            if storage_response:
+                logger.info(f"Content saved successfully for document {document_id}")
+                
+                # Verify content was saved correctly by checking its existence
+                try:
+                    check_exists = supabase.storage.from_('documents').get_public_url(storage_path)
+                    if check_exists:
+                        logger.debug(f"Content verified in storage for document {document_id}")
+                    else:
+                        logger.warning(f"Content may not have been saved correctly for document {document_id}")
+                except Exception as verify_error:
+                    logger.warning(f"Could not verify content was saved: {verify_error}")
+                
+                return True
+            else:
+                raise Exception("Storage response was empty or invalid")
+                
+        except Exception as e:
+            retry_count += 1
+            last_error = e
+            
+            # Only retry transient errors (connection errors, timeouts)
+            if "connection" in str(e).lower() or "timeout" in str(e).lower() or "network" in str(e).lower():
+                wait_time = min(2 ** retry_count, 30)  # Exponential backoff
+                logger.warning(f"Transient error saving content (attempt {retry_count}/{max_retries}): {e}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                # Non-transient error, no point in retrying
+                logger.error(f"Non-transient error saving document content: {e}")
+                break
+    
+    # If we got here, all retries failed or we had a non-transient error
+    if last_error:
+        logger.error(f"Failed to save document content after {retry_count} attempts: {last_error}")
+    
+    return False
 
 def get_document_content(user_id, document_id, content_type='translated', version_id=None):
     """Get document content from storage"""
