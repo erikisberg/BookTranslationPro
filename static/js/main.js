@@ -648,6 +648,593 @@ document.addEventListener('DOMContentLoaded', function() {
         initGlossaryManagement();
     }
     
+    // Initialize document version management if relevant
+    if (window.location.pathname.includes('/versions')) {
+        initVersionManagement();
+    }
+    
+    /**
+     * Initialize document version management functionality
+     */
+    function initVersionManagement() {
+        console.log("Initializing version management");
+        
+        try {
+            // Initialize Bootstrap modals
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const createVersionModalEl = document.getElementById('createVersionModal');
+                const restoreVersionModalEl = document.getElementById('restoreVersionModal');
+                
+                if (createVersionModalEl) {
+                    window.createVersionModal = new bootstrap.Modal(createVersionModalEl);
+                }
+                
+                if (restoreVersionModalEl) {
+                    window.restoreVersionModal = new bootstrap.Modal(restoreVersionModalEl);
+                }
+            }
+            
+            // Initialize create new version button
+            initCreateVersion();
+            
+            // Initialize restore version buttons
+            initRestoreVersionButtons();
+            
+            // Initialize view mode controls if on version view page
+            if (window.location.pathname.includes('view')) {
+                initVirtualScrolling();
+                initViewModeControls();
+            }
+            
+        } catch (error) {
+            console.error("Error initializing version management:", error);
+        }
+        
+        /**
+         * Initialize create version functionality
+         */
+        function initCreateVersion() {
+            const createVersionBtn = document.getElementById('createVersionBtn');
+            if (!createVersionBtn) return;
+            
+            createVersionBtn.addEventListener('click', function() {
+                console.log("Create version button clicked");
+                
+                if (window.createVersionModal) {
+                    window.createVersionModal.show();
+                } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    const createVersionModalEl = document.getElementById('createVersionModal');
+                    if (createVersionModalEl) {
+                        const createVersionModal = new bootstrap.Modal(createVersionModalEl);
+                        createVersionModal.show();
+                    }
+                }
+            });
+            
+            const createVersionConfirmBtn = document.getElementById('createVersionConfirmBtn');
+            if (!createVersionConfirmBtn) return;
+            
+            createVersionConfirmBtn.addEventListener('click', function() {
+                const versionNotes = document.getElementById('versionNotes')?.value || '';
+                const documentId = getDocumentIdFromURL();
+                
+                if (!documentId) {
+                    showNotification('Could not determine document ID', 'danger');
+                    return;
+                }
+                
+                fetch(`/documents/${documentId}/versions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        notes: versionNotes
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            console.error("Response not OK:", response.status, text);
+                            throw new Error('Server error: ' + response.status);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showNotification(data.message || 'New version created successfully', 'success');
+                        
+                        // Close modal
+                        if (window.createVersionModal) {
+                            window.createVersionModal.hide();
+                        }
+                        
+                        // Reload the page to show the new version
+                        window.location.reload();
+                    } else {
+                        showNotification(data.message || 'Failed to create new version', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error creating version:', error);
+                    showNotification('Failed to create new version: ' + error.message, 'danger');
+                    
+                    // Try traditional form submission as fallback
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = `/documents/${documentId}/versions`;
+                    
+                    // Add notes field
+                    const notesInput = document.createElement('input');
+                    notesInput.type = 'hidden';
+                    notesInput.name = 'notes';
+                    notesInput.value = versionNotes;
+                    form.appendChild(notesInput);
+                    
+                    // Add to document and submit
+                    document.body.appendChild(form);
+                    form.submit();
+                });
+            });
+        }
+        
+        /**
+         * Initialize restore version buttons
+         */
+        function initRestoreVersionButtons() {
+            document.querySelectorAll('.restore-version-btn, #restoreVersionBtn').forEach(btn => {
+                if (!btn) return;
+                
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    const versionId = this.getAttribute('data-id') || getVersionIdFromURL();
+                    const versionNumber = this.getAttribute('data-version') || document.querySelector('.badge.bg-info')?.textContent?.replace('v', '') || '';
+                    
+                    if (!versionId && !window.location.pathname.includes('view')) {
+                        showNotification('Could not determine version ID', 'danger');
+                        return;
+                    }
+                    
+                    // Set modal details
+                    const restoreVersionId = document.getElementById('restoreVersionId');
+                    if (restoreVersionId) restoreVersionId.value = versionId;
+                    
+                    const restoreVersionNumber = document.getElementById('restoreVersionNumber');
+                    if (restoreVersionNumber) restoreVersionNumber.textContent = versionNumber;
+                    
+                    const restoreVersionModalLabel = document.getElementById('restoreVersionModalLabel');
+                    if (restoreVersionModalLabel) restoreVersionModalLabel.textContent = `Restore Version ${versionNumber}`;
+                    
+                    // Show modal
+                    if (window.restoreVersionModal) {
+                        window.restoreVersionModal.show();
+                    } else if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        const restoreVersionModalEl = document.getElementById('restoreVersionModal');
+                        if (restoreVersionModalEl) {
+                            const restoreVersionModal = new bootstrap.Modal(restoreVersionModalEl);
+                            restoreVersionModal.show();
+                        }
+                    }
+                });
+            });
+            
+            const confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
+            if (!confirmRestoreBtn) return;
+            
+            confirmRestoreBtn.addEventListener('click', function() {
+                const documentId = getDocumentIdFromURL();
+                const versionId = document.getElementById('restoreVersionId')?.value || getVersionIdFromURL();
+                const notes = document.getElementById('restoreNotes')?.value || '';
+                
+                if (!documentId || !versionId) {
+                    showNotification('Missing document or version ID', 'danger');
+                    return;
+                }
+                
+                fetch(`/documents/${documentId}/versions/${versionId}/restore`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        notes: notes
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            console.error("Response not OK:", response.status, text);
+                            throw new Error('Server error: ' + response.status);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showNotification(data.message || 'Version restored successfully', 'success');
+                        
+                        // Close modal
+                        if (window.restoreVersionModal) {
+                            window.restoreVersionModal.hide();
+                        }
+                        
+                        // Redirect to document view or reload
+                        if (data.document_id) {
+                            window.location.href = `/documents/${data.document_id}`;
+                        } else {
+                            window.location.reload();
+                        }
+                    } else {
+                        showNotification(data.message || 'Failed to restore version', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error restoring version:', error);
+                    showNotification('Failed to restore version: ' + error.message, 'danger');
+                    
+                    // Try traditional form submission as fallback
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = `/documents/${documentId}/versions/${versionId}/restore`;
+                    
+                    // Add notes field
+                    const notesInput = document.createElement('input');
+                    notesInput.type = 'hidden';
+                    notesInput.name = 'notes';
+                    notesInput.value = notes;
+                    form.appendChild(notesInput);
+                    
+                    // Add to document and submit
+                    document.body.appendChild(form);
+                    form.submit();
+                });
+            });
+        }
+        
+        /**
+         * Initialize view mode controls for version view
+         */
+        function initViewModeControls() {
+            const viewSource = document.getElementById('viewSource');
+            const viewTranslated = document.getElementById('viewTranslated');
+            const viewSideBySide = document.getElementById('viewSideBySide');
+            const sourceView = document.getElementById('sourceView');
+            const translatedView = document.getElementById('translatedView');
+            const sideBySideView = document.getElementById('sideBySideView');
+            
+            if (!viewSource || !viewTranslated || !viewSideBySide || 
+                !sourceView || !translatedView || !sideBySideView) {
+                return;
+            }
+            
+            viewSource.addEventListener('change', function() {
+                if (this.checked) {
+                    sourceView.classList.remove('d-none');
+                    translatedView.classList.add('d-none');
+                    sideBySideView.classList.add('d-none');
+                    
+                    // Trigger virtual scroll refresh
+                    setTimeout(() => {
+                        if (typeof renderVisibleContent === 'function') {
+                            renderVisibleContent('source');
+                        }
+                    }, 0);
+                }
+            });
+            
+            viewTranslated.addEventListener('change', function() {
+                if (this.checked) {
+                    sourceView.classList.add('d-none');
+                    translatedView.classList.remove('d-none');
+                    sideBySideView.classList.add('d-none');
+                    
+                    // Trigger virtual scroll refresh
+                    setTimeout(() => {
+                        if (typeof renderVisibleContent === 'function') {
+                            renderVisibleContent('translated');
+                        }
+                    }, 0);
+                }
+            });
+            
+            viewSideBySide.addEventListener('change', function() {
+                if (this.checked) {
+                    sourceView.classList.add('d-none');
+                    translatedView.classList.add('d-none');
+                    sideBySideView.classList.remove('d-none');
+                    
+                    // Trigger virtual scroll refresh
+                    setTimeout(() => {
+                        if (typeof renderVisibleContent === 'function') {
+                            renderVisibleContent('sideBySideSource');
+                            renderVisibleContent('sideBySideTranslated');
+                        }
+                    }, 0);
+                }
+            });
+        }
+        
+        /**
+         * Virtual scrolling implementation for large documents
+         */
+        function initVirtualScrolling() {
+            // Get content from hidden elements
+            const sourceContentEl = document.getElementById('originalSourceContent');
+            const translatedContentEl = document.getElementById('originalTranslatedContent');
+            
+            if (!sourceContentEl || !translatedContentEl) {
+                return;
+            }
+            
+            const sourceContent = sourceContentEl.textContent;
+            const translatedContent = translatedContentEl.textContent;
+            
+            // Split content into paragraphs
+            const sourceParagraphs = sourceContent.split('\n').filter(p => p.trim().length > 0);
+            const translatedParagraphs = translatedContent.split('\n').filter(p => p.trim().length > 0);
+            
+            // Estimated paragraph heights - will be refined as they're rendered
+            const avgLineHeight = 24; // pixels per line (estimate)
+            const avgCharsPerLine = 80; // characters per line (estimate)
+            
+            // Calculate initial height estimates for paragraphs
+            const sourceHeights = sourceParagraphs.map(p => {
+                const lines = Math.max(1, Math.ceil(p.length / avgCharsPerLine));
+                return lines * avgLineHeight;
+            });
+            
+            const translatedHeights = translatedParagraphs.map(p => {
+                const lines = Math.max(1, Math.ceil(p.length / avgCharsPerLine));
+                return lines * avgLineHeight;
+            });
+            
+            // Calculate total content heights
+            const totalSourceHeight = sourceHeights.reduce((sum, h) => sum + h, 0);
+            const totalTranslatedHeight = translatedHeights.reduce((sum, h) => sum + h, 0);
+            
+            // Get scroll containers and spacers
+            const containers = {
+                source: document.getElementById('sourceScrollContainer'),
+                translated: document.getElementById('translatedScrollContainer'),
+                sideBySideSource: document.getElementById('sideBySideSourceContainer'),
+                sideBySideTranslated: document.getElementById('sideBySideTranslatedContainer')
+            };
+            
+            const contentContainers = {
+                source: document.getElementById('sourceContentContainer'),
+                translated: document.getElementById('translatedContentContainer'),
+                sideBySideSource: document.getElementById('sideBySideSourceContent'),
+                sideBySideTranslated: document.getElementById('sideBySideTranslatedContent')
+            };
+            
+            const spacers = {
+                sourceTop: document.getElementById('sourceTopSpacer'),
+                sourceBottom: document.getElementById('sourceBottomSpacer'),
+                translatedTop: document.getElementById('translatedTopSpacer'),
+                translatedBottom: document.getElementById('translatedBottomSpacer'),
+                sideBySideSourceTop: document.getElementById('sideBySideSourceTopSpacer'),
+                sideBySideSourceBottom: document.getElementById('sideBySideSourceBottomSpacer'),
+                sideBySideTranslatedTop: document.getElementById('sideBySideTranslatedTopSpacer'),
+                sideBySideTranslatedBottom: document.getElementById('sideBySideTranslatedBottomSpacer')
+            };
+            
+            // Check if all required elements exist
+            for (const key in containers) {
+                if (!containers[key]) {
+                    console.warn(`Virtual scrolling container '${key}' not found`);
+                }
+            }
+            
+            for (const key in contentContainers) {
+                if (!contentContainers[key]) {
+                    console.warn(`Content container '${key}' not found`);
+                }
+            }
+            
+            for (const key in spacers) {
+                if (!spacers[key]) {
+                    console.warn(`Spacer '${key}' not found`);
+                }
+            }
+            
+            // Initialize bottom spacer heights to total content height
+            if (spacers.sourceBottom) spacers.sourceBottom.style.height = `${totalSourceHeight}px`;
+            if (spacers.translatedBottom) spacers.translatedBottom.style.height = `${totalTranslatedHeight}px`;
+            if (spacers.sideBySideSourceBottom) spacers.sideBySideSourceBottom.style.height = `${totalSourceHeight}px`;
+            if (spacers.sideBySideTranslatedBottom) spacers.sideBySideTranslatedBottom.style.height = `${totalTranslatedHeight}px`;
+            
+            // Variables to track visible content
+            let sourceVisibleRange = { start: -1, end: -1 };
+            let translatedVisibleRange = { start: -1, end: -1 };
+            let sideBySideSourceVisibleRange = { start: -1, end: -1 };
+            let sideBySideTranslatedVisibleRange = { start: -1, end: -1 };
+            
+            // Debounce scroll events for better performance
+            function debounce(func, wait) {
+                let timeout;
+                return function() {
+                    const context = this;
+                    const args = arguments;
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(context, args), wait);
+                };
+            }
+            
+            // Expose renderVisibleContent globally for use by view control toggle
+            window.renderVisibleContent = function(containerType) {
+                const container = containers[containerType];
+                const contentContainer = contentContainers[containerType];
+                
+                if (!container || !contentContainer) return;
+                
+                const scrollTop = container.scrollTop;
+                const viewportHeight = container.clientHeight;
+                const buffer = viewportHeight; // One viewport height as buffer
+                
+                // Determine which paragraphs to render
+                const paragraphs = containerType.includes('Source') ? sourceParagraphs : translatedParagraphs;
+                const heights = containerType.includes('Source') ? sourceHeights : translatedHeights;
+                let visibleRange = { start: -1, end: -1 };
+                
+                // Calculate visible paragraph range
+                let currentHeight = 0;
+                for (let i = 0; i < heights.length; i++) {
+                    const paraHeight = heights[i];
+                    const paraTop = currentHeight;
+                    const paraBottom = paraTop + paraHeight;
+                    
+                    if (paraBottom >= scrollTop - buffer && paraTop <= scrollTop + viewportHeight + buffer) {
+                        if (visibleRange.start === -1) visibleRange.start = i;
+                        visibleRange.end = i;
+                    } else if (visibleRange.start !== -1 && paraTop > scrollTop + viewportHeight + buffer) {
+                        // We've found our range and now found paragraphs outside it
+                        break;
+                    }
+                    
+                    currentHeight += paraHeight;
+                }
+                
+                // Store the visible range for this container
+                if (containerType === 'source') {
+                    sourceVisibleRange = visibleRange;
+                } else if (containerType === 'translated') {
+                    translatedVisibleRange = visibleRange;
+                } else if (containerType === 'sideBySideSource') {
+                    sideBySideSourceVisibleRange = visibleRange;
+                } else if (containerType === 'sideBySideTranslated') {
+                    sideBySideTranslatedVisibleRange = visibleRange;
+                }
+                
+                // Calculate top spacer height
+                const topSpacerHeight = visibleRange.start > 0 ?
+                    heights.slice(0, visibleRange.start).reduce((sum, h) => sum + h, 0) : 0;
+                
+                // Calculate rendered content height
+                const renderedHeight = visibleRange.end >= 0 && visibleRange.start <= visibleRange.end ?
+                    heights.slice(visibleRange.start, visibleRange.end + 1).reduce((sum, h) => sum + h, 0) : 0;
+                
+                // Update spacers
+                if (containerType === 'source' && spacers.sourceTop && spacers.sourceBottom) {
+                    spacers.sourceTop.style.height = `${topSpacerHeight}px`;
+                    spacers.sourceBottom.style.height = `${Math.max(0, totalSourceHeight - topSpacerHeight - renderedHeight)}px`;
+                } else if (containerType === 'translated' && spacers.translatedTop && spacers.translatedBottom) {
+                    spacers.translatedTop.style.height = `${topSpacerHeight}px`;
+                    spacers.translatedBottom.style.height = `${Math.max(0, totalTranslatedHeight - topSpacerHeight - renderedHeight)}px`;
+                } else if (containerType === 'sideBySideSource' && spacers.sideBySideSourceTop && spacers.sideBySideSourceBottom) {
+                    spacers.sideBySideSourceTop.style.height = `${topSpacerHeight}px`;
+                    spacers.sideBySideSourceBottom.style.height = `${Math.max(0, totalSourceHeight - topSpacerHeight - renderedHeight)}px`;
+                } else if (containerType === 'sideBySideTranslated' && spacers.sideBySideTranslatedTop && spacers.sideBySideTranslatedBottom) {
+                    spacers.sideBySideTranslatedTop.style.height = `${topSpacerHeight}px`;
+                    spacers.sideBySideTranslatedBottom.style.height = `${Math.max(0, totalTranslatedHeight - topSpacerHeight - renderedHeight)}px`;
+                }
+                
+                // Clear and render the visible paragraphs
+                contentContainer.innerHTML = '';
+                if (visibleRange.start >= 0 && visibleRange.end >= visibleRange.start) {
+                    for (let i = visibleRange.start; i <= visibleRange.end; i++) {
+                        if (i < paragraphs.length) {
+                            const para = document.createElement('div');
+                            para.className = 'virtual-paragraph';
+                            para.textContent = paragraphs[i];
+                            para.dataset.index = i;
+                            contentContainer.appendChild(para);
+                            
+                            // Refine height estimate based on actual rendered size
+                            if (containerType === 'source' || containerType === 'sideBySideSource') {
+                                sourceHeights[i] = para.offsetHeight;
+                            } else {
+                                translatedHeights[i] = para.offsetHeight;
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Setup scroll event listeners
+            if (containers.source) {
+                containers.source.addEventListener('scroll', debounce(function() {
+                    window.renderVisibleContent('source');
+                }, 50));
+            }
+            
+            if (containers.translated) {
+                containers.translated.addEventListener('scroll', debounce(function() {
+                    window.renderVisibleContent('translated');
+                }, 50));
+            }
+            
+            if (containers.sideBySideSource) {
+                containers.sideBySideSource.addEventListener('scroll', debounce(function() {
+                    window.renderVisibleContent('sideBySideSource');
+                    
+                    // Synchronize scrolling in side-by-side view
+                    if (document.getElementById('viewSideBySide')?.checked && containers.sideBySideTranslated) {
+                        const scrollPercentage = this.scrollTop / (this.scrollHeight - this.clientHeight);
+                        containers.sideBySideTranslated.scrollTop = scrollPercentage * 
+                            (containers.sideBySideTranslated.scrollHeight - containers.sideBySideTranslated.clientHeight);
+                    }
+                }, 50));
+            }
+            
+            if (containers.sideBySideTranslated) {
+                containers.sideBySideTranslated.addEventListener('scroll', debounce(function() {
+                    window.renderVisibleContent('sideBySideTranslated');
+                    
+                    // Synchronize scrolling in side-by-side view
+                    if (document.getElementById('viewSideBySide')?.checked && containers.sideBySideSource) {
+                        const scrollPercentage = this.scrollTop / (this.scrollHeight - this.clientHeight);
+                        containers.sideBySideSource.scrollTop = scrollPercentage * 
+                            (containers.sideBySideSource.scrollHeight - containers.sideBySideSource.clientHeight);
+                    }
+                }, 50));
+            }
+            
+            // Handle window resize - recalculate visible content
+            window.addEventListener('resize', debounce(function() {
+                const viewSource = document.getElementById('viewSource');
+                const viewTranslated = document.getElementById('viewTranslated');
+                
+                if (!viewSource || !viewTranslated) return;
+                
+                const activeView = viewSource.checked ? 'source' :
+                                  viewTranslated.checked ? 'translated' : 'sideBySide';
+                
+                if (activeView === 'source') {
+                    window.renderVisibleContent('source');
+                } else if (activeView === 'translated') {
+                    window.renderVisibleContent('translated');
+                } else {
+                    window.renderVisibleContent('sideBySideSource');
+                    window.renderVisibleContent('sideBySideTranslated');
+                }
+            }, 100));
+            
+            // Initial rendering for the default view (side by side)
+            window.renderVisibleContent('sideBySideSource');
+            window.renderVisibleContent('sideBySideTranslated');
+        }
+        
+        /**
+         * Helper function to extract document ID from URL
+         */
+        function getDocumentIdFromURL() {
+            const matches = window.location.pathname.match(/\/documents\/([a-zA-Z0-9-]+)/);
+            return matches ? matches[1] : null;
+        }
+        
+        /**
+         * Helper function to extract version ID from URL
+         */
+        function getVersionIdFromURL() {
+            const matches = window.location.pathname.match(/\/versions\/([a-zA-Z0-9-]+)/);
+            return matches ? matches[1] : null;
+        }
+    }
+    
     /**
      * Initialize document management functionality
      */
