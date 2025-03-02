@@ -2084,6 +2084,30 @@ def not_found_error(e):
     return render_template('404.html'), 404
 
 # Document Management Routes
+@app.route('/simple-documents')
+@login_required
+def simple_documents():
+    """A simple document management page without complex JavaScript"""
+    user_id = get_user_id()
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Get user's documents
+    try:
+        documents = get_user_documents(user_id)
+        folders = get_user_folders(user_id)
+        
+        return render_template(
+            'simple_documents.html',
+            documents=documents,
+            folders=folders,
+            user_id=user_id
+        )
+    except Exception as e:
+        logger.error(f"Error displaying simple documents page: {str(e)}")
+        flash("An error occurred. Please check server logs.", "danger")
+        return redirect(url_for('index'))
+
 @app.route('/documents')
 @login_required
 def documents():
@@ -2323,6 +2347,30 @@ def update_folder_route(folder_id):
         'message': 'Folder updated successfully',
         'folder': result
     })
+
+@app.route('/documents/folders/<folder_id>/delete', methods=['POST'])
+@login_required
+def delete_folder_post_route(folder_id):
+    """Delete a folder (POST method fallback for browsers without JS)"""
+    user_id = get_user_id()
+    if not user_id:
+        flash('Unauthorized', 'error')
+        return redirect(url_for('documents'))
+    
+    # Get the folder
+    folder = get_folder(user_id, folder_id)
+    if not folder:
+        flash('Folder not found', 'error')
+        return redirect(url_for('documents'))
+    
+    # Delete folder
+    result = delete_folder(user_id, folder_id)
+    if not result:
+        flash('Failed to delete folder', 'error')
+        return redirect(url_for('documents'))
+    
+    flash('Folder deleted successfully', 'success')
+    return redirect(url_for('documents'))
 
 @app.route('/documents/folders/<folder_id>', methods=['DELETE'])
 @login_required
