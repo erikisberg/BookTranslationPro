@@ -1477,6 +1477,110 @@ def get_prev_page(user_id, document_id, current_page_number):
         logger.error(f"Error fetching previous page: {e}")
         return None
         
+def log_error(user_id, error_type, error_message, error_details=None, source="system", page_url=None):
+    """Log an error to the error_logs table
+    
+    Args:
+        user_id: The user ID associated with the error
+        error_type: Category of error (e.g. 'deepl_api', 'openai_api', 'database', etc.)
+        error_message: Primary error message
+        error_details: Dict with additional error details (will be stored as JSON)
+        source: Source of the error (function or module name)
+        page_url: URL where the error occurred (if applicable)
+    
+    Returns:
+        The created error log entry or None if creation failed
+    """
+    try:
+        if not error_details:
+            error_details = {}
+            
+        # Ensure error_details is convertible to JSON
+        if not isinstance(error_details, dict):
+            try:
+                error_details = {"raw_error": str(error_details)}
+            except Exception:
+                error_details = {"error": "Unable to convert error details to string"}
+        
+        data = {
+            'user_id': user_id,
+            'error_type': error_type,
+            'error_message': str(error_message)[:1000],  # Limit length
+            'error_details': error_details,
+            'source': source,
+            'page_url': page_url,
+            'created_at': 'now()'
+        }
+        
+        logger.debug(f"Logging error for user_id: {user_id}, type: {error_type}")
+        response = supabase.table('error_logs').insert(data).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            logger.info(f"Error logged successfully: {response.data[0]['id']}")
+            return response.data[0]
+        logger.warning("Failed to log error")
+        return None
+    except Exception as e:
+        logger.error(f"Error in log_error function: {e}")
+        return None
+
+def get_user_errors(user_id, limit=50, offset=0, resolved=None, error_type=None):
+    """Get error logs for a user with optional filtering
+    
+    Args:
+        user_id: The user ID to get errors for
+        limit: Maximum number of errors to return
+        offset: Pagination offset
+        resolved: If provided, filter by resolved status
+        error_type: If provided, filter by error type
+        
+    Returns:
+        List of error log entries
+    """
+    try:
+        query = supabase.table('error_logs').select('*').eq('user_id', user_id)
+        
+        # Apply filters if provided
+        if resolved is not None:
+            query = query.eq('resolved', resolved)
+            
+        if error_type:
+            query = query.eq('error_type', error_type)
+            
+        # Apply sorting and pagination
+        query = query.order('created_at', desc=True).limit(limit).offset(offset)
+        
+        response = query.execute()
+        
+        if hasattr(response, 'data'):
+            return response.data
+        return []
+    except Exception as e:
+        logger.error(f"Error getting user error logs: {e}")
+        return []
+
+def mark_error_resolved(user_id, error_id, resolved=True):
+    """Mark an error log as resolved or unresolved
+    
+    Args:
+        user_id: The user ID associated with the error
+        error_id: The error log ID to update
+        resolved: True to mark as resolved, False for unresolved
+        
+    Returns:
+        The updated error log entry or None if update failed
+    """
+    try:
+        data = {'resolved': resolved}
+        response = supabase.table('error_logs').update(data).eq('id', error_id).eq('user_id', user_id).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error marking error as resolved: {e}")
+        return None
+
 def update_document_progress(user_id, document_id):
     """Update document progress based on page status"""
     try:

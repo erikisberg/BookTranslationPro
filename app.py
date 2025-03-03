@@ -3355,19 +3355,54 @@ def translation_memory():
     
     # Check if database tables are set up
     try:
-        from supabase_config import supabase
+        from supabase_config import supabase, log_error
         # Try to check if translation_cache table exists
         try:
             result = supabase.table('translation_cache').select('count').limit(1).execute()
         except Exception as table_error:
             if 'relation "public.translation_cache" does not exist' in str(table_error):
                 logger.warning("Database tables not set up. Running setup automatically.")
-                setup_db_for_user(user_id)
-                flash("Database tables have been set up automatically.", "info")
+                setup_success = setup_db_for_user(user_id)
+                if setup_success:
+                    flash("Database tables have been set up automatically.", "info")
+                    logger.info(f"Successfully created database tables for user {user_id}")
+                else:
+                    flash("Det gick inte att skapa databastabeller automatiskt. Kontakta support.", "danger")
+                    logger.error(f"Failed to create database tables for user {user_id}")
+                    # Log this error to our error tracking system
+                    log_error(
+                        user_id=user_id,
+                        error_type='database_setup',
+                        error_message="Failed to create required database tables",
+                        error_details={"original_error": str(table_error)},
+                        source="translation_memory",
+                        page_url=request.path
+                    )
             else:
                 logger.error(f"Error checking database: {str(table_error)}")
+                # Log this error to our error tracking system
+                log_error(
+                    user_id=user_id,
+                    error_type='database_access',
+                    error_message="Error checking database tables",
+                    error_details={"original_error": str(table_error)},
+                    source="translation_memory",
+                    page_url=request.path
+                )
     except Exception as e:
         logger.error(f"Error checking database setup: {str(e)}")
+        try:
+            from supabase_config import log_error
+            log_error(
+                user_id=user_id,
+                error_type='database_setup',
+                error_message="Error checking database setup",
+                error_details={"original_error": str(e)},
+                source="translation_memory",
+                page_url=request.path
+            )
+        except Exception as log_err:
+            logger.error(f"Failed to log error: {str(log_err)}")
         
     # Get pagination params
     page = request.args.get('page', 1, type=int)
@@ -4461,6 +4496,59 @@ def internal_server_error(e):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return json_error('Internal server error occurred', 500)
     return render_template('500.html'), 500
+
+@app.errorhandler(ValueError)
+def handle_value_error(e):
+    """Handle specific ValueError exceptions gracefully"""
+    error_msg = str(e)
+    user_id = get_user_id()
+    
+    # Handle specific DeepL API errors
+    if "DeepL API key is invalid" in error_msg or "DeepL API key appears to be invalid" in error_msg:
+        # Log the error to our error tracking system
+        if user_id:
+            try:
+                from supabase_config import log_error
+                log_error(
+                    user_id=user_id,
+                    error_type='deepl_api_key',
+                    error_message="Invalid DeepL API key",
+                    error_details={"original_error": error_msg},
+                    source="app_error_handler",
+                    page_url=request.path
+                )
+            except Exception as log_err:
+                logger.error(f"Failed to log API error: {str(log_err)}")
+                
+        # Show user-friendly error
+        flash('Ditt DeepL API-nyckeln är ogiltig eller har utgått. Vänligen uppdatera din API-nyckel i inställningarna.', 'danger')
+        return redirect(url_for('api_keys_settings'))
+    
+    # Handle quota exceeded errors
+    elif "DeepL API quota has been exceeded" in error_msg:
+        # Log the error to our error tracking system
+        if user_id:
+            try:
+                from supabase_config import log_error
+                log_error(
+                    user_id=user_id,
+                    error_type='deepl_api_quota_exceeded',
+                    error_message="DeepL API quota exceeded",
+                    error_details={"original_error": error_msg},
+                    source="app_error_handler",
+                    page_url=request.path
+                )
+            except Exception as log_err:
+                logger.error(f"Failed to log API error: {str(log_err)}")
+                
+        # Show user-friendly error
+        flash('Din DeepL API-kvot har överskridits. Vänligen uppgradera din plan eller vänta tills din kvot återställs.', 'danger')
+        return redirect(url_for('api_keys_settings'))
+    
+    # Handle other ValueErrors
+    logger.error(f"ValueError: {error_msg}")
+    flash(error_msg, 'danger')
+    return redirect(url_for('index'))
 
 # Background jobs storage
 batch_jobs = {}

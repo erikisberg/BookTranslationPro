@@ -122,3 +122,21 @@ CREATE TABLE IF NOT EXISTS translation_cache (
 -- Create index for translation cache
 CREATE INDEX IF NOT EXISTS idx_translation_cache_source_hash ON translation_cache(source_hash);
 CREATE INDEX IF NOT EXISTS idx_translation_cache_user_id ON translation_cache(user_id);
+
+-- Error logging table
+CREATE TABLE IF NOT EXISTS error_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    error_type TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    error_details JSONB DEFAULT '{}',
+    source TEXT NOT NULL,
+    page_url TEXT,
+    resolved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for efficient querying
+CREATE INDEX IF NOT EXISTS idx_error_logs_user_id ON error_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_error_logs_error_type ON error_logs(error_type);
+CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at);

@@ -447,7 +447,7 @@ def extract_text_from_page(pdf_reader, page_num):
         logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
         raise Exception(f"Failed to extract text from page {page_num + 1}: {str(e)}")
 
-def translate_text(text, deepl_api_key, target_language='SV', source_language='auto', use_cache=True, glossary_id=None, max_retries=3, timeout=30):
+def translate_text(text, deepl_api_key, target_language='SV', source_language='auto', use_cache=True, glossary_id=None, max_retries=3, timeout=30, user_id=None):
     """First step: Translate text using DeepL with caching and glossary support.
     
     Returns a tuple containing (translated_text, text_hash, source_text, glossary_hits, glossary_terms_used).
@@ -461,6 +461,7 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
         glossary_id: ID of glossary to apply (optional)
         max_retries: Maximum number of retries for API failures
         timeout: Timeout in seconds for API calls
+        user_id: User ID for error logging (optional)
         
     Returns:
         Tuple containing (translated_text, text_hash, source_text, glossary_hits, glossary_terms_used)
@@ -637,11 +638,41 @@ def translate_text(text, deepl_api_key, target_language='SV', source_language='a
         except deepl.exceptions.AuthorizationException as auth_err:
             # Authentication errors won't be fixed by retrying
             logger.error(f"DeepL API authentication error: {str(auth_err)}")
+            
+            # Log authentication error if user_id is provided
+            if user_id:
+                try:
+                    from supabase_config import log_error
+                    log_error(
+                        user_id=user_id,
+                        error_type='deepl_api_auth',
+                        error_message=f"DeepL API key is invalid or has expired",
+                        error_details={"original_error": str(auth_err)},
+                        source="translate_text"
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log API error: {str(log_err)}")
+                    
             raise ValueError(f"DeepL API key is invalid or has expired: {str(auth_err)}")
             
         except deepl.exceptions.QuotaExceededException as quota_err:
             # Quota errors won't be fixed by retrying
             logger.error(f"DeepL API quota exceeded: {str(quota_err)}")
+            
+            # Log quota exceeded error if user_id is provided
+            if user_id:
+                try:
+                    from supabase_config import log_error
+                    log_error(
+                        user_id=user_id,
+                        error_type='deepl_api_quota_exceeded',
+                        error_message=f"DeepL API quota has been exceeded",
+                        error_details={"original_error": str(quota_err)},
+                        source="translate_text"
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log API error: {str(log_err)}")
+                    
             raise ValueError(f"DeepL API quota has been exceeded: {str(quota_err)}")
             
         except (deepl.exceptions.ConnectionException, deepl.exceptions.DeepLException) as network_err:
@@ -1460,7 +1491,7 @@ def analyze_complexity(text):
     
     return complexity_score, features
 
-def process_document(filepath, deepl_api_key, openai_api_key=None, assistant_id=None, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True, smart_review=False, complexity_threshold=40, glossary_id=None):
+def process_document(filepath, deepl_api_key, openai_api_key=None, assistant_id=None, source_language='auto', target_language='SV', custom_instructions=None, return_segments=False, use_cache=True, smart_review=False, complexity_threshold=40, glossary_id=None, user_id=None):
     """Process a document by extracting text, translating with DeepL.
     
     Works with various file formats including PDF, DOCX, DOC, TXT, RTF, and ODT.
@@ -1522,7 +1553,8 @@ def process_document(filepath, deepl_api_key, openai_api_key=None, assistant_id=
                         target_language, 
                         source_language, 
                         use_cache=use_cache,
-                        glossary_id=glossary_id
+                        glossary_id=glossary_id,
+                        user_id=user_id
                     )
                     
                     # Handle tuple return
