@@ -1,0 +1,75 @@
+site_name: BookTranslationPro Documentation
+site_description: Technical documentation for the BookTranslationPro platform
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+  language: en
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+      primary: indigo
+      accent: indigo
+    # Palette toggle for dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+      primary: indigo
+      accent: indigo
+
+nav:
+  - Home: index.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - System Design: architecture/system-design.md
+    - Tech Stack: architecture/tech-stack.md
+  - API:
+    - OpenAI Integration: api/openai.md
+    - DeepL Integration: api/deepl.md
+    - Internal API: api/internal.md
+  - Database:
+    - Schema: database/schema.md
+    - Supabase Configuration: database/supabase.md
+  - Setup:
+    - Installation: setup/installation.md
+    - Configuration: setup/configuration.md
+    - Environment: setup/environment.md
+  - User Workflows:
+    - Document Upload: user-workflows/document-upload.md
+    - Translation: user-workflows/translation.md
+    - Export: user-workflows/export.md
+  - Modules:
+    - Authentication: modules/authentication.md
+    - Document Processing: modules/document-processing.md
+    - Translation: modules/translation.md
+    - UI Components: modules/ui-components.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - admonition
+  - pymdownx.arithmatex:
+      generic: true
+  - footnotes
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.mark
+  - attr_list
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+copyright: Copyright &copy; 2024 - BookTranslationPro

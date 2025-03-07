@@ -1,6 +1,4 @@
 import os
-import re
-import uuid
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort, Response
 from werkzeug.utils import secure_filename
 import tempfile
@@ -10,12 +8,7 @@ import time
 from datetime import datetime
 from functools import wraps
 from dotenv import load_dotenv
-# Make PostHog optional to avoid import errors
-try:
-    from posthog import Posthog
-    posthog_available = True
-except ImportError:
-    posthog_available = False
+from posthog import PosthogSti
 from utils import (
     process_document, process_pdf, is_allowed_file, create_pdf_with_text, create_pdf_with_formatting, 
     create_pdf_with_text_basic, create_docx_with_text, create_html_with_text
@@ -50,10 +43,6 @@ app.secret_key = os.environ.get("SESSION_SECRET", "default-secret-key-for-dev")
 # Get API keys from environment (will be empty by default, requiring users to add their own)
 DEEPL_API_KEY = ""
 OPENAI_API_KEY = ""
-
-# OpenAI Assistant ID - To create a default assistant, run:
-# python create_assistant.py YOUR_OPENAI_API_KEY
-# Then set the assistant ID in your environment variables
 OPENAI_ASSISTANT_ID = os.environ.get('OPENAI_ASSISTANT_ID', "")
 
 # PostHog configuration - check both standard and Next.js naming conventions
@@ -120,8 +109,8 @@ def before_request():
                 session['next'] = request.url
                 return redirect(url_for('login'))
 
-    # Only track if PostHog is initialized and available
-    if posthog_available and posthog:
+    # Only track if PostHog is initialized
+    if posthog:
         try:
             user_id = get_user_id()
             # Capture page view
@@ -238,9 +227,9 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # This section has been moved above to initialize variables before they are used
 
-# Initialize PostHog if API key is available and the module is installed
+# Initialize PostHog if API key is available
 posthog = None
-if POSTHOG_API_KEY and posthog_available:
+if POSTHOG_API_KEY:
     try:
         posthog = Posthog(
             project_api_key=POSTHOG_API_KEY,
@@ -262,7 +251,7 @@ if POSTHOG_API_KEY and posthog_available:
         logger.error(f"Failed to initialize PostHog: {str(e)}")
         posthog = None
 else:
-    logger.info("PostHog API key not provided or module not available, analytics disabled")
+    logger.info("PostHog API key not provided, analytics disabled")
 
 # Log API key info for debugging
 logger.info(f"DEEPL_API_KEY present: {'Yes' if DEEPL_API_KEY else 'No'}")
@@ -303,16 +292,11 @@ DEFAULT_API_KEYS = {
 def json_response(data, status=200):
     """Helper function to ensure consistent JSON responses"""
     logger.debug(f"Sending JSON response (status {status}): {data}")
-    if not isinstance(data, dict):
-        data = {'data': data}
-    # If success key not present, add it
-    if 'success' not in data:
-        data['success'] = True
     return jsonify(data), status, {'Content-Type': 'application/json'}
 
 def json_error(message, status=400):
     """Helper function for JSON error responses"""
-    return json_response({'error': message, 'message': message, 'success': False}, status)
+    return json_response({'error': message}, status)
 
 # Authentication Routes
 @app.route('/login', methods=['GET', 'POST'])
@@ -332,7 +316,7 @@ def login():
         response = sign_in(email, password)
         if not response:
             # Track failed login attempt
-            if posthog_available and posthog:
+            if posthog:
                 posthog.capture(
                     distinct_id=email,
                     event='login_failed',
@@ -369,7 +353,7 @@ def login():
                 session['user_assistants'] = user_settings['assistants']
         
         # Track successful login
-        if posthog_available and posthog:
+        if posthog:
             posthog.capture(
                 distinct_id=response.user.id,
                 event='login_successful',
@@ -406,7 +390,7 @@ def signup():
         if password != password_confirm:
             flash('Lösenorden matchar inte', 'danger')
             # Track validation error
-            if posthog_available and posthog:
+            if posthog:
                 posthog.capture(
                     distinct_id=email or session.get('anonymous_id', 'unknown'),
                     event='signup_validation_error',
@@ -424,7 +408,7 @@ def signup():
         if not response:
             flash('Registrering misslyckades. Prova en annan e-postadress.', 'danger')
             # Track signup failure
-            if posthog_available and posthog:
+            if posthog:
                 posthog.capture(
                     distinct_id=email,
                     event='signup_failed',
@@ -441,17 +425,9 @@ def signup():
                 # Note: 'name' column doesn't exist in users table according to error message
             }
             save_user_data(response.user.id, user_data)
-            
-            # Automatically set up database tables for new user
-            try:
-                logger.info(f"Setting up database tables for new user: {response.user.id}")
-                setup_db_for_user(response.user.id)
-                logger.info(f"Database setup complete for user: {response.user.id}")
-            except Exception as e:
-                logger.error(f"Error setting up database for new user: {str(e)}")
         
         # Track successful signup
-        if posthog_available and posthog:
+        if posthog:
             if response.user and response.user.id:
                 posthog.capture(
                     distinct_id=response.user.id,
@@ -475,7 +451,7 @@ def signup():
 @app.route('/logout')
 def logout():
     # Track logout event
-    if posthog_available and posthog:
+    if posthog:
         user_id = get_user_id()
         if user_id:
             posthog.capture(
@@ -681,68 +657,10 @@ def translation_workspace(id):
                 flash('Kunde inte skapa arbetsdokument', 'danger')
                 return redirect(url_for('view_translation', id=id))
                 
-            # Save the translation content properly
-            try:
-                # First check if we have an original document/entry in translations
-                translation_entry = None
-                try:
-                    # Try to look up the translation in the database
-                    from supabase_config import get_db
-                    supabase = get_db()
-                    response = supabase.table('translations').select('*').eq('id', id).execute()
-                    if response.data and len(response.data) > 0:
-                        translation_entry = response.data[0]
-                except Exception as e:
-                    logger.warning(f"Could not look up translation entry: {str(e)}")
-                
-                # Try to get separate source and translated text
-                if translation_entry and 'original_text' in translation_entry and 'translated_text' in translation_entry:
-                    # We found the original data - use it
-                    source_text = translation_entry.get('original_text', '')
-                    translated_text = translation_entry.get('translated_text', '')
-                    
-                    # Save the content
-                    save_document_content(user_id, document['id'], source_text, 'source')
-                    save_document_content(user_id, document['id'], translated_text, 'translated')
-                    
-                    logger.info(f"Successfully saved source and translated content from translation entry")
-                else:
-                    # We don't have the original entry - try to get the full translation
-                    full_translation = get_full_translation(user_id, id)
-                    if full_translation:
-                        # Save as translated content
-                        save_document_content(user_id, document['id'], full_translation, 'translated')
-                        
-                        # For source content, use the same text rather than empty string
-                        # This ensures we always have content in both panels
-                        logger.info("Setting source content to same as translation - user can edit later")
-                        save_document_content(user_id, document['id'], full_translation, 'source')
-                        
-                        # Mark document as needing source setup
-                        if document.get('settings'):
-                            settings = document.get('settings', {})
-                            settings['needs_source_setup'] = True
-                            update_document(user_id, document['id'], {'settings': settings})
-                        
-                        logger.warning(f"Could only save translated content, source content is empty")
-                    else:
-                        # If we can't get any translation data, use what we have
-                        # Use translation_text for both to ensure content is available
-                        save_document_content(user_id, document['id'], translation_text, 'source')
-                        save_document_content(user_id, document['id'], translation_text, 'translated')
-                        
-                        # Update document settings to indicate source is missing
-                        if document.get('settings'):
-                            settings = document.get('settings', {})
-                            settings['needs_source_setup'] = True
-                            update_document(user_id, document['id'], {'settings': settings})
-                        
-                        logger.warning(f"Could not find original translation data, using available text")
-            except Exception as source_error:
-                logger.warning(f"Error setting up content: {str(source_error)}")
-                # Fall back to using translation text for both sides
-                save_document_content(user_id, document['id'], translation_text, 'source')
-                save_document_content(user_id, document['id'], translation_text, 'translated')
+            # Save the translation text as both source and translated content
+            # This ensures we have content in both fields for the side-by-side view
+            save_document_content(user_id, document['id'], translation_text, 'source')
+            save_document_content(user_id, document['id'], translation_text, 'translated')
     except Exception as e:
         logger.error(f"Error checking/creating document: {str(e)}")
         flash('Ett fel uppstod: ' + str(e), 'danger')
@@ -764,23 +682,14 @@ def translation_workspace(id):
                 flash('Kunde inte dela upp innehållet i sidor', 'danger')
                 return redirect(url_for('view_translation', id=id))
             
-            # Get both source and translated content
-            source_content = get_document_content(user_id, document['id'], 'source')
+            # Try to get translated content
             translated_content = get_document_content(user_id, document['id'], 'translated')
-            
-            logger.info(f"Source content length: {len(source_content) if source_content else 0}")
-            logger.info(f"Translated content length: {len(translated_content) if translated_content else 0}")
-            
-            # Check if both are available and properly set
-            if source_content and translated_content and len(source_content.strip()) > 0 and len(translated_content.strip()) > 0:
-                logger.info("Creating pages with both source and translated content")
-                
-                # Split both into pages
-                source_pages = split_content_into_pages(source_content) if source_content else []
-                translated_pages = split_content_into_pages(translated_content) if translated_content else []
+            if translated_content:
+                # If we have translated content, split it into pages as well
+                translated_pages = split_content_into_pages(translated_content)
                 
                 # Create pages with both source and translated content
-                for i, source_page in enumerate(source_pages, 1):
+                for i, source_page in enumerate(content_pages, 1):
                     # Get corresponding translated page if available
                     translated_page = translated_pages[i-1] if i <= len(translated_pages) else ''
                     
@@ -793,33 +702,14 @@ def translation_workspace(id):
                         'completion_percentage': 50 if translated_page else 0  # Set initial progress
                     }
                     create_document_page(user_id, page_data)
-            # If we have at least translated content, use it
-            elif translated_content and len(translated_content.strip()) > 0:
-                logger.info("Creating pages with translated content only")
-                
-                # Split the translated content
-                translated_pages = split_content_into_pages(translated_content)
-                
-                # Create pages with translated content only
-                for i, translated_page in enumerate(translated_pages, 1):
-                    page_data = {
-                        'document_id': document['id'],  # Use the actual document ID
-                        'page_number': i,
-                        'source_content': '',  # Empty source
-                        'translated_content': translated_page,
-                        'status': 'in_progress',
-                        'completion_percentage': 50  # Some progress since we have translation
-                    }
-                    create_document_page(user_id, page_data)
-            # Fall back to using content_pages as source only
             else:
-                logger.info("Creating pages with content_pages as source")
+                # No translated content available, initialize with source only
                 for i, page_content in enumerate(content_pages, 1):
                     page_data = {
                         'document_id': document['id'],  # Use the actual document ID
                         'page_number': i,
                         'source_content': page_content,
-                        'translated_content': '',  # Start with empty translation
+                        'translated_content': page_content,  # Initialize with source content for easier translation
                         'status': 'in_progress',
                         'completion_percentage': 0
                     }
@@ -848,53 +738,13 @@ def translation_workspace(id):
     if not document:
         document = get_document(user_id, id)
     
-    # Check if we need to add stats data to existing document
-    if document and 'settings' in document:
-        settings = document.get('settings', {})
-        # If we don't have stats data in settings, add placeholder values for the template
-        if not settings.get('cache_hits') and not settings.get('smart_review_savings'):
-            # If this is an older document without stats, we'll show placeholders
-            document['settings']['cache_hits'] = 0
-            document['settings']['cache_ratio'] = 0
-            document['settings']['smart_review_savings'] = 0
-            document['settings']['smart_review_ratio'] = 0
-            document['settings']['glossary_hits'] = 0
-            document['settings']['glossary_ratio'] = 0
-            
-            # Add character count
-            if 'char_count' not in document['settings']:
-                # If either source or translated content is available, count characters
-                source_content = get_document_content(user_id, document['id'], 'source')
-                if source_content:
-                    document['settings']['char_count'] = len(source_content)
-                else:
-                    translated_content = get_document_content(user_id, document['id'], 'translated')
-                    if translated_content:
-                        document['settings']['char_count'] = len(translated_content)
-                    else:
-                        document['settings']['char_count'] = 0
-            
-            # Log that we're adding placeholder stats
-            logger.info(f"Adding placeholder stats for document {document['id']}")
-    
-    # Get user's assistants for the modal dropdown
-    user_assistants = get_user_assistants(user_id) or []
-    
-    # Filter out assistants that don't have a valid OpenAI assistant ID
-    user_assistants = [a for a in user_assistants if a.get('assistant_id') and a['assistant_id'].startswith('asst_')]
-    
-    # Add default assistant from environment if available
-    default_assistant_id = OPENAI_ASSISTANT_ID if OPENAI_ASSISTANT_ID and OPENAI_ASSISTANT_ID.startswith('asst_') else None
-    
     return render_template('translation_workspace.html', 
                           translation_id=id, 
                           document=document,
                           pages=pages, 
                           total_pages=len(pages),
                           completed_pages=completed_pages,
-                          overall_progress=overall_progress,
-                          user_assistants=user_assistants,
-                          default_assistant_id=default_assistant_id)
+                          overall_progress=overall_progress)
                           
 @app.route('/view-translation/<document_id>/page/<page_id>', methods=['GET', 'POST'])
 @login_required
@@ -929,84 +779,6 @@ def edit_translation_page(document_id, page_id):
                 translated_content = request.form.get('translated_content', '')
                 status = request.form.get('status', 'in_progress')
                 
-                # Check if AI review was requested
-                if 'ai_review' in request.form:
-                    # Get the API keys and assistant ID
-                    user_settings = get_user_settings(user_id) or {}
-                    openai_api_key = user_settings.get('api_keys', {}).get('openai_api_key', OPENAI_API_KEY)
-                    
-                    # Get the assistant ID to use
-                    assistant_id = None
-                    if 'assistant_id' in request.form and request.form['assistant_id'] and request.form['assistant_id'].startswith('asst_'):
-                        assistant_id = request.form['assistant_id']
-                        logger.info(f"Using assistant ID from form: {assistant_id}")
-                    elif document.get('settings') and document['settings'].get('assistant_id') and document['settings']['assistant_id'].startswith('asst_'):
-                        assistant_id = document['settings']['assistant_id']
-                        logger.info(f"Using assistant ID from document settings: {assistant_id}")
-                    else:
-                        # Use the first available assistant or the default
-                        user_assistants = get_user_assistants(user_id)
-                        if user_assistants and user_assistants[0].get('assistant_id') and user_assistants[0]['assistant_id'].startswith('asst_'):
-                            # Use the OpenAI assistant_id, not the internal UUID
-                            assistant_id = user_assistants[0]['assistant_id']
-                            logger.info(f"Using user's assistant with OpenAI ID: {assistant_id}")
-                        else:
-                            # Use the environment variable assistant ID
-                            assistant_id = OPENAI_ASSISTANT_ID
-                            logger.info(f"Using default assistant ID from environment: {assistant_id}")
-                    
-                    # Get custom instructions if provided
-                    custom_instructions = request.form.get('ai_instructions', None)
-                    
-                    if openai_api_key and assistant_id:
-                        # Validate the assistant ID format before proceeding
-                        if not assistant_id.startswith('asst_'):
-                            flash(f'Ogiltig OpenAI Assistant ID: {assistant_id}. ID måste börja med "asst_"', 'danger')
-                            logger.error(f"Invalid OpenAI Assistant ID format: {assistant_id}")
-                        else:
-                            try:
-                                from utils import review_page_translation
-                                
-                                # Run the review process
-                                reviewed_text, success, error_msg = review_page_translation(
-                                    translated_content, 
-                                    openai_api_key, 
-                                    assistant_id, 
-                                    custom_instructions
-                                )
-                                
-                                if success:
-                                    # Update the translated text with the reviewed version
-                                    translated_content = reviewed_text
-                                    
-                                    # Mark as AI reviewed and completed
-                                    status = 'completed'
-                                    
-                                    # Track AI review stats in document settings
-                                    if document.get('settings'):
-                                        settings = document.get('settings', {})
-                                        if not isinstance(settings, dict):
-                                            settings = {}
-                                            
-                                        # Initialize stats if needed
-                                        if 'ai_review_count' not in settings:
-                                            settings['ai_review_count'] = 0
-                                            
-                                        # Increment count
-                                        settings['ai_review_count'] = settings.get('ai_review_count', 0) + 1
-                                        
-                                        # Update document settings
-                                        update_document(user_id, document_id, {'settings': settings})
-                                    
-                                    flash('AI-granskning slutförd!', 'success')
-                                else:
-                                    flash(f'AI-granskning misslyckades: {error_msg}', 'warning')
-                            except Exception as e:
-                                logger.error(f"Error reviewing page: {str(e)}")
-                                flash(f'Fel vid AI-granskning: {str(e)}', 'danger')
-                    else:
-                        flash('OpenAI API-nyckel eller assistent-ID saknas', 'warning')
-                
                 # Calculate completion percentage
                 if status == 'completed':
                     completion_percentage = 100
@@ -1028,18 +800,6 @@ def edit_translation_page(document_id, page_id):
                     'completion_percentage': completion_percentage
                     # Don't set last_edited_at, let database handle it
                 }
-                
-                # Conditionally add reviewed_by_ai - handle case where column might not exist yet
-                if 'ai_review' in request.form:
-                    try:
-                        # Check if column exists first
-                        from supabase_config import get_db
-                        supabase = get_db()
-                        
-                        # Try to add the field
-                        update_data['reviewed_by_ai'] = True
-                    except Exception as schema_error:
-                        logger.warning(f"Could not set reviewed_by_ai field: {str(schema_error)}")
                 
                 # Log update attempt
                 logger.info(f"Updating page {page_id} with status {status} and completion {completion_percentage}%")
@@ -1075,8 +835,8 @@ def edit_translation_page(document_id, page_id):
                         if is_ajax:
                             return json_response({'success': True, 'redirect': url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id'))})
                         return redirect(url_for('edit_translation_page', document_id=document_id, page_id=prev_page.get('id')))
-                elif 'save' in request.form and 'ai_review' not in request.form:
-                    # Regular save button (only show message if not after AI review)
+                elif 'save' in request.form:
+                    # Regular save button
                     if is_ajax:
                         return json_response({'success': True, 'message': 'Sidan har sparats'})
                     flash('Sidan har sparats', 'success')
@@ -1086,11 +846,7 @@ def edit_translation_page(document_id, page_id):
                 # Default case if no specific button was pressed
                 if is_ajax:
                     return json_response({'success': True, 'message': 'Sidan har sparats'})
-                
-                # Only show this message if not already showing AI review message
-                if 'ai_review' not in request.form:
-                    flash('Sidan har sparats', 'success')
-                    
+                flash('Sidan har sparats', 'success')
                 return redirect(url_for('edit_translation_page', document_id=document_id, page_id=page_id))
                 
             except Exception as e:
@@ -1105,20 +861,13 @@ def edit_translation_page(document_id, page_id):
         next_page = get_next_page(user_id, document_id, page.get('page_number', 0))
         prev_page = get_prev_page(user_id, document_id, page.get('page_number', 0))
         
-        # Get user assistants for AI review dropdown
-        user_assistants = get_user_assistants(user_id)
-        if not user_assistants and OPENAI_ASSISTANT_ID:
-            # Add the default assistant if available
-            user_assistants = [{'id': OPENAI_ASSISTANT_ID, 'name': 'Standardassistent'}]
-        
         return render_template('edit_translation_page.html', 
                               document_id=document_id, 
                               page=page,
                               has_next=next_page is not None,
                               has_prev=prev_page is not None,
                               next_page_id=next_page.get('id') if next_page else None,
-                              prev_page_id=prev_page.get('id') if prev_page else None,
-                              user_assistants=user_assistants)
+                              prev_page_id=prev_page.get('id') if prev_page else None)
                               
     except Exception as e:
         logger.error(f"Error in edit_translation_page: {str(e)}")
@@ -1364,19 +1113,34 @@ def save_assistant_route():
         
         # For a new assistant
         if not assistant_id_param:
-            # Always use manually entered ID
-            assistant_data['assistant_id'] = request.form.get('manual_assistant_id')
+            # Check if we should create in OpenAI
+            create_in_openai = request.form.get('create_in_openai') == 'yes'
             
-            # Validate format of the assistant ID
-            if not assistant_data['assistant_id']:
-                flash('Du måste ange ett OpenAI Assistant ID', 'danger')
-                return redirect(url_for('assistant_config'))
-                
-            if not assistant_data['assistant_id'].startswith('asst_'):
-                flash('OpenAI Assistant ID måste börja med "asst_"', 'danger')
-                return redirect(url_for('assistant_config'))
-                
-            logger.info(f"Using manually entered OpenAI Assistant ID: {assistant_data['assistant_id']}")
+            if create_in_openai:
+                try:
+                    # Create in OpenAI
+                    from utils import create_openai_assistant
+                    openai_result = create_openai_assistant(
+                        openai_api_key,
+                        assistant_name,
+                        assistant_instructions
+                    )
+                    # Use the returned assistant ID
+                    assistant_data['assistant_id'] = openai_result.get('id')
+                    logger.info(f"Created assistant in OpenAI with ID: {assistant_data['assistant_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to create assistant in OpenAI: {str(e)}")
+                    flash(f"Kunde inte skapa assistent i OpenAI: {str(e)}", 'danger')
+                    return redirect(url_for('assistant_config'))
+            else:
+                # Use manually entered ID
+                assistant_data['assistant_id'] = request.form.get('assistant_id')
+                if not assistant_data['assistant_id'] and request.form.get('manual_assistant_id'):
+                    assistant_data['assistant_id'] = request.form.get('manual_assistant_id')
+                    
+                if not assistant_data['assistant_id']:
+                    flash('Du måste ange ett OpenAI Assistant ID eller välja att skapa automatiskt', 'danger')
+                    return redirect(url_for('assistant_config'))
         
         # For updating an existing assistant
         else:
@@ -1386,19 +1150,26 @@ def save_assistant_route():
                 flash('Kunde inte hitta assistenten för uppdatering', 'danger')
                 return redirect(url_for('assistant_config'))
                 
-            # Get the updated assistant ID from the form if provided, otherwise use existing
-            new_assistant_id = request.form.get('manual_assistant_id')
-            if new_assistant_id and new_assistant_id.strip():
-                # If a new ID is provided, validate it
-                if not new_assistant_id.startswith('asst_'):
-                    flash('OpenAI Assistant ID måste börja med "asst_"', 'danger')
-                    return redirect(url_for('assistant_config'))
-                assistant_data['assistant_id'] = new_assistant_id
-                logger.info(f"Updating assistant with new OpenAI ID: {assistant_data['assistant_id']}")
-            else:
-                # Use existing assistant ID
-                assistant_data['assistant_id'] = existing_assistant.get('assistant_id')
-                logger.info(f"Keeping existing OpenAI ID: {assistant_data['assistant_id']}")
+            assistant_data['assistant_id'] = existing_assistant.get('assistant_id')
+            
+            # Check if we should update in OpenAI
+            sync_with_openai = request.form.get('sync_with_openai') == 'yes'
+            
+            if sync_with_openai and assistant_data['assistant_id']:
+                try:
+                    # Update in OpenAI
+                    from utils import update_openai_assistant
+                    update_openai_assistant(
+                        openai_api_key,
+                        assistant_data['assistant_id'],
+                        name=assistant_name,
+                        instructions=assistant_instructions
+                    )
+                    logger.info(f"Updated assistant in OpenAI with ID: {assistant_data['assistant_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to update assistant in OpenAI: {str(e)}")
+                    flash(f"Kunde inte uppdatera assistent i OpenAI: {str(e)}", 'warning')
+                    # Continue with the local update even if OpenAI update fails
         
         # Save to database
         saved_assistant = save_assistant(user_id, assistant_data)
@@ -1475,40 +1246,8 @@ def delete_assistant_route(assistant_id):
 @app.route('/export_settings', methods=['GET'])
 @login_required
 def export_settings():
-    user_id = get_user_id()
-    document_id = request.args.get('document_id')
-    
-    if not document_id:
-        flash('Document ID is required', 'warning')
-        return redirect(url_for('documents'))
-    
-    # Get document to verify ownership
-    document = get_document(user_id, document_id)
-    if not document:
-        flash('Document not found', 'danger')
-        return redirect(url_for('documents'))
-    
-    # Get current export settings, either from document or user defaults
-    document_settings = document.get('settings', {})
-    export_settings = document_settings.get('export_settings', DEFAULT_EXPORT_SETTINGS)
-    
-    # Extract settings for the template
-    return render_template(
-        'export_settings.html',
-        document_id=document_id,
-        export_format=export_settings.get('export_format', 'pdf'),
-        page_size=export_settings.get('page_size', 'A4'),
-        orientation=export_settings.get('orientation', 'portrait'),
-        font_family=export_settings.get('font_family', 'helvetica'),
-        font_size=export_settings.get('font_size', 12),
-        line_spacing=export_settings.get('line_spacing', '1.5'),
-        alignment=export_settings.get('alignment', 'left'),
-        margin_size=export_settings.get('margin_size', 15),
-        include_page_numbers=export_settings.get('include_page_numbers', True),
-        header_text=export_settings.get('header_text', ''),
-        footer_text=export_settings.get('footer_text', ''),
-        include_both_languages=export_settings.get('include_both_languages', False)
-    )
+    # Redirect to the combined settings page
+    return redirect(url_for('assistant_config'))
 
 @app.route('/help')
 def help_page():
@@ -1584,9 +1323,6 @@ def save_export_settings():
             'include_both_languages': 'include_both_languages' in request.form
         }
         
-        # Check if we're updating document-specific settings
-        document_id = request.form.get('document_id')
-        
         # Store in session with debug logging
         logger.info(f"Saving export settings: {settings}")
         session['export_settings'] = settings
@@ -1601,33 +1337,16 @@ def save_export_settings():
             }
             save_user_data(user_id, user_data)
             save_user_settings(user_id, {'export_settings': settings})
-            
-            # If document ID provided, update document-specific settings
-            if document_id:
-                document = get_document(user_id, document_id)
-                if document:
-                    document_settings = document.get('settings', {})
-                    document_settings['export_settings'] = settings
-                    update_data = {'settings': document_settings}
-                    update_document(user_id, document_id, update_data)
-                    flash('Export settings saved for this project', 'success')
-                    return redirect(url_for('translation_workspace', id=document_id))
         
         # Display success message and redirect
-        flash('Export settings saved successfully', 'success')
-        if document_id:
-            return redirect(url_for('translation_workspace', id=document_id))
-        elif request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return json_response({'success': True, 'redirect': url_for('export_settings')})
         return redirect(url_for('export_settings'))
         
     except Exception as e:
         logger.error(f"Error saving export settings: {str(e)}")
-        flash(f'Error saving settings: {str(e)}', 'danger')
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return json_error(str(e), 500)
-        if document_id:
-            return redirect(url_for('translation_workspace', id=document_id))
         return redirect(url_for('export_settings'))
 
 @app.route('/upload', methods=['POST'])
@@ -1638,13 +1357,6 @@ def upload_file():
 
     # Check for files - both single file and batch mode
     files = []
-    
-    # Get project metadata
-    project_title = request.form.get('projectTitle', '')
-    project_description = request.form.get('projectDescription', '')
-    
-    # Log for debugging
-    logger.info(f"Received project title: '{project_title}', description: '{project_description}'")
     
     # Check for batch mode (files[])
     if 'files[]' in request.files:
@@ -1670,7 +1382,7 @@ def upload_file():
     
     if invalid_files:
         # Track invalid file type upload attempt
-        if posthog_available and posthog:
+        if posthog:
             posthog.capture(
                 distinct_id=get_user_id(),
                 event='file_upload_error',
@@ -1687,98 +1399,12 @@ def upload_file():
         all_translations = []
         filepaths = []
         
-        # Maximum file size (100MB)
-        MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB in bytes
-        
-        # Check upload directory exists and is writable
-        upload_dir = app.config['UPLOAD_FOLDER']
-        if not os.path.exists(upload_dir):
-            try:
-                os.makedirs(upload_dir, exist_ok=True)
-                logger.info(f"Created upload directory: {upload_dir}")
-            except Exception as dir_error:
-                logger.error(f"Failed to create upload directory: {str(dir_error)}")
-                return json_error("Server configuration error: Upload directory cannot be created")
-        
-        if not os.access(upload_dir, os.W_OK):
-            logger.error(f"Upload directory is not writable: {upload_dir}")
-            return json_error("Server configuration error: Upload directory is not writable")
-        
-        # Check disk space
-        try:
-            import shutil
-            disk_usage = shutil.disk_usage(upload_dir)
-            if disk_usage.free < 500 * 1024 * 1024:  # Less than 500MB free
-                logger.warning(f"Low disk space: {disk_usage.free / (1024*1024):.2f}MB free")
-        except Exception as disk_error:
-            logger.warning(f"Unable to check disk space: {str(disk_error)}")
-        
-        # Save all files with validation
+        # Save all files
         for file in files:
-            # Validate filename
-            original_filename = file.filename
-            if not original_filename:
-                logger.warning("Received file with empty filename")
-                continue
-                
-            # Create a secure filename
-            filename = secure_filename(original_filename)
-            if filename != original_filename:
-                logger.info(f"Sanitized filename from '{original_filename}' to '{filename}'")
-            
-            # Generate a unique filename to avoid conflicts
-            unique_prefix = str(uuid.uuid4())[:8]
-            unique_filename = f"{unique_prefix}_{filename}"
-            filepath = os.path.join(upload_dir, unique_filename)
-            
-            # Check file size limit
-            file.seek(0, os.SEEK_END)
-            file_size = file.tell()
-            file.seek(0)  # Reset file pointer
-            
-            if file_size > MAX_FILE_SIZE:
-                logger.warning(f"File too large: {filename} ({file_size / (1024*1024):.2f}MB)")
-                return json_error(f"File {filename} is too large. Maximum file size is 100MB.")
-            
-            # Check for empty files
-            if file_size == 0:
-                logger.warning(f"Empty file: {filename}")
-                return json_error(f"File {filename} is empty and cannot be processed.")
-            
-            # Scan first few bytes to validate file type
-            try:
-                file_header = file.read(512)
-                file.seek(0)  # Reset file pointer
-                
-                # Basic PDF header check
-                if filename.lower().endswith('.pdf') and not file_header.startswith(b'%PDF-'):
-                    logger.warning(f"Invalid PDF file format: {filename}")
-                    return json_error(f"File {filename} is not a valid PDF file.")
-                
-                # DOCX is a ZIP file
-                if filename.lower().endswith('.docx') and not (file_header.startswith(b'PK\x03\x04') or file_header.startswith(b'PK\x05\x06')):
-                    logger.warning(f"Invalid DOCX file format: {filename}")
-                    return json_error(f"File {filename} is not a valid DOCX file.")
-            except Exception as header_check_error:
-                logger.warning(f"Error checking file header: {str(header_check_error)}")
-            
-            try:
-                # Actually save the file
-                file.save(filepath)
-                logger.info(f"Saved file: {filename} ({file_size / 1024:.2f}KB) to {filepath}")
-                filepaths.append(filepath)
-                
-                # Track original filename mapping for reference
-                session[f'original_filename_{unique_filename}'] = original_filename
-                
-            except Exception as save_error:
-                logger.error(f"Failed to save file {filename}: {str(save_error)}")
-                return json_error(f"Failed to upload file {filename}: {str(save_error)}")
-                
-        # Verify we have files to process
-        if not filepaths:
-            logger.error("No valid files were uploaded")
-            return json_error("No valid files were uploaded. Please try again.")
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            filepaths.append(filepath)
         
         logger.info(f"Processing {len(filepaths)} files in batch mode")
         
@@ -1822,26 +1448,9 @@ def upload_file():
                     openai_assistant_id = assistant_data.get('assistant_id')
                     logger.info(f"Using selected assistant: {assistant_data.get('name')} ({openai_assistant_id})")
                 else:
-                    # Selected assistant doesn't exist or has no OpenAI ID
-                    logger.warning(f"Selected assistant {assistant_id_selected} not found or has no OpenAI ID. Using default.")
                     openai_assistant_id = OPENAI_ASSISTANT_ID
             else:
-                # No assistant selected, use default
                 openai_assistant_id = OPENAI_ASSISTANT_ID
-                
-            # Verify default assistant is set and valid
-            if not openai_assistant_id:
-                logger.warning("No default OpenAI assistant ID configured. Using fallback text.")
-                # Skip AI review since we don't have a valid assistant ID
-                skip_openai = True
-                openai_api_key = None
-            else:
-                # Additional fallback - check for format validity
-                if not str(openai_assistant_id).startswith("asst_"):
-                    logger.warning(f"Invalid OpenAI assistant ID format: {openai_assistant_id}. OpenAI assistant IDs should start with 'asst_'")
-                    logger.warning("Skipping AI review and using DeepL translation only.")
-                    skip_openai = True
-                    openai_api_key = None
         else:
             openai_api_key = None
             openai_assistant_id = None
@@ -1871,26 +1480,10 @@ def upload_file():
                 if assistant_data:
                     custom_instructions = assistant_data.get('instructions')
                     logger.info(f"Using custom instructions for assistant from DB: {assistant_data.get('name')}")
-            
-            # If still no instructions, use default
-            if not custom_instructions:
-                logger.info("No custom instructions found, using default instructions")
-                custom_instructions = DEFAULT_INSTRUCTIONS
         
         # Process each document and collect translations
         original_filenames = []
         total_sections = 0
-        
-        # Initialize statistics
-        cache_hits = 0
-        cache_ratio = 0
-        smart_review_savings = 0
-        smart_review_ratio = 0
-        
-        # Initialize glossary stats
-        globals()['glossary_hits'] = 0
-        globals()['glossary_ratio'] = 0
-        globals()['unique_terms_used'] = 0
         
         for i, filepath in enumerate(filepaths):
             try:
@@ -1905,7 +1498,7 @@ def upload_file():
                 folder_id = request.form.get('folderId')
                 
                 # Process this document
-                process_result = process_document(
+                file_translations = process_document(
                     filepath,
                     deepl_api_key,
                     openai_api_key,
@@ -1919,45 +1512,6 @@ def upload_file():
                     complexity_threshold=40,  # Default threshold, could be made configurable
                     glossary_id=glossary_id
                 )
-                
-                # Process document now returns a tuple with translations and stats
-                if isinstance(process_result, tuple) and len(process_result) == 2:
-                    file_translations, file_stats = process_result
-                    
-                    # Update overall statistics (used later for document creation)
-                    if 'cache_hits' in file_stats:
-                        cache_hits += file_stats['cache_hits']
-                    if 'cache_ratio' in file_stats:
-                        # Average the ratios across files
-                        cache_ratio = ((cache_ratio * i) + file_stats['cache_ratio']) / (i + 1) if i > 0 else file_stats['cache_ratio']
-                    if 'smart_review_savings' in file_stats:
-                        smart_review_savings += file_stats['smart_review_savings']
-                    if 'smart_review_ratio' in file_stats:
-                        # Average the ratios across files
-                        smart_review_ratio = ((smart_review_ratio * i) + file_stats['smart_review_ratio']) / (i + 1) if i > 0 else file_stats['smart_review_ratio']
-                    
-                    # Add glossary statistics
-                    if 'glossary_hits' in file_stats:
-                        if not hasattr(globals(), 'glossary_hits'):
-                            globals()['glossary_hits'] = 0
-                        globals()['glossary_hits'] += file_stats['glossary_hits']
-                    if 'glossary_ratio' in file_stats:
-                        if not hasattr(globals(), 'glossary_ratio'):
-                            globals()['glossary_ratio'] = 0
-                        # Average the ratios across files
-                        globals()['glossary_ratio'] = ((globals()['glossary_ratio'] * i) + file_stats['glossary_ratio']) / (i + 1) if i > 0 else file_stats['glossary_ratio']
-                    if 'unique_terms_used' in file_stats:
-                        if not hasattr(globals(), 'unique_terms_used'):
-                            globals()['unique_terms_used'] = 0
-                        globals()['unique_terms_used'] += file_stats['unique_terms_used']
-                        
-                    logger.info(f"Statistics for file {i+1}: Cache hits: {file_stats.get('cache_hits', 0)}, "
-                                f"Smart review savings: {file_stats.get('smart_review_savings', 0)}, "
-                                f"Glossary hits: {file_stats.get('glossary_hits', 0)}, "
-                                f"Unique glossary terms: {file_stats.get('unique_terms_used', 0)}")
-                else:
-                    # Handle older version return type
-                    file_translations = process_result
                 
                 # Store original filename in each translation item for multi-file identification
                 for item in file_translations:
@@ -1984,7 +1538,7 @@ def upload_file():
             
         # Save as a document for document management
         if len(filepaths) == 1:
-            # Always use project title from form as the primary title
+            # Use project title from form if provided, otherwise use filename
             project_title = request.form.get('projectTitle', '')
             project_description = request.form.get('projectDescription', '')
             
@@ -1998,21 +1552,11 @@ def upload_file():
                 session.modified = True
             
             original_filename = os.path.basename(filepaths[0])
-            # Always prefer project title over filename
-            title = project_title or os.path.splitext(original_filename)[0]
+            title = project_title if project_title else os.path.splitext(original_filename)[0]
             
             # Combine all translated segments
             translated_text = '\n\n'.join([t['translated_text'] for t in all_translations if t['status'] == 'success'])
             source_text = '\n\n'.join([t['original_text'] for t in all_translations if t['status'] == 'success'])
-            
-            # Debug info to track what's happening
-            logger.info(f"Source text sample (first 100 chars): {source_text[:100]}...")
-            logger.info(f"Translated text sample (first 100 chars): {translated_text[:100]}...")
-            
-            # Verify source and translated text are different
-            if source_text == translated_text:
-                logger.warning("Source and translated text are identical - this might indicate a translation issue")
-                logger.warning(f"Source language: {source_language}, Target language: {target_language}")
             
             # Create document data
             doc_data = {
@@ -2027,25 +1571,7 @@ def upload_file():
                 'settings': {
                     'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS),
                     'project_info': f"Project settings: {project_description}",
-                    'total_pages': len(source_text.split('\n\n')),
-                    # Add text statistics
-                    'char_count': len(source_text),
-                    # Add translation statistics
-                    'cache_hits': cache_hits,
-                    'cache_ratio': cache_ratio,
-                    'smart_review_savings': smart_review_savings,
-                    'smart_review_ratio': smart_review_ratio,
-                    'glossary_hits': globals().get('glossary_hits', 0),
-                    'glossary_ratio': globals().get('glossary_ratio', 0),
-                    'unique_terms_used': globals().get('unique_terms_used', 0),
-                    # Store language information explicitly in settings
-                    'explicit_source_language': source_language,
-                    'explicit_target_language': target_language,
-                    'translation_info': {
-                        'source': source_language,
-                        'target': target_language,
-                        'date': datetime.now().isoformat()
-                    }
+                    'total_pages': len(source_text.split('\n\n'))
                 },
                 'source_content': source_text,
                 'translated_content': translated_text,
@@ -2079,7 +1605,7 @@ def upload_file():
                     # Create document - for multi-file mode, use chapter naming
                     original_filename = os.path.basename(filepath)
                     
-                    # Always use project title from form as the primary title
+                    # Use project title if provided, otherwise use filename
                     project_title = request.form.get('projectTitle', '')
                     project_description = request.form.get('projectDescription', '')
                     
@@ -2092,9 +1618,8 @@ def upload_file():
                         session['last_project_description'] = project_description
                         session.modified = True
                     
-                    # For batch chapters, name them as chapters, always use project title if provided
+                    # For batch chapters, name them as chapters
                     file_number = i + 1
-                    # Always prefer project title for chapter naming
                     chapter_title = f"{project_title} - Chapter {file_number}" if project_title else os.path.splitext(original_filename)[0]
                     
                     doc_data = {
@@ -2109,17 +1634,7 @@ def upload_file():
                         'settings': {
                             'export_settings': session.get('export_settings', DEFAULT_EXPORT_SETTINGS),
                             'project_info': f"Project settings: {project_description}",
-                            'total_pages': len(source_text.split('\n\n')),
-                            # Add text statistics
-                            'char_count': len(source_text),
-                            # Add translation statistics
-                            'cache_hits': cache_hits,
-                            'cache_ratio': cache_ratio,
-                            'smart_review_savings': smart_review_savings,
-                            'smart_review_ratio': smart_review_ratio,
-                            'glossary_hits': globals().get('glossary_hits', 0),
-                            'glossary_ratio': globals().get('glossary_ratio', 0),
-                            'unique_terms_used': globals().get('unique_terms_used', 0)
+                            'total_pages': len(source_text.split('\n\n'))
                         },
                         'source_content': source_text,
                         'translated_content': translated_text,
@@ -2143,14 +1658,6 @@ def upload_file():
         smart_review_savings = 0
         smart_review_ratio = 0
         
-        # Initialize glossary stats if they weren't set during processing
-        if 'glossary_hits' not in globals():
-            globals()['glossary_hits'] = 0
-        if 'glossary_ratio' not in globals():
-            globals()['glossary_ratio'] = 0  
-        if 'unique_terms_used' not in globals():
-            globals()['unique_terms_used'] = 0
-        
         for t in all_translations:
             # Check if translation contains cache metadata
             if t.get('cache_metadata') and t.get('cache_metadata').get('source_hash'):
@@ -2165,14 +1672,9 @@ def upload_file():
             smart_review_ratio = (smart_review_savings / total_sections) * 100
             logger.info(f"Cache statistics: {cache_hits}/{total_sections} segments from cache ({cache_ratio:.1f}%)")
             logger.info(f"Smart review savings: {smart_review_savings}/{total_sections} segments skipped ({smart_review_ratio:.1f}%)")
-            
-            # Log glossary statistics
-            if globals()['glossary_hits'] > 0:
-                logger.info(f"Glossary statistics: {globals()['glossary_hits']} terms replaced, {globals()['unique_terms_used']} unique terms used")
-                logger.info(f"Glossary ratio: {globals()['glossary_ratio']:.2f} replacements per 1000 characters")
         
         # Track successful file upload and translation
-        if posthog_available and posthog:
+        if posthog:
             posthog.capture(
                 distinct_id=get_user_id(),
                 event='files_translated',
@@ -2429,7 +1931,7 @@ def download_final():
             save_translation(user_id, original_filename, final_text, settings)
             
             # Track download event with PostHog
-            if posthog_available and posthog:
+            if posthog:
                 posthog.capture(
                     distinct_id=user_id,
                     event='translation_downloaded',
@@ -2629,7 +2131,7 @@ def create_new_glossary():
         logger.info(f"Glossary created successfully with ID: {result['id']}")
         
         # Track in analytics
-        if posthog_available and posthog:
+        if posthog:
             try:
                 # Get user data for better analytics
                 user_data = get_user_data(user_id)
@@ -2739,7 +2241,7 @@ def delete_glossary_by_id(glossary_id):
         return json_error('Failed to delete glossary', 500)
     
     # Track in analytics
-    if posthog_available and posthog:
+    if posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -2927,7 +2429,7 @@ def import_glossary_entries(glossary_id):
                 success_count += 1
         
         # Track in analytics
-        if posthog_available and posthog:
+        if posthog:
             try:
                 posthog.capture(
                     distinct_id=user_id,
@@ -2950,326 +2452,6 @@ def import_glossary_entries(glossary_id):
     except Exception as e:
         logger.error(f"Error importing glossary entries: {str(e)}")
         return json_error(f'Error importing glossary entries: {str(e)}', 500)
-
-# Document Export Functions
-
-@app.route('/export/<document_id>', methods=['GET'])
-@login_required
-def export_document(document_id):
-    import re
-    from utils import create_pdf_with_formatting, create_docx_with_text, create_html_with_text
-    
-    user_id = get_user_id()
-    export_format = request.args.get('format', 'pdf')
-    
-    # Get document to verify ownership
-    document = get_document(user_id, document_id)
-    if not document:
-        flash('Document not found', 'danger')
-        return redirect(url_for('documents'))
-    
-    # Get document content
-    translated_content = get_document_content(user_id, document_id, 'translated')
-    source_content = get_document_content(user_id, document_id, 'source')
-    
-    if not translated_content:
-        flash('No content to export', 'warning')
-        return redirect(url_for('translation_workspace', id=document_id))
-    
-    # Get export settings
-    document_settings = document.get('settings', {})
-    export_settings = document_settings.get('export_settings', DEFAULT_EXPORT_SETTINGS)
-    
-    # Extract needed settings
-    font_family = export_settings.get('font_family', 'helvetica')
-    font_size = export_settings.get('font_size', 12)
-    page_size = export_settings.get('page_size', 'A4')
-    orientation = export_settings.get('orientation', 'portrait')
-    margin_size = export_settings.get('margin_size', 15)
-    line_spacing = float(export_settings.get('line_spacing', 1.5))
-    alignment = export_settings.get('alignment', 'left')
-    include_page_numbers = export_settings.get('include_page_numbers', True)
-    header_text = export_settings.get('header_text', '')
-    footer_text = export_settings.get('footer_text', '')
-    include_both_languages = export_settings.get('include_both_languages', False)
-    
-    # Prepare content based on settings
-    if include_both_languages and source_content:
-        final_content = ""
-        source_paragraphs = source_content.split('\n\n')
-        translated_paragraphs = translated_content.split('\n\n')
-        
-        # Use the shorter of the two to avoid issues
-        min_length = min(len(source_paragraphs), len(translated_paragraphs))
-        
-        for i in range(min_length):
-            final_content += f"{source_paragraphs[i]}\n\n"
-            final_content += f"{translated_paragraphs[i]}\n\n"
-            final_content += "---\n\n"  # Separator between sections
-    else:
-        final_content = translated_content
-    
-    # Add document title as header if not set
-    if not header_text and document.get('title'):
-        header_text = document.get('title')
-        
-    # Generate the document based on format
-    try:
-        if export_format == 'pdf':
-            output_file = create_pdf_with_formatting(
-                final_content, font_family, font_size, page_size, 
-                orientation, margin_size, line_spacing, alignment,
-                include_page_numbers, header_text, footer_text
-            )
-            mimetype = 'application/pdf'
-        elif export_format == 'docx':
-            output_file = create_docx_with_text(
-                final_content, font_family, font_size, page_size,
-                orientation, margin_size, line_spacing, alignment,
-                include_page_numbers, header_text, footer_text
-            )
-            mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        elif export_format == 'html':
-            output_file = create_html_with_text(
-                final_content, font_family, font_size, line_spacing, 
-                alignment, include_page_numbers, header_text, footer_text
-            )
-            mimetype = 'text/html'
-        else:  # Default to txt
-            # For text, just write to a file
-            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
-            with open(temp_output.name, 'w', encoding='utf-8') as f:
-                f.write(final_content)
-            output_file = temp_output.name
-            mimetype = 'text/plain'
-        
-        # Create a filename with document title and format
-        safe_title = re.sub(r'[^\w\-_\. ]', '_', document.get('title', 'document'))
-        filename = f"{safe_title}.{export_format}"
-        
-        # Track export in analytics
-        if posthog_available and posthog:
-            posthog.capture(
-                distinct_id=user_id,
-                event='document_exported',
-                properties={
-                    'document_id': document_id,
-                    'format': export_format,
-                    'include_both_languages': include_both_languages,
-                    'document_title': document.get('title')
-                }
-            )
-        
-        return send_file(
-            output_file, 
-            as_attachment=True,
-            download_name=filename,
-            mimetype=mimetype
-        )
-    except Exception as e:
-        logger.error(f"Error exporting document: {str(e)}")
-        flash(f'Error exporting document: {str(e)}', 'danger')
-        return redirect(url_for('translation_workspace', id=document_id))
-
-@app.route('/export-selected-pages/<document_id>', methods=['POST'])
-@login_required
-def export_selected_pages(document_id):
-    import re
-    from utils import create_pdf_with_formatting, create_docx_with_text, create_html_with_text
-    
-    user_id = get_user_id()
-    
-    # Get document to verify ownership
-    document = get_document(user_id, document_id)
-    if not document:
-        flash('Document not found', 'danger')
-        return redirect(url_for('documents'))
-    
-    # Get selected pages
-    selected_page_ids = request.form.getlist('selected_pages')
-    if not selected_page_ids:
-        flash('No pages selected', 'warning')
-        return redirect(url_for('translation_workspace', id=document_id))
-    
-    # Get export settings
-    export_format = request.form.get('format', 'pdf')
-    content_type = request.form.get('content_type', 'translated')
-    include_page_numbers = 'include_page_numbers' in request.form
-    include_title = 'include_title' in request.form
-    create_toc = 'create_toc' in request.form
-    
-    # Get document settings for formatting
-    document_settings = document.get('settings', {})
-    export_settings = document_settings.get('export_settings', DEFAULT_EXPORT_SETTINGS)
-    
-    # Extract needed settings
-    font_family = export_settings.get('font_family', 'helvetica')
-    font_size = export_settings.get('font_size', 12)
-    page_size = export_settings.get('page_size', 'A4')
-    orientation = export_settings.get('orientation', 'portrait')
-    margin_size = export_settings.get('margin_size', 15)
-    line_spacing = float(export_settings.get('line_spacing', 1.5))
-    alignment = export_settings.get('alignment', 'left')
-    
-    # Collect content from selected pages
-    final_content = ""
-    toc_entries = []
-    
-    # Add title if requested
-    if include_title and document.get('title'):
-        final_content += f"# {document.get('title')}\n\n"
-        if document.get('description'):
-            final_content += f"{document.get('description')}\n\n"
-        final_content += f"Languages: {document.get('source_language')} → {document.get('target_language')}\n\n"
-        final_content += "---\n\n"
-    
-    # Collect all the pages first to sort them
-    pages_data = []
-    for page_id in selected_page_ids:
-        page = get_document_page(user_id, page_id)
-        if page and page.get('document_id') == document_id:
-            pages_data.append(page)
-    
-    # Sort pages by page number
-    pages_data.sort(key=lambda x: x.get('page_number', 0))
-    
-    # Now build the content
-    for i, page in enumerate(pages_data):
-        page_number = page.get('page_number', i+1)
-        page_title = f"Page {page_number}"
-        toc_entries.append((page_title, page_number))
-        
-        # Add page header
-        final_content += f"## {page_title}\n\n"
-        
-        # Select content based on user's choice
-        if content_type == 'source':
-            page_content = page.get('source_content', '')
-        elif content_type == 'translated':
-            page_content = page.get('translated_content', '')
-        else:  # Both
-            source = page.get('source_content', '')
-            translated = page.get('translated_content', '')
-            page_content = f"### Original\n\n{source}\n\n### Translation\n\n{translated}"
-        
-        final_content += f"{page_content}\n\n"
-        final_content += "---\n\n"  # Page separator
-    
-    # Insert table of contents if requested
-    if create_toc and toc_entries:
-        toc_content = "## Table of Contents\n\n"
-        for title, number in toc_entries:
-            toc_content += f"* [{title}](#page-{number})\n"
-        toc_content += "\n---\n\n"
-        final_content = toc_content + final_content
-    
-    # Generate header and footer text
-    header_text = document.get('title', '') if include_title else ''
-    footer_text = ''
-    
-    # Generate the document based on format
-    try:
-        if export_format == 'pdf':
-            output_file = create_pdf_with_formatting(
-                final_content, font_family, font_size, page_size, 
-                orientation, margin_size, line_spacing, alignment,
-                include_page_numbers, header_text, footer_text
-            )
-            mimetype = 'application/pdf'
-        elif export_format == 'docx':
-            output_file = create_docx_with_text(
-                final_content, font_family, font_size, page_size,
-                orientation, margin_size, line_spacing, alignment,
-                include_page_numbers, header_text, footer_text
-            )
-            mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        elif export_format == 'html':
-            output_file = create_html_with_text(
-                final_content, font_family, font_size, line_spacing, 
-                alignment, include_page_numbers, header_text, footer_text
-            )
-            mimetype = 'text/html'
-        else:  # Default to txt
-            # For text, just write to a file
-            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
-            with open(temp_output.name, 'w', encoding='utf-8') as f:
-                f.write(final_content)
-            output_file = temp_output.name
-            mimetype = 'text/plain'
-        
-        # Create a filename with document title and format
-        safe_title = re.sub(r'[^\w\-_\. ]', '_', document.get('title', 'document'))
-        filename = f"{safe_title}_selected_pages.{export_format}"
-        
-        # Track export in analytics
-        if posthog_available and posthog:
-            posthog.capture(
-                distinct_id=user_id,
-                event='selected_pages_exported',
-                properties={
-                    'document_id': document_id,
-                    'format': export_format,
-                    'page_count': len(pages_data),
-                    'content_type': content_type,
-                    'document_title': document.get('title')
-                }
-            )
-        
-        return send_file(
-            output_file, 
-            as_attachment=True,
-            download_name=filename,
-            mimetype=mimetype
-        )
-    except Exception as e:
-        logger.error(f"Error exporting selected pages: {str(e)}")
-        flash(f'Error exporting pages: {str(e)}', 'danger')
-        return redirect(url_for('translation_workspace', id=document_id))
-
-@app.route('/documents/<document_id>/update-all-pages-status', methods=['POST'])
-@login_required
-def update_all_pages_status(document_id):
-    """Update the status of all pages in a document"""
-    user_id = get_user_id()
-    
-    # Get document to verify ownership
-    document = get_document(user_id, document_id)
-    if not document:
-        return json_error('Document not found', 404)
-    
-    # Get the new status from request
-    data = request.json or {}
-    new_status = data.get('status')
-    
-    if not new_status or new_status not in ['in_progress', 'completed', 'needs_review']:
-        return json_error('Invalid status', 400)
-    
-    try:
-        # Get all pages for this document
-        pages = get_document_pages(user_id, document_id)
-        
-        # Update each page's status
-        for page in pages:
-            # Set completion percentage based on status
-            completion_percentage = 100 if new_status == 'completed' else 50 if new_status == 'needs_review' else 25
-            
-            # Update page data
-            page_data = {
-                'status': new_status,
-                'completion_percentage': completion_percentage
-            }
-            update_document_page(user_id, page['id'], page_data)
-        
-        # Update document progress
-        update_document_progress(user_id, document_id)
-        
-        return json_response({
-            'success': True,
-            'message': f'Updated {len(pages)} pages to status: {new_status}'
-        })
-    except Exception as e:
-        logger.error(f"Error updating page statuses: {str(e)}")
-        return json_error(f'Error updating page statuses: {str(e)}', 500)
 
 @app.route('/glossary/<glossary_id>/export', methods=['GET'])
 @login_required
@@ -3313,7 +2495,7 @@ def export_glossary_entries(glossary_id):
         output.seek(0)
         
         # Track in analytics
-        if posthog_available and posthog:
+        if posthog:
             try:
                 posthog.capture(
                     distinct_id=user_id,
@@ -3352,57 +2534,6 @@ def translation_memory():
     user_id = get_user_id()
     if not user_id:
         return redirect(url_for('login'))
-    
-    # Check if database tables are set up
-    try:
-        from supabase_config import supabase, log_error
-        # Try to check if translation_cache table exists
-        try:
-            result = supabase.table('translation_cache').select('count').limit(1).execute()
-        except Exception as table_error:
-            if 'relation "public.translation_cache" does not exist' in str(table_error):
-                logger.warning("Database tables not set up. Running setup automatically.")
-                setup_success = setup_db_for_user(user_id)
-                if setup_success:
-                    flash("Database tables have been set up automatically.", "info")
-                    logger.info(f"Successfully created database tables for user {user_id}")
-                else:
-                    flash("Det gick inte att skapa databastabeller automatiskt. Kontakta support.", "danger")
-                    logger.error(f"Failed to create database tables for user {user_id}")
-                    # Log this error to our error tracking system
-                    log_error(
-                        user_id=user_id,
-                        error_type='database_setup',
-                        error_message="Failed to create required database tables",
-                        error_details={"original_error": str(table_error)},
-                        source="translation_memory",
-                        page_url=request.path
-                    )
-            else:
-                logger.error(f"Error checking database: {str(table_error)}")
-                # Log this error to our error tracking system
-                log_error(
-                    user_id=user_id,
-                    error_type='database_access',
-                    error_message="Error checking database tables",
-                    error_details={"original_error": str(table_error)},
-                    source="translation_memory",
-                    page_url=request.path
-                )
-    except Exception as e:
-        logger.error(f"Error checking database setup: {str(e)}")
-        try:
-            from supabase_config import log_error
-            log_error(
-                user_id=user_id,
-                error_type='database_setup',
-                error_message="Error checking database setup",
-                error_details={"original_error": str(e)},
-                source="translation_memory",
-                page_url=request.path
-            )
-        except Exception as log_err:
-            logger.error(f"Failed to log error: {str(log_err)}")
         
     # Get pagination params
     page = request.args.get('page', 1, type=int)
@@ -3414,39 +2545,34 @@ def translation_memory():
     language = request.args.get('language', '')
     
     # Get entries
-    try:
-        entries = get_translation_memory_entries(
-            user_id, 
-            limit=per_page, 
-            offset=offset,
-            search=search, 
-            language=language
-        )
-        
-        # Get statistics
-        stats = get_translation_memory_stats(user_id)
-        
-        # Get total count for pagination
-        total_entries = stats['total_entries']
-        total_pages = (total_entries + per_page - 1) // per_page
-        
-        # Get unique languages from stats for dropdown
-        languages = stats.get('languages', [])
-        
-        return render_template(
-            'translation_memory.html',
-            entries=entries,
-            page=page,
-            total_pages=total_pages,
-            search=search,
-            language=language,
-            languages=languages,
-            stats=stats
-        )
-    except Exception as e:
-        logger.error(f"Error retrieving translation memory: {str(e)}")
-        flash("Error retrieving translation memory. Please try again.", "danger")
-        return redirect(url_for('index'))
+    entries = get_translation_memory_entries(
+        user_id, 
+        limit=per_page, 
+        offset=offset,
+        search=search, 
+        language=language
+    )
+    
+    # Get statistics
+    stats = get_translation_memory_stats(user_id)
+    
+    # Get total count for pagination
+    total_entries = stats['total_entries']
+    total_pages = (total_entries + per_page - 1) // per_page
+    
+    # Get unique languages from stats for dropdown
+    languages = stats.get('languages', [])
+    
+    return render_template(
+        'translation_memory.html',
+        entries=entries,
+        page=page,
+        total_pages=total_pages,
+        search=search,
+        language=language,
+        languages=languages,
+        stats=stats
+    )
 
 @app.route('/translation-memory/<entry_id>', methods=['GET'])
 @login_required
@@ -3713,7 +2839,7 @@ def create_folder_route():
             return redirect(url_for('documents'))
     
     # Track in analytics
-    if posthog_available and posthog:
+    if posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -3813,7 +2939,7 @@ def delete_folder_route(folder_id):
         return json_error('Failed to delete folder', 500)
     
     # Track in analytics
-    if posthog_available and posthog:
+    if posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -3996,7 +3122,7 @@ def restore_document_version(document_id, version_id):
         return json_error('Failed to restore version', 500)
     
     # Track in analytics
-    if posthog_available and posthog:
+    if posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -4045,7 +3171,7 @@ def create_document_version(document_id):
         return json_error('Failed to create new version', 500)
     
     # Track in analytics
-    if posthog_available and posthog:
+    if posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -4370,7 +3496,7 @@ def delete_document_route(document_id):
         return json_error('Failed to delete document', 500)
     
     # Track in analytics
-    if posthog_available and posthog:
+    if posthog:
         try:
             posthog.capture(
                 distinct_id=user_id,
@@ -4387,70 +3513,6 @@ def delete_document_route(document_id):
         'success': True,
         'message': 'Document deleted successfully'
     })
-
-# Function to set up database for a new user
-def setup_db_for_user(user_id):
-    """Setup database tables for a newly registered user"""
-    if not user_id:
-        logger.error("Cannot set up database for empty user_id")
-        return False
-    
-    try:
-        # Get the SQL setup script content
-        with open('setup_tables.sql', 'r') as f:
-            sql_script = f.read()
-        
-        # Execute the SQL script
-        from supabase_config import supabase
-        
-        # Split the script into individual statements
-        statements = sql_script.split(';')
-        
-        success_count = 0
-        error_messages = []
-        
-        # Execute each statement
-        for stmt in statements:
-            stmt = stmt.strip()
-            if not stmt:  # Skip empty statements
-                continue
-                
-            try:
-                result = supabase.rpc('exec_sql', {'query': stmt}).execute()
-                success_count += 1
-            except Exception as stmt_error:
-                error_messages.append(f"Error executing statement: {str(stmt_error)}")
-                logger.warning(f"Error during database setup (non-fatal): {str(stmt_error)}")
-                # Continue with other statements
-        
-        # Create storage bucket if it doesn't exist
-        try:
-            # Try to create the documents bucket directly
-            try:
-                # Create bucket with public access and CORS enabled
-                supabase.storage.create_bucket(
-                    id="documents", 
-                    options={
-                        "public": True,
-                        "file_size_limit": 52428800,
-                        "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
-                                             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
-                    }
-                )
-                logger.info("Created 'documents' storage bucket with public access")
-            except Exception as bucket_exists_error:
-                # Bucket might already exist, which is fine
-                if "already exists" in str(bucket_exists_error).lower():
-                    logger.info("'documents' bucket already exists")
-        except Exception as bucket_error:
-            error_messages.append(f"Error creating 'documents' bucket: {str(bucket_error)}")
-            logger.error(f"Error creating documents bucket: {bucket_error}")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error in database setup for user {user_id}: {str(e)}")
-        return False
 
 # Admin Route for Database Setup
 @app.route('/admin/setup-database')
@@ -4476,19 +3538,117 @@ def setup_database():
         return redirect(url_for('index'))
     
     try:
-        # Use the common setup function
-        success = setup_db_for_user(user_id)
+        # Get the SQL setup script content
+        with open('setup_tables.sql', 'r') as f:
+            sql_script = f.read()
         
-        if success:
-            flash("Database tables set up successfully!", "success")
-        else:
-            flash("Error setting up database tables. Check logs for details.", "warning")
+        # Execute the SQL script 
+        # Note: This is a simplified approach. In a production environment,
+        # you would want to use a more robust solution for database migrations.
+        try:
+            # Split the script into individual statements
+            statements = sql_script.split(';')
             
-        return render_template('setup_database.html', success_count=1, error_count=0, errors=[])
+            success_count = 0
+            error_messages = []
+            
+            # Execute each statement
+            for stmt in statements:
+                stmt = stmt.strip()
+                if not stmt:  # Skip empty statements
+                    continue
+                    
+                try:
+                    # This is a simplistic approach - in a real app use proper SQL execution
+                    from supabase_config import supabase
+                    result = supabase.rpc('exec_sql', {'query': stmt}).execute()
+                    success_count += 1
+                except Exception as stmt_error:
+                    error_messages.append(f"Error executing statement: {str(stmt_error)}")
+                    # Continue with other statements
+            
+            # Create storage bucket if it doesn't exist
+            try:
+                # Try to create the documents bucket directly
+                try:
+                    # Create bucket with public access and CORS enabled
+                    # Using the correct format for create_bucket
+                    supabase.storage.create_bucket(
+                        id="documents", 
+                        options={
+                            "public": True,
+                            "file_size_limit": 52428800,
+                            "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
+                                                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                        }
+                    )
+                    
+                    # Set CORS policy for the bucket
+                    try:
+                        # This is the format for setting CORS policy via the Admin API
+                        cors_config = {
+                            "origins": ["*"],
+                            "methods": ["GET", "POST", "PUT", "DELETE"],
+                            "headers": ["*"],
+                            "maxAgeSeconds": 3600
+                        }
+                        # Note: This might require a direct SQL query or Admin API access
+                        # For now, log that the proper CORS config needs to be set in dashboard
+                        logger.info("CORS policy needs to be set in Supabase dashboard for 'documents' bucket")
+                    except Exception as cors_error:
+                        logger.error(f"Error setting CORS policy: {cors_error}")
+                        
+                    logger.info("Created 'documents' storage bucket with public access")
+                except Exception as bucket_exists_error:
+                    # Bucket might already exist, which is fine
+                    if "already exists" in str(bucket_exists_error).lower():
+                        logger.info("'documents' bucket already exists")
+                        # Make sure bucket is public with proper settings
+                        try:
+                            # Update bucket to be public with proper configs
+                            supabase.storage.update_bucket(
+                                id="documents", 
+                                options={
+                                    "public": True,
+                                    "file_size_limit": 52428800,
+                                    "allowed_mime_types": ["text/plain", "application/pdf", "application/msword", 
+                                                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                                }
+                            )
+                            logger.info("Updated 'documents' bucket to be public with proper settings")
+                            
+                            # Remind about CORS configuration
+                            logger.info("Note: CORS policy may need to be updated in Supabase dashboard for 'documents' bucket")
+                        except Exception as update_error:
+                            logger.error(f"Error updating 'documents' bucket: {update_error}")
+                    else:
+                        # Some other error occurred
+                        raise bucket_exists_error
+            except Exception as bucket_error:
+                error_messages.append(f"Error creating 'documents' bucket: {str(bucket_error)}")
+                logger.error(f"Error creating documents bucket: {bucket_error}")
+            
+            # Report results
+            if error_messages:
+                flash(f"Database setup completed with {len(error_messages)} errors. See logs for details.", "warning")
+                for error in error_messages:
+                    logger.error(error)
+            else:
+                flash("Database tables set up successfully!", "success")
                 
+            return render_template('setup_database.html', 
+                                  success_count=success_count, 
+                                  error_count=len(error_messages),
+                                  errors=error_messages)
+                
+        except Exception as exec_error:
+            logger.error(f"Error executing SQL script: {str(exec_error)}")
+            flash(f"Error executing database setup script: {str(exec_error)}", "danger")
+            return render_template('setup_database.html', error=str(exec_error))
+        
     except Exception as e:
         logger.error(f"Error in database setup: {str(e)}")
-        flash(f"Error setting up database: {str(e)}", "danger")
+        flash(f"Error reading setup script: {str(e)}", "danger")
         return render_template('setup_database.html', error=str(e))
 
 @app.errorhandler(500)
@@ -4496,308 +3656,6 @@ def internal_server_error(e):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return json_error('Internal server error occurred', 500)
     return render_template('500.html'), 500
-
-@app.errorhandler(ValueError)
-def handle_value_error(e):
-    """Handle specific ValueError exceptions gracefully"""
-    error_msg = str(e)
-    user_id = get_user_id()
-    
-    # Handle specific DeepL API errors
-    if "DeepL API key is invalid" in error_msg or "DeepL API key appears to be invalid" in error_msg:
-        # Log the error to our error tracking system
-        if user_id:
-            try:
-                from supabase_config import log_error
-                log_error(
-                    user_id=user_id,
-                    error_type='deepl_api_key',
-                    error_message="Invalid DeepL API key",
-                    error_details={"original_error": error_msg},
-                    source="app_error_handler",
-                    page_url=request.path
-                )
-            except Exception as log_err:
-                logger.error(f"Failed to log API error: {str(log_err)}")
-                
-        # Show user-friendly error
-        flash('Ditt DeepL API-nyckeln är ogiltig eller har utgått. Vänligen uppdatera din API-nyckel i inställningarna.', 'danger')
-        return redirect(url_for('api_keys_settings'))
-    
-    # Handle quota exceeded errors
-    elif "DeepL API quota has been exceeded" in error_msg:
-        # Log the error to our error tracking system
-        if user_id:
-            try:
-                from supabase_config import log_error
-                log_error(
-                    user_id=user_id,
-                    error_type='deepl_api_quota_exceeded',
-                    error_message="DeepL API quota exceeded",
-                    error_details={"original_error": error_msg},
-                    source="app_error_handler",
-                    page_url=request.path
-                )
-            except Exception as log_err:
-                logger.error(f"Failed to log API error: {str(log_err)}")
-                
-        # Show user-friendly error
-        flash('Din DeepL API-kvot har överskridits. Vänligen uppgradera din plan eller vänta tills din kvot återställs.', 'danger')
-        return redirect(url_for('api_keys_settings'))
-    
-    # Handle other ValueErrors
-    logger.error(f"ValueError: {error_msg}")
-    flash(error_msg, 'danger')
-    return redirect(url_for('index'))
-
-# Background jobs storage
-batch_jobs = {}
-
-@app.route('/documents/<document_id>/batch-ai-review', methods=['POST'])
-@login_required
-def batch_ai_review(document_id):
-    """Start a background batch AI review job for multiple pages"""
-    user_id = get_user_id()
-    
-    # Check if the document exists and the user owns it
-    document = get_document(user_id, document_id)
-    if not document:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_error('Document not found', 404)
-        else:
-            flash('Document not found', 'danger')
-            return redirect(url_for('documents'))
-    
-    # Get selected pages
-    selected_page_ids = request.form.getlist('selected_pages')
-    if not selected_page_ids:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_error('No pages selected', 400)
-        else:
-            flash('No pages selected', 'warning')
-            return redirect(url_for('translation_workspace', id=document_id))
-    
-    # Get AI assistant settings
-    assistant_id = request.form.get('assistant_id')
-    if not assistant_id:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_error('No AI assistant selected', 400)
-        else:
-            flash('No AI assistant selected', 'warning')
-            return redirect(url_for('translation_workspace', id=document_id))
-    
-    # Validate assistant ID format
-    if not assistant_id.startswith('asst_'):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_error('Invalid OpenAI Assistant ID format', 400)
-        else:
-            flash('Invalid OpenAI Assistant ID format', 'danger')
-            return redirect(url_for('translation_workspace', id=document_id))
-    
-    # Get API key
-    user_settings = get_user_settings(user_id) or {}
-    openai_api_key = user_settings.get('api_keys', {}).get('openai_api_key', OPENAI_API_KEY)
-    if not openai_api_key:
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return json_error('OpenAI API key not configured', 400)
-        else:
-            flash('OpenAI API key not configured', 'danger')
-            return redirect(url_for('translation_workspace', id=document_id))
-    
-    # Get custom instructions if provided
-    custom_instructions = request.form.get('ai_instructions')
-    
-    # Generate a unique job ID
-    job_id = str(uuid.uuid4())
-    
-    # Initialize job data
-    batch_jobs[job_id] = {
-        'user_id': user_id,
-        'document_id': document_id,
-        'page_ids': selected_page_ids,
-        'assistant_id': assistant_id,
-        'openai_api_key': openai_api_key,
-        'custom_instructions': custom_instructions,
-        'status': 'starting',
-        'progress': 0,
-        'pages_processed': 0,
-        'total_pages': len(selected_page_ids),
-        'completed': False,
-        'success': False,
-        'message': '',
-        'start_time': time.time()
-    }
-    
-    # Start the background job in a separate thread
-    import threading
-    job_thread = threading.Thread(target=process_batch_ai_review, args=(job_id,))
-    job_thread.daemon = True
-    job_thread.start()
-    
-    # Return response based on request type
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return json_response({
-            'success': True,
-            'message': 'Batch AI review job started',
-            'job_id': job_id
-        })
-    else:
-        flash('Batch AI review job started', 'info')
-        return redirect(url_for('translation_workspace', id=document_id))
-
-
-@app.route('/documents/<document_id>/batch-ai-review/status', methods=['GET'])
-@login_required
-def batch_ai_review_status(document_id):
-    """Get the status of a batch AI review job"""
-    user_id = get_user_id()
-    
-    # Check if the document exists and the user owns it
-    document = get_document(user_id, document_id)
-    if not document:
-        return json_error('Document not found', 404)
-    
-    # Get job ID from query params
-    job_id = request.args.get('job_id')
-    if not job_id or job_id not in batch_jobs:
-        return json_error('Job not found', 404)
-    
-    # Check if the job belongs to this user and document
-    job = batch_jobs[job_id]
-    if job['user_id'] != user_id or job['document_id'] != document_id:
-        return json_error('Unauthorized', 403)
-    
-    # Return job status
-    return json_response({
-        'success': True,
-        'status': job['status'],
-        'progress': job['progress'],
-        'pages_processed': job['pages_processed'],
-        'total_pages': job['total_pages'],
-        'completed': job['completed'],
-        'message': job['message']
-    })
-
-
-def process_batch_ai_review(job_id):
-    """Background process to handle batch AI review of multiple pages"""
-    if job_id not in batch_jobs:
-        logger.error(f"Job {job_id} not found in batch_jobs")
-        return
-    
-    job = batch_jobs[job_id]
-    user_id = job['user_id']
-    document_id = job['document_id']
-    page_ids = job['page_ids']
-    assistant_id = job['assistant_id']
-    openai_api_key = job['openai_api_key']
-    custom_instructions = job['custom_instructions']
-    
-    try:
-        # Update job status
-        job['status'] = 'processing'
-        
-        # Get all page data once
-        pages = []
-        for page_id in page_ids:
-            page = get_document_page(user_id, page_id)
-            if page and page.get('document_id') == document_id:
-                pages.append(page)
-        
-        # Update total pages count to actual valid pages
-        job['total_pages'] = len(pages)
-        
-        if not pages:
-            job['status'] = 'error'
-            job['message'] = 'No valid pages found'
-            job['completed'] = True
-            job['success'] = False
-            return
-        
-        # Process each page
-        from utils import review_page_translation
-        
-        for i, page in enumerate(pages):
-            try:
-                # Update status
-                job['status'] = f'Processing page {i+1}/{len(pages)} (page number {page.get("page_number", "unknown")})'
-                job['progress'] = int((i / len(pages)) * 100)
-                
-                # Get the translated content
-                translated_content = page.get('translated_content', '')
-                if not translated_content:
-                    logger.warning(f"No translated content found for page {page.get('id')}")
-                    continue
-                
-                # Run the AI review
-                reviewed_text, success, error_msg = review_page_translation(
-                    translated_content,
-                    openai_api_key,
-                    assistant_id,
-                    custom_instructions
-                )
-                
-                if success:
-                    # Update the page with reviewed content
-                    update_data = {
-                        'translated_content': reviewed_text,
-                        'status': 'completed',
-                        'reviewed_by_ai': True,
-                        'reviewed_at': datetime.now().isoformat()
-                    }
-                    
-                    # Update the page in the database
-                    update_document_page(user_id, page['id'], update_data)
-                    
-                    # Increment success counter
-                    job['pages_processed'] += 1
-                else:
-                    logger.warning(f"AI review failed for page {page.get('id')}: {error_msg}")
-            
-            except Exception as e:
-                logger.error(f"Error processing page {page.get('id')}: {str(e)}")
-        
-        # Update document progress
-        try:
-            update_document_progress(user_id, document_id)
-        except Exception as e:
-            logger.error(f"Error updating document progress: {str(e)}")
-        
-        # Mark job as completed successfully
-        job['status'] = 'completed'
-        job['progress'] = 100
-        job['completed'] = True
-        job['success'] = True
-        job['message'] = f'Successfully processed {job["pages_processed"]} out of {len(pages)} pages'
-        
-    except Exception as e:
-        logger.error(f"Error processing batch AI review job {job_id}: {str(e)}")
-        job['status'] = 'error'
-        job['message'] = str(e)
-        job['completed'] = True
-        job['success'] = False
-    
-    # Clean up old jobs (keep for 1 hour)
-    cleanup_old_jobs()
-
-
-def cleanup_old_jobs():
-    """Remove old batch jobs to prevent memory leaks"""
-    current_time = time.time()
-    job_ids_to_remove = []
-    
-    for job_id, job in batch_jobs.items():
-        # Keep completed jobs for 1 hour, running jobs indefinitely
-        if job['completed'] and (current_time - job.get('start_time', 0)) > 3600:
-            job_ids_to_remove.append(job_id)
-    
-    # Remove the old jobs
-    for job_id in job_ids_to_remove:
-        try:
-            del batch_jobs[job_id]
-        except KeyError:
-            pass
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
